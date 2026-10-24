@@ -48,5 +48,5 @@ export const paymentsApi = {
   list: (p: { student_id?: number; branch_id?: number | null; date_from?: string; date_to?: string; limit?: number; offset?: number }) =>
     http.get<Page<Payment>>(`/payments${qs(p)}`),
   refund: (id: number, body: { lessons: number; amount: number; reason: string }) =>
-    http.post<{ refund_id: number; bonuses_reversed: number }>(`/payments/${id}/refund`, body),
+    http.post<{ refund_id: number; bonuses_reversed: number }>(`/payments/${id}/refund`, body, { silent: true }),
 }

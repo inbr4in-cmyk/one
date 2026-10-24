@@ -214,6 +214,7 @@ const modules: typeof ru = {
       roomRequired: 'Кабинетті таңдаңыз',
       created: 'Құрылған сабақ: {n}',
       conflicts: 'Қиылысуға байланысты өткізілді: {n}',
+      showAll: 'Тағы {n}',
       end: 'Кестені тоқтату',
       endText: 'Осы кесте бойынша болашақ сабақтар тоқтатылады. Өткендері қалады.',
       ended: 'Кесте тоқтатылды',
@@ -448,6 +449,8 @@ const modules: typeof ru = {
     source: {
       sales: 'Қоңырау / кеңсе',
       qr: 'QR-тест',
+      qr_test: 'QR-тест',
+      walk_in: 'Өзі келді',
       site: 'Сайт',
       instagram: 'Instagram',
       whatsapp: 'WhatsApp',

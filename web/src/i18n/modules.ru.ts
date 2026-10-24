@@ -213,6 +213,7 @@ const modules = {
       roomRequired: 'Выберите кабинет',
       created: 'Создано уроков: {n}',
       conflicts: 'Пропущено из-за пересечений: {n}',
+      showAll: 'Ещё {n}',
       end: 'Остановить расписание',
       endText: 'Будущие уроки по этому расписанию отменятся. Прошедшие останутся.',
       ended: 'Расписание остановлено',
@@ -447,6 +448,8 @@ const modules = {
     source: {
       sales: 'Звонок / офис',
       qr: 'QR-тест',
+      qr_test: 'QR-тест',
+      walk_in: 'Пришёл сам',
       site: 'Сайт',
       instagram: 'Instagram',
       whatsapp: 'WhatsApp',

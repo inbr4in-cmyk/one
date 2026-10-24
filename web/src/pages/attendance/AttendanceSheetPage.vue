@@ -60,7 +60,7 @@ const absentWithParents = computed(() => rows.value.filter((r) => r.status === '
 
 function fill(r: Roster) {
   roster.value = r
-  rows.value = r.rows.map((x) => ({ ...x, key: x.student_id ? `s${x.student_id}` : `l${x.lead_id}`, open: !!(x.grade || x.comment) }))
+  rows.value = r.rows.map((x) => ({ ...x, key: x.student_id ? `s${x.student_id}` : `l${x.lead_id}`, open: false }))
   topic.value = r.lesson.topic ?? ''
   dirty.value = false
 }

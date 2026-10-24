@@ -2,6 +2,14 @@ import { nextTick, onBeforeUnmount, watch, type Ref } from 'vue'
 
 const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'
 let openCount = 0
+/** Open dialogs, topmost last: Esc still closes the top one when focus fell back to <body>. */
+const stack: (() => void)[] = []
+function onDocKey(e: KeyboardEvent) {
+  if (e.key !== 'Escape' || !stack.length) return
+  const t = e.target as HTMLElement | null
+  if (t && t !== document.body && t.closest('.ov')) return // handled by the dialog itself
+  stack[stack.length - 1]?.()
+}
 
 /** Esc to close, focus moved in and trapped, focus restored, page scroll locked. */
 export function useDialog(open: Ref<boolean>, box: Ref<HTMLElement | null>, close: () => void) {
@@ -28,6 +36,13 @@ export function useDialog(open: Ref<boolean>, box: Ref<HTMLElement | null>, clos
   }
 
   function lock(on: boolean) {
+    if (on) stack.push(close)
+    else {
+      const i = stack.lastIndexOf(close)
+      if (i >= 0) stack.splice(i, 1)
+    }
+    if (stack.length === 1 && on) document.addEventListener('keydown', onDocKey)
+    if (!stack.length) document.removeEventListener('keydown', onDocKey)
     openCount += on ? 1 : -1
     document.documentElement.style.overflow = openCount > 0 ? 'hidden' : ''
   }

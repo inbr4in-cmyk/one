@@ -36,6 +36,7 @@ const modal = ref<'edit' | 'member' | 'rule' | 'hw' | 'archive' | null>(null)
 const removing = ref<GroupMember | null>(null)
 const endingRule = ref<number | null>(null)
 const conflicts = ref<string[]>([])
+const allConflicts = ref(false)
 const busy = ref(false)
 const ruleError = ref<string | null>(null)
 const known = computed(() => (g.value ? [g.value] : []))
@@ -204,7 +205,8 @@ const lessonState = (l: Lesson) => (l.status === 'cancelled' ? 'red' : l.attenda
       <UiIcon name="alert" :size="24" />
       <div class="grow">
         <b>{{ t('groups.rule.conflicts', { n: conflicts.length }) }}</b>
-        <ul class="conf-list"><li v-for="(c, i) in conflicts" :key="i">{{ c }}</li></ul>
+        <ul class="conf-list"><li v-for="(c, i) in allConflicts ? conflicts : conflicts.slice(0, 5)" :key="i">{{ c }}</li></ul>
+        <button v-if="conflicts.length > 5" type="button" class="linkbtn" @click="allConflicts = !allConflicts">{{ allConflicts ? t('common.hide') : t('groups.rule.showAll', { n: conflicts.length - 5 }) }}</button>
       </div>
       <UiButton size="sm" variant="ghost" icon="x" :aria-label="t('common.close')" @click="conflicts = []" />
     </div>

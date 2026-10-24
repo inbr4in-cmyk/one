@@ -34,7 +34,7 @@ const l = computed(() => props.lesson)
 const canEdit = computed(() => auth.can('schedule.edit') && l.value?.status === 'planned')
 const past = computed(() => (l.value ? new Date(l.value.ends_at) < new Date() : false))
 const roomOptions = computed(() => rooms.value.filter((r) => r.status === 'active').map((r) => ({ value: r.id, label: r.name })))
-const teacherOptions = computed(() => props.teachers.map((x) => ({ value: x.id, label: x.name })))
+const teacherOptions = computed(() => props.teachers.filter((x) => !l.value || !x.branchIds?.length || x.branchIds.includes(l.value.branch_id)).map((x) => ({ value: x.id, label: x.name })))
 const hhmm = (iso: string) => {
   const d = new Date(iso)
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`

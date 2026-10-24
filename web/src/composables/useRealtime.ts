@@ -18,6 +18,12 @@ let attempt = 0
 let retryTimer: ReturnType<typeof setTimeout> | undefined
 let pingTimer: ReturnType<typeof setInterval> | undefined
 export const realtimeConnected = ref(false)
+let onSessionLost: (() => void) | null = null
+
+/** Called when the server closes the socket with 4401 (session gone). */
+export function setRealtimeSessionLost(fn: () => void) {
+  onSessionLost = fn
+}
 
 function emit(e: RealtimeEvent) {
   handlers.get(e.type)?.forEach((h) => h(e))
@@ -61,10 +67,16 @@ async function connect() {
       /* ignore malformed frames */
     }
   }
-  ws.onclose = () => {
+  ws.onclose = (ev) => {
     if (socket === ws) socket = null
     realtimeConnected.value = false
     clearInterval(pingTimer)
+    // 4401: the session behind the socket ended (logout elsewhere, revoked): stop and sign out.
+    if (ev.code === 4401) {
+      stopRealtime()
+      onSessionLost?.()
+      return
+    }
     scheduleReconnect()
   }
 }

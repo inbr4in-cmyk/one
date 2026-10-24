@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useSourceLabel } from '@/composables/useSourceLabel'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
@@ -24,6 +25,7 @@ interface Hit {
 }
 
 const { t } = useI18n()
+const srcLabel = useSourceLabel()
 const router = useRouter()
 const auth = useAuthStore()
 const refs = useRefsStore()
@@ -49,7 +51,7 @@ const hits = computed<Hit[]>(() => {
     for (const h of r[kind] ?? []) {
       const sub =
         kind === 'students' ? [h.status ? t(`students.status.${h.status}`) : '', refs.branchName(h.branch_id)].filter(Boolean).join(' · ')
-        : kind === 'leads' ? [h.source ? t(`crm.source.${h.source}`) : '', refs.branchName(h.branch_id)].filter(Boolean).join(' · ')
+        : kind === 'leads' ? [srcLabel(h.source), refs.branchName(h.branch_id)].filter(Boolean).join(' · ')
         : kind === 'groups' ? refs.branchName(h.branch_id)
         : h.position ?? t('roles.staff')
       out.push({ key: `${kind}${h.id}`, kind, id: h.id, title: h.title, sub })

@@ -10,7 +10,7 @@ import { useRefsStore } from '@/stores/refs'
 import { useToastStore } from '@/stores/toast'
 
 /** Create a group, or edit one when `group` is given. */
-const props = defineProps<{ group?: Group | null; teachers: { id: number; name: string }[] }>()
+const props = defineProps<{ group?: Group | null; teachers: { id: number; name: string; branchIds?: number[] }[] }>()
 const open = defineModel<boolean>('open', { required: true })
 const emit = defineEmits<{ saved: [Group] }>()
 const { t } = useI18n()
@@ -25,7 +25,7 @@ const busy = ref(false)
 
 const branchOptions = computed(() => branch.options.filter((o) => o.id !== null).map((o) => ({ value: o.id as number, label: o.name })))
 const levelOptions = computed(() => [{ value: 0, label: '—' }, ...refs.levels.map((l) => ({ value: l.id, label: l.name }))])
-const teacherOptions = computed(() => [{ value: 0, label: '—' }, ...props.teachers.map((x) => ({ value: x.id, label: x.name }))])
+const teacherOptions = computed(() => [{ value: 0, label: '—' }, ...props.teachers.filter((x) => !x.branchIds?.length || x.branchIds.includes(form.branch_id)).map((x) => ({ value: x.id, label: x.name }))])
 const roomOptions = computed(() => [{ value: 0, label: t('groups.noRoom') }, ...rooms.value.filter((r) => r.status === 'active').map((r) => ({ value: r.id, label: `${r.name} · ${r.capacity}` }))])
 const statusOptions = computed(() => (['recruiting', 'active', 'finished'] as const).map((s) => ({ value: s, label: t(`groups.status.${s}`) })))
 

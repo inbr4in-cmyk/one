@@ -65,7 +65,11 @@ const pin = computed(() => pinned.value[pinIdx.value % Math.max(1, pinned.value.
 
 async function loadList() {
   try {
-    chats.value = await chatsApi.list()
+    const list = await chatsApi.list()
+    // the open chat is read; a list fetched while it was opening may still count it
+    const open = list.find((c) => c.id === id.value)
+    if (open) open.unread = 0
+    chats.value = list
   } catch {
     /* toast */
   } finally {
@@ -290,7 +294,7 @@ const isImage = (m: ChatMessage) => m.kind === 'image' && m.file_url
           <div v-if="msgsLoading" class="stack"><UiSkeleton v-for="i in 4" :key="i" :width="`${40 + i * 10}%`" height="38px" /></div>
           <template v-for="m in thread" :key="m.id">
             <span v-if="m.newDay" class="day">{{ dayTitle(m.at, loc, t('chats.today'), t('chats.yesterday')) }}</span>
-            <div :id="`m${m.id}`" class="gm" :class="{ me: m.sender_id === me }">
+            <div :id="`m${m.id}`" class="gm" :class="{ mine: m.sender_id === me }">
               <UiAvatar v-if="m.sender_id !== me && current?.kind === 'group'" :name="m.sender_name ?? '?'" size="sm" />
               <div class="b" :class="[m.sender_id === me ? 'out' : 'in', { hiddenmsg: m.hidden, pinnedmsg: m.pinned }]">
                 <span v-if="m.sender_id !== me && current?.kind === 'group'" class="by" style="display: flex; gap: 6px; align-items: center">

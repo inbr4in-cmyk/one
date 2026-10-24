@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useSourceLabel } from '@/composables/useSourceLabel'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
@@ -17,13 +18,15 @@ import { ApiError } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
 import { useRefsStore } from '@/stores/refs'
 import { useToastStore } from '@/stores/toast'
-import { dmy, money, shortMonthYear } from '@/utils/dates'
+import { dmy, money } from '@/utils/dates'
+import { shortDate } from '@/utils/format'
 import { formatPhone } from '@/utils/phone'
 import type { Locale } from '@/i18n'
 
 type Tab = 'overview' | 'ledger' | 'payments' | 'tests'
 
 const { t, locale } = useI18n()
+const srcLabel = useSourceLabel()
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
@@ -176,7 +179,7 @@ const canRefund = (p: Payment) => auth.can('payments.refund') && p.refunded < p.
           <div class="muted" style="margin-top: 2px">
             <template v-if="s.age !== null">{{ t('students.age', { n: s.age }) }} · </template>
             <template v-if="s.phone">{{ formatPhone(s.phone) }} · </template>
-            {{ t('students.since', { date: shortMonthYear(s.created_at, loc) }) }}
+            {{ t('students.since', { date: shortDate(s.created_at, loc) }) }}
           </div>
           <div class="facts">
             <StatusChip :status="s.status" />
@@ -253,7 +256,7 @@ const canRefund = (p: Payment) => auth.can('payments.refund') && p.refunded < p.
           </UiCard>
 
           <UiCard v-if="auth.can('payments.view')" :title="t('students.tab.payments')">
-            <template #actions><span v-if="s.source" class="muted" style="font-size: 12px">{{ t('students.sourceIs', { src: t(`crm.source.${s.source}`) }) }}</span></template>
+            <template #actions><span v-if="s.source" class="muted" style="font-size: 12px">{{ t('students.sourceIs', { src: srcLabel(s.source) }) }}</span></template>
             <UiSkeleton v-if="!payments" :lines="3" />
             <table v-else-if="recentPayments.length">
               <tbody>

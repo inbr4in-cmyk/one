@@ -24,7 +24,7 @@ const busy = ref(false)
 
 const group = computed(() => props.groups.find((g) => g.id === form.group_id))
 const groupOptions = computed(() => [{ value: 0, label: t('schedule.pickGroup') }, ...props.groups.filter((g) => g.status !== 'finished').map((g) => ({ value: g.id, label: g.name }))])
-const teacherOptions = computed(() => props.teachers.map((x) => ({ value: x.id, label: x.name })))
+const teacherOptions = computed(() => props.teachers.filter((x) => !group.value || !x.branchIds?.length || x.branchIds.includes(group.value.branch_id)).map((x) => ({ value: x.id, label: x.name })))
 const roomOptions = computed(() => rooms.value.filter((r) => r.status === 'active').map((r) => ({ value: r.id, label: `${r.name} · ${r.capacity}` })))
 
 watch(open, (v) => {

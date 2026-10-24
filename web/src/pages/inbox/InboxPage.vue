@@ -170,7 +170,7 @@ const statusIcon = (m: InboxMessage) => (m.status === 'failed' ? t('inbox.failed
 </script>
 
 <template>
-  <div class="card inbox" :class="{ sel: id !== null }">
+  <div class="card inbox" :class="{ sel: id !== null, 'no-aside': !conv }">
     <div class="ib-list">
       <div class="hd">
         <div class="ib-title">

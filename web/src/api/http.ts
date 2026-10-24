@@ -17,6 +17,7 @@ let refreshing: Promise<boolean> | null = null
 type Handler<T> = ((arg: T) => void) | null
 let onAuthLost: Handler<void> = null
 let onError: Handler<ApiError> = null
+let onMfaRequired: Handler<void> = null
 
 export class ApiError extends Error {
   readonly status: number
@@ -49,6 +50,11 @@ export function hasAccessToken(): boolean {
 /** Called when the session cannot be restored (refresh failed). */
 export function setAuthLostHandler(fn: () => void): void {
   onAuthLost = fn
+}
+
+/** Called when the server refuses a staff endpoint until 2FA is set up (REQUIRE_STAFF_2FA). */
+export function setMfaRequiredHandler(fn: () => void): void {
+  onMfaRequired = fn
 }
 
 /** Called for every failed request that is not `silent`. */
@@ -142,6 +148,10 @@ export async function request<T>(method: string, path: string, opts: RequestOpti
   const data = await parseBody(res)
   if (!res.ok) {
     const err = new ApiError(res.status, readDetail(data, res.status))
+    if (res.status === 403 && /двухфактор/i.test(err.detail)) {
+      onMfaRequired?.()
+      throw err
+    }
     // A lost session is handled by redirecting to /login, not by a toast.
     if (!opts.silent && !(res.status === 401 && opts.auth !== false)) onError?.(err)
     throw err

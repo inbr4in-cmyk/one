@@ -80,7 +80,10 @@ onMounted(() => {
 /* Filter chips for the current view, with the week's load */
 const chips = computed(() => {
   const count = (fn: (l: Lesson) => boolean) => lessons.value.filter(fn).length
-  if (view.value === 'rooms') return rooms.value.map((r) => ({ id: r.id, name: r.name, n: count((l) => l.room_id === r.id), icon: 'door' }))
+  if (view.value === 'rooms') {
+    const many = new Set(rooms.value.map((r) => r.branch_id)).size > 1
+    return rooms.value.map((r) => ({ id: r.id, name: many ? `${r.name} · ${refs.branchName(r.branch_id)}` : r.name, n: count((l) => l.room_id === r.id), icon: 'door' }))
+  }
   if (view.value === 'teachers') return teachers.value.map((x) => ({ id: x.id, name: x.name, n: count((l) => (l.actual_teacher_id ?? l.teacher_id) === x.id), icon: 'user' }))
   return groups.value.map((g) => ({ id: g.id, name: g.name, n: count((l) => l.group_id === g.id), icon: 'groups' }))
 })
@@ -116,13 +119,16 @@ const days = computed(() => {
   return hasSunday ? list : list.slice(0, 6)
 })
 const hours = computed(() => {
-  let h0 = 9
-  let h1 = 21
+  if (!shown.value.length) return { h0: 9, h1: 21 }
+  let h0 = 24
+  let h1 = 0
   for (const l of shown.value) {
     h0 = Math.min(h0, Math.floor(hoursOf(l.starts_at)))
     h1 = Math.max(h1, Math.ceil(hoursOf(l.ends_at)))
   }
-  return { h0, h1 }
+  // Keep at least 6 rows so a short day still reads as a timetable
+  if (h1 - h0 < 6) h1 = Math.min(24, h0 + 6)
+  return { h0: Math.max(0, h0), h1 }
 })
 
 interface Placed { l: Lesson; top: number; height: number; lane: number; lanes: number }

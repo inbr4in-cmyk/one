@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useSourceLabel } from '@/composables/useSourceLabel'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
@@ -17,6 +18,7 @@ import type { Locale } from '@/i18n'
 const props = defineProps<{ leadId: number | null; pipelines: Pipeline[] }>()
 const emit = defineEmits<{ close: []; changed: [Lead]; removed: [number] }>()
 const { t, te, locale } = useI18n()
+const srcLabel = useSourceLabel()
 const router = useRouter()
 const auth = useAuthStore()
 const refs = useRefsStore()
@@ -209,7 +211,7 @@ const eventOptions = computed(() => (['call', 'note', 'meeting'] as const).map((
 
       <h4 class="sec-h">{{ t('crm.data') }}</h4>
       <dl class="kv">
-        <dt>{{ t('crm.sourceLabel') }}</dt><dd>{{ t(`crm.source.${lead.source}`) }}</dd>
+        <dt>{{ t('crm.sourceLabel') }}</dt><dd>{{ srcLabel(lead.source) }}</dd>
         <dt>{{ t('students.form.phone') }}</dt><dd>{{ lead.phone ? formatPhone(lead.phone) : '—' }}</dd>
         <template v-if="lead.age"><dt>{{ t('crm.age') }}</dt><dd>{{ lead.age }}</dd></template>
         <template v-if="lead.parent_name"><dt>{{ t('crm.parent') }}</dt><dd>{{ lead.parent_name }}<template v-if="lead.parent_phone"> · {{ formatPhone(lead.parent_phone) }}</template></dd></template>

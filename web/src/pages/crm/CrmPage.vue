@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useSourceLabel } from '@/composables/useSourceLabel'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
@@ -13,10 +14,13 @@ import { useAuthStore } from '@/stores/auth'
 import { useBranchStore } from '@/stores/branch'
 import { useToastStore } from '@/stores/toast'
 import { useRealtime } from '@/composables/useRealtime'
-import { waitLabel } from '@/utils/dates'
+import { dayLabel, hm, waitLabel } from '@/utils/dates'
+import type { Locale } from '@/i18n'
 import { tone } from '@/utils/levels'
+import { formatPhone } from '@/utils/phone'
 
-const { t, te } = useI18n()
+const { t, te, locale } = useI18n()
+const srcLabel = useSourceLabel()
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
@@ -168,7 +172,7 @@ function onRemoved(id: number) {
   }
 }
 const SRC: Record<string, { cls: string; icon: string }> = {
-  instagram: { cls: 'ig', icon: 'ig' }, whatsapp: { cls: 'wa', icon: 'wa' }, qr: { cls: 'qr', icon: 'qr' }, site: { cls: 'web', icon: 'globe' },
+  instagram: { cls: 'ig', icon: 'ig' }, whatsapp: { cls: 'wa', icon: 'wa' }, qr: { cls: 'qr', icon: 'qr' }, qr_test: { cls: 'qr', icon: 'qr' }, site: { cls: 'web', icon: 'globe' },
   referral: { cls: 'ref', icon: 'ref' }, sales: { cls: 'call', icon: 'phone' }, return: { cls: 'call', icon: 'lead-return' },
 }
 const units = computed(() => ({ m: t('time.min'), h: t('time.h'), d: t('time.d') }))
@@ -219,22 +223,22 @@ function onCardKey(e: KeyboardEvent, l: Lead) {
               @dragstart="onDragStart($event, l)" @dragend="onDragEnd" @click="openId = l.id" @keydown="onCardKey($event, l)"
             >
               <div class="r1">
-                <span class="srcico" :class="SRC[l.source]?.cls" :title="t(`crm.source.${l.source}`)"><svg><use :href="`#i-${SRC[l.source]?.icon ?? 'user'}`" /></svg></span>
+                <span class="srcico" :class="SRC[l.source]?.cls" :title="srcLabel(l.source)"><svg><use :href="`#i-${SRC[l.source]?.icon ?? 'user'}`" /></svg></span>
                 <b>{{ l.full_name }}</b>
                 <UiAvatar v-if="l.owner_name" :name="l.owner_name" size="sm" :title="l.owner_name" />
                 <span v-else class="chip red xs">{{ t('crm.unassigned') }}</span>
               </div>
               <div class="meta">
                 <template v-if="l.lost_reason">{{ t('crm.reason', { r: l.lost_reason }) }}</template>
-                <template v-else-if="l.trial_at">{{ t('crm.trialAt', { when: new Date(l.trial_at).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) }) }}</template>
-                <template v-else-if="l.phone">{{ l.phone }}</template>
+                <template v-else-if="l.trial_at">{{ t('crm.trialAt', { when: `${dayLabel(l.trial_at, locale as Locale, { day: 'numeric', month: 'short' })}, ${hm(l.trial_at, locale as Locale)}` }) }}</template>
+                <template v-else-if="l.phone">{{ formatPhone(l.phone) }}</template>
                 <template v-else-if="l.age">{{ t('students.age', { n: l.age }) }}</template>
               </div>
               <div class="r3">
                 <LevelTag v-if="l.level_id" :id="l.level_id" /><span v-else class="muted" style="font-size: 12px">{{ t('crm.noLevel') }}</span>
                 <span class="sp" />
                 <UiIcon v-if="l.is_hot" name="zap" :size="14" class="redc" />
-                <span v-if="l.waiting_min !== null" class="wait" :class="{ bad: isWaiting(l) }"><UiIcon name="clock" :size="16" />{{ waitLabel(l.waiting_min, units) }}<template v-if="isWaiting(l)"> {{ t('crm.noReply') }}</template></span>
+                <span v-if="l.waiting_min !== null" class="wait" :class="{ bad: isWaiting(l) }"><UiIcon name="clock" :size="16" />{{ isWaiting(l) ? `${waitLabel(l.waiting_min, units)} ${t('crm.noReply')}` : waitLabel(l.waiting_min, units) }}</span>
                 <span v-else-if="l.stale" class="wait bad">{{ t('crm.stale') }}</span>
               </div>
             </article>
