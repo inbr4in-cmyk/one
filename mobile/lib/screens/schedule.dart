@@ -250,7 +250,7 @@ class _LessonCardState extends State<LessonCard> {
           if (l.room != null || l.teacher != null) ...[
             const SizedBox(height: 6),
             Wrap(spacing: 12, runSpacing: 4, children: [
-              if (l.room != null) _Meta(icon: 'door', text: t.room(l.room!)),
+              if (l.room != null) _Meta(icon: 'door', text: roomLabel(t, l.room!)),
               if (l.teacher != null) _Meta(icon: 'user', text: l.teacher!),
             ]),
           ],
@@ -296,11 +296,15 @@ class StarRating extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final oe = context.oe;
-    return Semantics(
-      label: context.t.starsN(value),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        for (var i = 1; i <= 5; i++)
-          GestureDetector(
+    final t = context.t;
+    final row = Row(mainAxisSize: MainAxisSize.min, children: [
+      for (var i = 1; i <= 5; i++)
+        Semantics(
+          button: onRate != null,
+          selected: i <= value,
+          label: t.starsN(i),
+          excludeSemantics: true,
+          child: GestureDetector(
             key: Key('star-$i'),
             onTap: onRate == null ? null : () => onRate!(i),
             child: Padding(
@@ -308,7 +312,9 @@ class StarRating extends StatelessWidget {
               child: OeIcon('star', size: size, color: oe.warn, duo: i <= value ? 1 : 0),
             ),
           ),
-      ]),
-    );
+        ),
+    ]);
+    // Read-only ratings are announced once ("4 звезды"); editable ones star by star.
+    return onRate == null ? Semantics(label: t.starsN(value), excludeSemantics: true, child: row) : row;
   }
 }

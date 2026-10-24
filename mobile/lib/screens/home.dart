@@ -268,7 +268,7 @@ class _NextLessonCard extends StatelessWidget {
                 style: const TextStyle(color: OeColors.white, fontSize: 14.5, fontWeight: FontWeight.w500)),
             const SizedBox(height: 10),
             Wrap(spacing: 6, runSpacing: 6, children: [
-              if (l.room != null) _HeroMeta(icon: 'door', text: t.room(l.room!)),
+              if (l.room != null) _HeroMeta(icon: 'door', text: roomLabel(t, l.room!)),
               if (l.teacher != null) _HeroMeta(icon: 'user', text: l.teacher!),
             ]),
           ],
@@ -322,7 +322,7 @@ class LessonsTile extends StatelessWidget {
           if (n != null) TextSpan(text: ' ${t.ofN(n)}', style: TextStyle(fontSize: 15, color: oe.muted, fontWeight: FontWeight.w600)),
         ])),
         const SizedBox(height: 10),
-        if (n != null && n <= 24)
+        if (n != null && n <= 12)
           Row(children: [
             for (var i = 0; i < n; i++)
               Expanded(
@@ -338,7 +338,7 @@ class LessonsTile extends StatelessWidget {
           ClipRRect(
             borderRadius: BorderRadius.circular(4),
             child: LinearProgressIndicator(
-                value: left <= 0 ? 0 : 1, minHeight: 8, backgroundColor: oe.fill, color: left <= 2 ? oe.warn : oe.primary),
+                value: left <= 0 ? 0 : (n == null || n == 0 ? 1 : (left / n).clamp(0.0, 1.0)), minHeight: 8, backgroundColor: oe.fill, color: left <= 2 ? oe.warn : oe.primary),
           ),
         if (n != null) ...[
           const SizedBox(height: 8),

@@ -640,8 +640,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       child: SafeArea(
         top: false,
         child: Column(mainAxisSize: MainAxisSize.min, children: [
+          // Keys keep the text field (and the keyboard) alive when the warning appears above it.
           if (phone)
             Container(
+              key: const ValueKey('phone-warning'),
               margin: const EdgeInsets.fromLTRB(10, 8, 10, 0),
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(color: oe.warn100, borderRadius: BorderRadius.circular(16)),
@@ -661,6 +663,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
               ]),
             ),
           Container(
+            key: const ValueKey('composer-bar'),
             decoration: ios ? BoxDecoration(border: Border(top: BorderSide(color: oe.line))) : null,
             padding: const EdgeInsets.fromLTRB(6, 8, 10, 8),
             child: rec != null

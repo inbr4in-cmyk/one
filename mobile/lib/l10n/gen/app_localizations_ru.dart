@@ -608,7 +608,7 @@ class AppLocalizationsRu extends AppLocalizations {
   String get hwSubmitted => 'Сдано';
 
   @override
-  String get hwEmpty => 'Заданий нет';
+  String get hwNotSubmitted => 'Ответ не был сдан';
 
   @override
   String get hwNone => 'Здесь пока пусто';
@@ -834,7 +834,7 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get noChatsText =>
-      'Напишите преподавателю или менеджеру — кнопка справа вверху';
+      'Напишите преподавателю или менеджеру — нажмите «Новый чат»';
 
   @override
   String get newChat => 'Новый чат';

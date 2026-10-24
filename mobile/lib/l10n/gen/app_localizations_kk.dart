@@ -556,7 +556,7 @@ class AppLocalizationsKk extends AppLocalizations {
   String get hwSubmitted => 'Тапсырылды';
 
   @override
-  String get hwEmpty => 'Тапсырма жоқ';
+  String get hwNotSubmitted => 'Жауап тапсырылмады';
 
   @override
   String get hwNone => 'Әзірге бос';
@@ -766,7 +766,7 @@ class AppLocalizationsKk extends AppLocalizations {
 
   @override
   String get noChatsText =>
-      'Мұғалімге немесе менеджерге жазыңыз — батырма оң жақ жоғарыда';
+      'Мұғалімге немесе менеджерге жазыңыз — «Жаңа чат» батырмасын басыңыз';
 
   @override
   String get newChat => 'Жаңа чат';

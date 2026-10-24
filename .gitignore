@@ -17,3 +17,4 @@ mobile/android/.gradle/
 mobile/ios/Pods/
 mobile/android/app/google-services.json
 mobile/ios/Runner/GoogleService-Info.plist
+dump.rdb

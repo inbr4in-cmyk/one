@@ -10,45 +10,73 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../util/format.dart';
 
-/// Plain-text document body: `#` lines are headings, `-` lines list items, blank lines split paragraphs.
+/// Plain-text document body as the school publishes it: `#` or short unpunctuated lines are headings,
+/// `-`/`•` lines are list items, runs of `a | b | c` lines are a table (shown as cards on a phone).
 class DocBody extends StatelessWidget {
   const DocBody(this.body, {super.key});
   final String body;
 
+  static final _bullet = RegExp(r'^\s*[-•*☐]\s+');
+  static final _hash = RegExp(r'^#{1,6}\s');
+
+  static bool _heading(String l) {
+    if (_hash.hasMatch(l)) return true;
+    final t = l.trim();
+    if (t.length > 70 || t.contains(' | ') || _bullet.hasMatch(l)) return false;
+    if (RegExp(r'[.:;!?,»)]$').hasMatch(t)) return false;
+    return RegExp(r'^[A-ZА-ЯЁӘҒҚҢӨҰҮҺІ]').hasMatch(t);
+  }
+
   @override
   Widget build(BuildContext context) {
     final oe = context.oe;
+    final lines = body.replaceAll('\r', '').split('\n').map((l) => l.trimRight()).where((l) => l.trim().isNotEmpty).toList();
     final out = <Widget>[];
-    for (final chunk in body.replaceAll('\r', '').split(RegExp(r'\n\s*\n'))) {
-      final lines = chunk.split('\n').where((l) => l.trim().isNotEmpty).toList();
-      if (lines.isEmpty) continue;
-      final bullet = RegExp(r'^\s*[-•*]\s+');
-      if (lines.every(bullet.hasMatch)) {
-        for (final l in lines) {
-          out.add(Padding(
-            padding: const EdgeInsets.only(bottom: 4),
-            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('•  ', style: TextStyle(color: oe.tint)),
-              Expanded(child: Text(l.replaceFirst(bullet, ''), style: const TextStyle(height: 1.45))),
-            ]),
-          ));
+    for (var i = 0; i < lines.length; i++) {
+      final l = lines[i];
+      if (l.contains(' | ')) {
+        final rows = <List<String>>[];
+        while (i < lines.length && lines[i].contains(' | ')) {
+          rows.add(lines[i].split('|').map((c) => c.trim()).toList());
+          i++;
         }
-        out.add(const SizedBox(height: 8));
-        continue;
-      }
-      for (var i = 0; i < lines.length; i++) {
-        if (RegExp(r'^#{1,6}\s').hasMatch(lines[i])) {
-          out.add(Padding(
-            padding: const EdgeInsets.only(top: 6, bottom: 6),
-            child: Text(lines[i].replaceFirst(RegExp(r'^#+\s*'), ''), style: display(15, color: oe.brandInk)),
-          ));
-        } else {
-          out.add(Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: Text(lines.sublist(i).join('\n'), style: const TextStyle(height: 1.45)),
-          ));
-          break;
-        }
+        i--;
+        final head = rows.first;
+        out.add(Column(children: [
+          for (final r in rows.skip(1))
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: oe.fill, borderRadius: BorderRadius.circular(12)),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(r.first, style: const TextStyle(fontWeight: FontWeight.w600)),
+                for (var c = 1; c < r.length; c++)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 3),
+                    child: Text.rich(TextSpan(children: [
+                      if (c < head.length) TextSpan(text: '${head[c]}: ', style: TextStyle(color: oe.muted)),
+                      TextSpan(text: r[c]),
+                    ]), style: const TextStyle(fontSize: 13.5, height: 1.35)),
+                  ),
+              ]),
+            ),
+        ]));
+      } else if (_bullet.hasMatch(l)) {
+        out.add(Padding(
+          padding: const EdgeInsets.only(bottom: 5),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(l.trim().startsWith('☐') ? '☐  ' : '•  ', style: TextStyle(color: oe.tint)),
+            Expanded(child: Text(l.replaceFirst(_bullet, ''), style: const TextStyle(height: 1.45))),
+          ]),
+        ));
+      } else if (_heading(l)) {
+        out.add(Padding(
+          padding: EdgeInsets.only(top: out.isEmpty ? 0 : 8, bottom: 6),
+          child: Semantics(header: true, child: Text(l.replaceFirst(RegExp(r'^#+\s*'), ''), style: display(15, color: oe.brandInk))),
+        ));
+      } else {
+        out.add(Padding(padding: const EdgeInsets.only(bottom: 8), child: Text(l, style: const TextStyle(height: 1.45))));
       }
     }
     return SelectionArea(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: out));

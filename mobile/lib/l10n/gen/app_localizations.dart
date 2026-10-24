@@ -1052,11 +1052,11 @@ abstract class AppLocalizations {
   /// **'Сдано'**
   String get hwSubmitted;
 
-  /// No description provided for @hwEmpty.
+  /// No description provided for @hwNotSubmitted.
   ///
   /// In ru, this message translates to:
-  /// **'Заданий нет'**
-  String get hwEmpty;
+  /// **'Ответ не был сдан'**
+  String get hwNotSubmitted;
 
   /// No description provided for @hwNone.
   ///
@@ -1415,7 +1415,7 @@ abstract class AppLocalizations {
   /// No description provided for @noChatsText.
   ///
   /// In ru, this message translates to:
-  /// **'Напишите преподавателю или менеджеру — кнопка справа вверху'**
+  /// **'Напишите преподавателю или менеджеру — нажмите «Новый чат»'**
   String get noChatsText;
 
   /// No description provided for @newChat.

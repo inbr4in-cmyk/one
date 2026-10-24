@@ -51,6 +51,7 @@ class PinPad extends StatelessWidget {
     Widget key(String d) => Semantics(
           button: true,
           label: d,
+          excludeSemantics: true,
           child: Material(
             color: OeStyle.ios ? oe.fill : oe.m3nav,
             shape: const CircleBorder(),
@@ -308,7 +309,7 @@ class _LockScreenState extends State<LockScreen> {
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(28, 24, 28, 0),
               child: Column(children: [
-                Avatar(name, size: 72),
+                Avatar(name, size: 72, tone: 0),
                 const SizedBox(height: 14),
                 Text(t.pinEnter(name.split(' ').first), textAlign: TextAlign.center, style: display(22, color: oe.brandInk)),
                 const SizedBox(height: 20),

@@ -216,7 +216,7 @@ class _HomeworkDetailScreenState extends State<HomeworkDetailScreen> {
     final t = context.t;
     final text = _answer.text.trim();
     if (text.isEmpty && _uploaded == null) {
-      setState(() => _error = t.hwEmpty);
+      setState(() => _error = t.hwNoAnswer);
       return;
     }
     setState(() {
@@ -313,7 +313,7 @@ class _HomeworkDetailScreenState extends State<HomeworkDetailScreen> {
           SectionTitle(t.myAnswer),
           if (!compose) ...[
             if (h.answer == null && h.fileUrl == null)
-              Text(student ? t.hwNoAnswer : t.hwNoAnswerParent, style: TextStyle(color: oe.muted))
+              Text(student ? t.hwNotSubmitted : t.hwNoAnswerParent, style: TextStyle(color: oe.muted))
             else
               OeCard(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

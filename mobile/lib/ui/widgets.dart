@@ -538,7 +538,7 @@ class NavBar extends StatelessWidget implements PreferredSizeWidget {
         child: ios
             ? Stack(children: [
                 Positioned.fill(left: 90, right: 90, child: Center(child: Semantics(header: true, child: titleW))),
-                Row(children: [
+                Positioned.fill(child: Row(children: [
                   Semantics(
                     button: true,
                     label: backLabel ?? context.t.back,
@@ -549,7 +549,8 @@ class NavBar extends StatelessWidget implements PreferredSizeWidget {
                         padding: const EdgeInsets.only(left: 4, right: 8),
                         child: Row(children: [
                           OeIcon('chev-l', size: 28, color: oe.tint),
-                          if (backLabel != null)
+                          // Like UIKit: the back title gives way when the page title is long.
+                          if (backLabel != null && (title == null || title!.length <= 16))
                             ConstrainedBox(
                               constraints: const BoxConstraints(maxWidth: 90),
                               child: Text(backLabel!, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 17, color: oe.tint)),
@@ -561,7 +562,7 @@ class NavBar extends StatelessWidget implements PreferredSizeWidget {
                   const Spacer(),
                   ...actions,
                   const SizedBox(width: 4),
-                ]),
+                ])),
               ])
             : Row(children: [
                 const SizedBox(width: 4),
