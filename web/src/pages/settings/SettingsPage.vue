@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { UiButton, UiCard, UiField, UiInput, UiSelect, UiSkeleton, UiSwitch } from '@/components/ui'
+import { UiButton, UiCard, UiField, UiInput, UiSegmented, UiSelect, UiSkeleton, UiSwitch } from '@/components/ui'
 import { adminApi, type Rate } from '@/api/admin'
 import { useAuthStore } from '@/stores/auth'
 import { useToastStore } from '@/stores/toast'
@@ -12,7 +12,7 @@ import type { Locale } from '@/i18n'
 type Val = boolean | number | string | Record<string, number> | null
 /** Known keys in display order; unknown keys are listed after them with the raw key as the label */
 const GROUPS: Record<string, string[]> = {
-  attendance: ['charge_unexcused_absence', 'charge_late', 'trial_counts_in_n', 'absence_notice_hours', 'attendance_reminder_min', 'attendance_admin_alert_min', 'notify_present', 'notify_late'],
+  attendance: ['charge_unexcused_absence', 'charge_late', 'trial_counts_in_n', 'absence_notice_hours', 'attendance_reminder_min', 'attendance_admin_alert_min', 'attendance_teacher_window', 'notify_present', 'notify_late'],
   balance: ['low_balance_lessons', 'nonpayment_block_days', 'freeze_max_days', 'freeze_max_per_course', 'left_after_days'],
   crm: ['lead_first_reply_warn_min', 'lead_stale_hours'],
   coins: ['coins'],
@@ -40,6 +40,17 @@ const groups = computed(() => {
   if (rest.length) out.push({ g: 'other', keys: rest })
   return out.filter((x) => x.keys.length)
 })
+/** attendance_teacher_window: "same_day" or hours after the lesson ends */
+const WIN = 'attendance_teacher_window'
+const win = reactive({ mode: 'same_day' as 'same_day' | 'hours', hours: '24' })
+const winOptions = computed(() => [{ value: 'same_day' as const, label: t('settingsPage.win.sameDay') }, { value: 'hours' as const, label: t('settingsPage.win.hours') }])
+const winValue = () => (win.mode === 'same_day' ? 'same_day' : Math.round(Number(win.hours)))
+const winDirty = computed(() => String(winValue()) !== String(values.value?.[WIN] ?? 'same_day'))
+function saveWin() {
+  const v = winValue()
+  if (typeof v === 'number' && !(v >= 1 && v <= 720)) return toast.error(t('settingsPage.win.invalid'))
+  put(WIN, v)
+}
 const kind = (v: Val) => (typeof v === 'boolean' ? 'bool' : typeof v === 'number' ? 'num' : v && typeof v === 'object' ? 'obj' : 'str')
 
 onMounted(async () => {
@@ -49,6 +60,8 @@ onMounted(async () => {
     if (kind(v) === 'num' || kind(v) === 'str') draft[k] = String(v ?? '')
     if (kind(v) === 'obj') for (const [sk, sv] of Object.entries(v as Record<string, number>)) draft[`${k}.${sk}`] = String(sv)
   }
+  const w = values.value[WIN]
+  if (typeof w === 'number' || (typeof w === 'string' && /^\d+$/.test(w))) Object.assign(win, { mode: 'hours', hours: String(w) })
   rates.value = r
   rateForm.key = r[0]?.key ?? ''
 })
@@ -131,7 +144,14 @@ async function addRate() {
       <UiCard v-for="g in groups" :key="g.g" :title="t(`settingsPage.group.${g.g}`)">
         <div class="set-list">
           <template v-for="k in g.keys" :key="k">
-            <div v-if="kind(values[k] ?? null) === 'bool'" class="set-row">
+            <form v-if="k === WIN" class="set-row wrap" @submit.prevent="saveWin">
+              <div class="grow"><b>{{ label(k) }}</b><span>{{ t('settingsPage.win.hint') }}</span></div>
+              <UiSegmented v-if="canEdit" v-model="win.mode" :options="winOptions" :label="label(k)" size="sm" />
+              <b v-else class="num">{{ win.mode === 'same_day' ? t('settingsPage.win.sameDay') : `${win.hours} ${t('time.h')}` }}</b>
+              <input v-if="canEdit && win.mode === 'hours'" v-model="win.hours" class="inp set-inp" type="number" min="1" max="720" :disabled="!canEdit" :aria-label="t('settingsPage.win.hoursLabel')" :title="t('settingsPage.win.hoursLabel')" />
+              <UiButton v-if="canEdit && winDirty" type="submit" size="sm" variant="navy" :loading="saving === k">{{ t('common.save') }}</UiButton>
+            </form>
+            <div v-else-if="kind(values[k] ?? null) === 'bool'" class="set-row">
               <div class="grow"><b>{{ label(k) }}</b><span v-if="hint(k)">{{ hint(k) }}</span></div>
               <UiSwitch :model-value="values[k] as boolean" :label="label(k)" :disabled="!canEdit || saving === k" @update:model-value="(v: boolean) => put(k, v)" />
             </div>

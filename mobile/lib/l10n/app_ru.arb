@@ -1,0 +1,830 @@
+{
+  "@@locale": "ru",
+  "back": "Назад",
+  "navHome": "Главная",
+  "navSchedule": "Расписание",
+  "navHomework": "Задания",
+  "navChats": "Чаты",
+  "navCoins": "Коины",
+  "navPayments": "Оплата",
+  "navNotifications": "Уведомления",
+  "navProfile": "Профиль",
+  "retry": "Повторить",
+  "cancel": "Отмена",
+  "loading": "Загрузка…",
+  "send": "Отправить",
+  "search": "Поиск",
+  "call": "Позвонить",
+  "copy": "Скопировать",
+  "copied": "Скопировано",
+  "remove": "Убрать",
+  "understood": "Понятно",
+  "notNow": "Не сейчас",
+  "selected": "Выбран",
+  "today": "Сегодня",
+  "yesterday": "Вчера",
+  "you": "Вы",
+  "school": "Школа",
+  "branchName": "Филиал {name}",
+  "@branchName": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "branchShort": "Ваш филиал",
+  "errGeneric": "Что-то пошло не так. Попробуйте ещё раз.",
+  "errNetwork": "Нет связи с сервером. Проверьте интернет.",
+  "nothingFound": "Ничего не найдено",
+  "wdMon": "Пн",
+  "wdTue": "Вт",
+  "wdWed": "Ср",
+  "wdThu": "Чт",
+  "wdFri": "Пт",
+  "wdSat": "Сб",
+  "wdSun": "Вс",
+  "roleParent": "Родитель",
+  "roleTeacher": "Преподаватель",
+  "roleManager": "Менеджер",
+  "roleAdmin": "Администратор",
+  "roleStaff": "Школа",
+  "splashFoot": "Школа английского языка · Шымкент",
+  "offlineTitle": "Нет подключения",
+  "offlineText": "Не удалось связаться с сервером. Проверьте интернет и попробуйте снова.",
+  "loginTitle": "Вход",
+  "loginText": "Введите номер телефона, который вы оставили в школе.",
+  "phoneLabel": "Номер телефона",
+  "phoneInvalid": "Введите номер полностью: +7 и 10 цифр",
+  "codeChannel": "Куда прислать код",
+  "waFast": "Быстрее всего",
+  "smsSoon": "Скоро",
+  "getCode": "Получить код",
+  "noNumber": "Номера нет в школе? Напишите нам в WhatsApp {phone}",
+  "@noNumber": {
+    "placeholders": {
+      "phone": {
+        "type": "String"
+      }
+    }
+  },
+  "staffRejected": "Это приложение для учеников и родителей. Сотрудники работают в веб-кабинете.",
+  "codeTitle": "Код из WhatsApp",
+  "codeSent": "Мы отправили 6-значный код на номер",
+  "codeWrong": "Неверный код",
+  "codeAgain": "Отправить код ещё раз",
+  "codeAgainIn": "Отправить ещё раз через {time}",
+  "@codeAgainIn": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "codeResent": "Код отправлен ещё раз",
+  "pinCreate": "Придумайте PIN-код",
+  "pinCreateText": "4 цифры для быстрого входа. Без него вход — по коду из WhatsApp.",
+  "pinRepeat": "Повторите PIN-код",
+  "pinMismatch": "Коды не совпадают. Попробуйте ещё раз.",
+  "pinWeak": "Слишком простой код. Не используйте 1111, 1234 или год рождения.",
+  "pinHint": "Код хранится только на этом телефоне",
+  "pinEnter": "Здравствуйте, {name}",
+  "@pinEnter": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "pinWrong": "{n, plural, one{Неверный код. Осталась {n} попытка} few{Неверный код. Осталось {n} попытки} many{Неверный код. Осталось {n} попыток} other{Неверный код. Осталось {n} попытки}}",
+  "@pinWrong": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "pinForgot": "Забыли код? Войти по номеру",
+  "pinTooMany": "Слишком много попыток. Войдите заново по номеру телефона.",
+  "pinChange": "Сменить PIN-код",
+  "pinSet": "Установить PIN-код",
+  "pinChanged": "PIN-код сохранён",
+  "pinOff": "Отключить PIN-код",
+  "pinOffTitle": "Отключить PIN-код?",
+  "pinOffText": "Приложение будет открываться без кода. Вход по биометрии тоже отключится.",
+  "erase": "Стереть",
+  "bioTitleIos": "Входить по Face ID?",
+  "bioTitleAndroid": "Входить по отпечатку?",
+  "bioText": "Это быстрее, чем PIN-код. Код остаётся запасным способом.",
+  "bioEnableIos": "Включить Face ID",
+  "bioEnableAndroid": "Включить отпечаток",
+  "bioUse": "Войти по биометрии",
+  "bioReason": "Подтвердите вход в One English",
+  "bioToggleIos": "Вход по Face ID",
+  "bioToggleAndroid": "Вход по отпечатку",
+  "autolock": "Автоблокировка",
+  "autolockText": "Спрашивать PIN-код после выхода из приложения",
+  "autolockNow": "Сразу",
+  "minutesN": "{n} мин",
+  "@minutesN": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "blockedTitle": "Доступ приостановлен",
+  "blockedText": "Занятия закончились, а оплата не поступила. После оплаты всё откроется автоматически.",
+  "blockedShort": "Доступ приостановлен",
+  "toPayments": "К оплате",
+  "noChildren": "Детей пока нет",
+  "noChildrenText": "Школа ещё не привязала ребёнка к вашему номеру. Напишите менеджеру.",
+  "helloStudent": "Привет, {name}!",
+  "@helloStudent": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "helloParent": "Здравствуйте, {name}",
+  "@helloParent": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "nextLesson": "Следующий урок",
+  "lessonNow": "Идёт сейчас",
+  "inDays": "{n, plural, one{через {n} день} few{через {n} дня} many{через {n} дней} other{через {n} дня}}",
+  "@inDays": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "inHoursMinutes": "через {h} ч {m} мин",
+  "@inHoursMinutes": {
+    "placeholders": {
+      "h": {
+        "type": "int"
+      },
+      "m": {
+        "type": "int"
+      }
+    }
+  },
+  "inMinutes": "через {m} мин",
+  "@inMinutes": {
+    "placeholders": {
+      "m": {
+        "type": "int"
+      }
+    }
+  },
+  "room": "Кабинет {room}",
+  "@room": {
+    "placeholders": {
+      "room": {
+        "type": "String"
+      }
+    }
+  },
+  "individualLesson": "Индивидуальное занятие",
+  "lessonsLeft": "Осталось уроков",
+  "ofN": "из {n}",
+  "@ofN": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "heldN": "{n, plural, one{Проведён {n} урок} few{Проведено {n} урока} many{Проведено {n} уроков} other{Проведено {n} урока}}",
+  "@heldN": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "perWeek": "+{n} за неделю",
+  "@perWeek": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "myBalance": "Мои коины",
+  "hwToday": "Задания на сегодня",
+  "dueAt": "до {time}",
+  "@dueAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "hwCheckedGrade": "Проверено · {grade}",
+  "@hwCheckedGrade": {
+    "placeholders": {
+      "grade": {
+        "type": "int"
+      }
+    }
+  },
+  "hwTodayAt": "Сегодня до {time}",
+  "@hwTodayAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "allTasks": "Все задания",
+  "attendanceMonth": "Посещаемость за месяц",
+  "presentOf": "Был на {a} из {b}",
+  "@presentOf": {
+    "placeholders": {
+      "a": {
+        "type": "int"
+      },
+      "b": {
+        "type": "int"
+      }
+    }
+  },
+  "debtTitle": "Есть долг",
+  "debtText": "{n, plural, one{Долг {n} урок — пополните баланс} few{Долг {n} урока — пополните баланс} many{Долг {n} уроков — пополните баланс} other{Долг {n} урока — пополните баланс}}",
+  "@debtText": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "lowTitle": "{n, plural, =0{Уроки закончились} one{Остался {n} урок} few{Осталось {n} урока} many{Осталось {n} уроков} other{Осталось {n} урока}}",
+  "@lowTitle": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "lowText": "Пополните баланс, чтобы не прерывать занятия",
+  "consentTitle": "Согласие на запись уроков",
+  "consentText": "Подпишите согласие в разделе «Правила»",
+  "avgGrade": "Средняя оценка",
+  "avgFor": "{n, plural, one{{month} · {n} оценка} few{{month} · {n} оценки} many{{month} · {n} оценок} other{{month} · {n} оценки}}",
+  "@avgFor": {
+    "placeholders": {
+      "month": {
+        "type": "String"
+      },
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "attendanceOf": "Посещаемость · {month}",
+  "@attendanceOf": {
+    "placeholders": {
+      "month": {
+        "type": "String"
+      }
+    }
+  },
+  "nOfM": "{a} из {b}",
+  "@nOfM": {
+    "placeholders": {
+      "a": {
+        "type": "int"
+      },
+      "b": {
+        "type": "int"
+      }
+    }
+  },
+  "stPresent": "Был",
+  "stLate": "Опоздал",
+  "stAbsent": "Не был",
+  "stExcused": "Уважительная",
+  "stAhead": "Впереди",
+  "progress": "Успеваемость",
+  "myProgress": "Мои успехи",
+  "monthLessons": "Уроков",
+  "monthPresent": "Посетил",
+  "monthRate": "Посещаемость",
+  "thisWeek": "Эта неделя",
+  "prevWeek": "Прошлая неделя",
+  "nextWeek": "Следующая неделя",
+  "noLessons": "Уроков нет",
+  "noLessonsWeek": "На этой неделе уроков нет",
+  "cancelled": "Отменён",
+  "cancelledOn": "Урок {day} в {time} отменён",
+  "@cancelledOn": {
+    "placeholders": {
+      "day": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "held": "Проведён",
+  "teacherComment": "Комментарий преподавателя",
+  "rateLesson": "Оцените урок",
+  "yourRating": "Ваша оценка",
+  "rated": "Спасибо за оценку!",
+  "starsN": "{n, plural, one{{n} звезда} few{{n} звезды} many{{n} звёзд} other{{n} звезды}}",
+  "@starsN": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "lessonGrades": "Оценки за урок",
+  "hwActive": "Активные",
+  "hwActiveN": "Активные · {n}",
+  "@hwActiveN": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "hwReview": "На проверке",
+  "hwChecked": "Проверено",
+  "hwAssigned": "Задано",
+  "hwOverdue": "Просрочено",
+  "hwSubmitted": "Сдано",
+  "hwEmpty": "Заданий нет",
+  "hwNone": "Здесь пока пусто",
+  "hwNoneActive": "Все задания сделаны",
+  "hwNotFound": "Задание не найдено",
+  "hwTask": "Задание",
+  "dueFull": "Сдать до {date}",
+  "@dueFull": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "myAnswer": "Мой ответ",
+  "hwAnswerHint": "Напишите ответ…",
+  "hwOneFile": "Можно приложить один файл: фото, голос или документ",
+  "hwFile": "Файл",
+  "hwSubmit": "Сдать задание",
+  "hwSent": "Задание отправлено на проверку",
+  "hwRedo": "Переделать",
+  "hwNoAnswer": "Напишите ответ или приложите файл",
+  "hwNoAnswerParent": "Ученик ещё не сдал это задание",
+  "photo": "Фото",
+  "camera": "Камера",
+  "gallery": "Галерея",
+  "voice": "Голос",
+  "file": "Файл",
+  "stop": "Стоп",
+  "play": "Слушать",
+  "pause": "Пауза",
+  "uploading": "Загружаем файл…",
+  "micDenied": "Нет доступа к микрофону. Разрешите его в настройках телефона.",
+  "recording": "Запись {time}",
+  "@recording": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "recordVoice": "Записать голосовое",
+  "progressAndGrades": "Успеваемость и оценки",
+  "level": "Уровень",
+  "average": "Средняя",
+  "noMarks": "Оценок пока нет",
+  "noTests": "Тестов пока не было",
+  "attendanceHistory": "История посещений",
+  "debt": "Долг",
+  "notCharged": "Не списан",
+  "debtLessonsN": "{n, plural, one{{n} урок в долг} few{{n} урока в долг} many{{n} уроков в долг} other{{n} урока в долг}}",
+  "@debtLessonsN": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "pricePer": "{price} за урок",
+  "@pricePer": {
+    "placeholders": {
+      "price": {
+        "type": "String"
+      }
+    }
+  },
+  "needPayment": "Нужна оплата",
+  "howToPay": "Как оплатить",
+  "payHowText": "Оплатить можно в филиале наличными, картой или переводом. Онлайн-оплата в приложении появится позже.",
+  "onlineSoon": "Онлайн-оплата скоро появится",
+  "payFor": "Оплата за {name}",
+  "@payFor": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "callBranch": "Позвонить в филиал {name}",
+  "@callBranch": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "writeManager": "Написать менеджеру",
+  "lessonsN": "{n, plural, one{{n} урок} few{{n} урока} many{{n} уроков} other{{n} урока}}",
+  "@lessonsN": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "onBalance": "На балансе {sum}",
+  "@onBalance": {
+    "placeholders": {
+      "sum": {
+        "type": "String"
+      }
+    }
+  },
+  "history": "История",
+  "noPayments": "Оплат пока нет",
+  "refunded": "Возврат {sum}",
+  "@refunded": {
+    "placeholders": {
+      "sum": {
+        "type": "String"
+      }
+    }
+  },
+  "payCategory": "{c, select, course{Курс} book{Учебник} other{Оплата}}",
+  "@payCategory": {
+    "placeholders": {
+      "c": {
+        "type": "String"
+      }
+    }
+  },
+  "payCash": "Наличные",
+  "payCard": "Карта",
+  "payTransfer": "Перевод",
+  "bookPurchase": "Покупка учебника",
+  "myBooks": "Учебники",
+  "noBooks": "Учебников пока нет",
+  "noBooksText": "Здесь появятся учебники, купленные в школе",
+  "booksLevel": "Уровень {level}",
+  "@booksLevel": {
+    "placeholders": {
+      "level": {
+        "type": "String"
+      }
+    }
+  },
+  "chat": "Чат",
+  "noChats": "Чатов пока нет",
+  "noChatsText": "Напишите преподавателю или менеджеру — кнопка справа вверху",
+  "newChat": "Новый чат",
+  "searchPeople": "Поиск по имени",
+  "contactsHint": "Можно написать преподавателям своих групп и менеджерам филиала",
+  "noContacts": "Некому написать",
+  "membersN": "{n, plural, one{{n} участник} few{{n} участника} many{{n} участников} other{{n} участника}}",
+  "@membersN": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "chatNotice": "Переписка сохраняется в школе. Не отправляйте пароли и номера карт.",
+  "chatRulesTitle": "Правила чата",
+  "chatRule1": "Общайтесь вежливо — переписку видит администрация школы.",
+  "chatRule2": "Ученикам нельзя обмениваться номерами телефонов с преподавателями.",
+  "chatRule3": "Если что-то не так — нажмите на сообщение и выберите «Пожаловаться».",
+  "noMessages": "Сообщений пока нет",
+  "firstMessage": "Напишите первое сообщение",
+  "message": "Сообщение",
+  "attach": "Прикрепить",
+  "pinned": "Закреплённое",
+  "pinnedN": "Закреплённые · {n}",
+  "@pinnedN": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "messageHidden": "Сообщение скрыто",
+  "hideMessage": "Скрыть",
+  "hideTitle": "Скрыть сообщение?",
+  "hideText": "Сообщение исчезнет у всех участников чата.",
+  "report": "Пожаловаться",
+  "reportWhy": "Что не так с сообщением?",
+  "reportHint": "Жалобу рассмотрит администрация школы",
+  "reasonInsult": "Грубость или оскорбление",
+  "reasonSpam": "Спам или реклама",
+  "reasonPersonal": "Просят личные контакты",
+  "reasonOther": "Другое",
+  "reportSubject": "Жалоба на сообщение в чате «{chat}»",
+  "@reportSubject": {
+    "placeholders": {
+      "chat": {
+        "type": "String"
+      }
+    }
+  },
+  "reportBody": "Причина: {reason}\nАвтор: {author}\nВремя: {at}\nСообщение: {text}\nID сообщения: {id}",
+  "@reportBody": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      },
+      "author": {
+        "type": "String"
+      },
+      "at": {
+        "type": "String"
+      },
+      "text": {
+        "type": "String"
+      },
+      "id": {
+        "type": "int"
+      }
+    }
+  },
+  "reportSent": "Жалоба отправлена. Ответ до {date}",
+  "@reportSent": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "phoneBlockedTitle": "Номер телефона в сообщении",
+  "phoneBlockedText": "Ученикам нельзя отправлять номера телефонов в чатах школы. Уберите номер, чтобы отправить.",
+  "phoneShort": "Уберите номер телефона",
+  "removeNumber": "Убрать номер",
+  "shop": "Магазин",
+  "rating": "Рейтинг",
+  "orders": "Мои заказы",
+  "exchange": "Обменять",
+  "buyTitle": "Обменять коины?",
+  "buyText": "«{item}» за {price} коинов. Забрать можно у администратора филиала.",
+  "@buyText": {
+    "placeholders": {
+      "item": {
+        "type": "String"
+      },
+      "price": {
+        "type": "String"
+      }
+    }
+  },
+  "ordered": "Заказ «{item}» оформлен",
+  "@ordered": {
+    "placeholders": {
+      "item": {
+        "type": "String"
+      }
+    }
+  },
+  "needMore": "Не хватает {n}",
+  "@needMore": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
+  "outOfStock": "Нет в наличии",
+  "shopEmpty": "Магазин пока пуст",
+  "openOrders": "{n, plural, one{{n} заказ ждёт выдачи} few{{n} заказа ждут выдачи} many{{n} заказов ждут выдачи} other{{n} заказа ждут выдачи}}",
+  "@openOrders": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "groupN": "Группа {name}",
+  "@groupN": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "noRating": "Рейтинг пока пуст",
+  "noCoinHistory": "Начислений пока нет",
+  "coinAward": "Начисление",
+  "coinOrder": "Обмен: {item}",
+  "@coinOrder": {
+    "placeholders": {
+      "item": {
+        "type": "String"
+      }
+    }
+  },
+  "coinOrderCancelled": "Возврат за отменённый заказ",
+  "coinsN": "{n} коинов",
+  "@coinsN": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "noOrders": "Заказов пока нет",
+  "orderPlaced": "Оформлен",
+  "orderPlacedHint": "Администратор подготовит подарок",
+  "orderReady": "Готов к выдаче",
+  "orderReadyHint": "Заберите у администратора филиала",
+  "orderIssued": "Выдан",
+  "orderCancelled": "Заказ отменён, коины вернулись",
+  "orderCancelledShort": "Отменён",
+  "pickUp": "Забрать",
+  "cancelOrder": "Отменить заказ",
+  "cancelOrderTitle": "Отменить заказ?",
+  "cancelOrderText": "«{item}» — {coins} коинов вернутся на баланс.",
+  "@cancelOrderText": {
+    "placeholders": {
+      "item": {
+        "type": "String"
+      },
+      "coins": {
+        "type": "int"
+      }
+    }
+  },
+  "trioLeft": "уроков",
+  "trioCoins": "коинов",
+  "trioStars": "звёзд",
+  "feedback": "Жалобы и предложения",
+  "feedbackSubtitle": "Напишите, что можно улучшить. Ответим в течение 3 рабочих дней.",
+  "feedbackNew": "Новое обращение",
+  "subject": "Тема",
+  "subjectHint": "Коротко о сути",
+  "subjectRequired": "Укажите тему (от 3 символов)",
+  "complaintBody": "Подробности",
+  "complaintBodyHint": "Что произошло, когда и с кем",
+  "bodyRequired": "Опишите подробнее (от 10 символов)",
+  "against": "О преподавателе",
+  "againstHint": "Если обращение о преподавателе — выберите его, оно уйдёт руководству, а не ему",
+  "nobody": "Не о конкретном человеке",
+  "teacherOf": "Преподаватель {name}",
+  "@teacherOf": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "feedbackNote": "Обращение увидят только руководители школы.",
+  "complaintSent": "Обращение отправлено. Ответ до {date}",
+  "@complaintSent": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "feedbackHistory": "Мои обращения",
+  "feedbackEmpty": "Обращений пока нет",
+  "feedbackEmptyText": "Здесь появятся ваши жалобы и предложения с ответами",
+  "sentAt": "Отправлено {date}",
+  "@sentAt": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "dueAnswer": "ответ до {date}",
+  "@dueAnswer": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "answer": "Ответ школы",
+  "appeal": "Не согласен с ответом",
+  "appealTitle": "Обжаловать ответ?",
+  "appealText": "Обращение передадут операционному директору.",
+  "appealed": "Передано операционному директору",
+  "cNew": "Новое",
+  "cAcknowledged": "Принято",
+  "cInvestigating": "Разбираемся",
+  "cAnswered": "Есть ответ",
+  "cAppealed": "Обжаловано",
+  "cClosed": "Закрыто",
+  "rulesTitle": "Правила и согласия",
+  "rulesGateTitle": "Правила школы",
+  "rulesUpdated": "Правила обновились",
+  "rulesGateText": "Чтобы продолжить, прочитайте и примите правила (версия {version}, действуют с {date}).",
+  "@rulesGateText": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      },
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "rulesAgree": "Я прочитал(а) и согласен(на) с правилами",
+  "rulesAccept": "Принять правила",
+  "rulesAcceptedV": "Вы приняли правила, версия {version}",
+  "@rulesAcceptedV": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "tabRules": "Правила",
+  "tabRecording": "Запись уроков",
+  "recordingParent": "Уроки могут записываться для контроля качества. Подпишите согласие за каждого ребёнка.",
+  "recordingSelf": "Уроки могут записываться для контроля качества. Подтвердите согласие.",
+  "recordingHint": "Согласие можно отозвать в любой момент",
+  "notSigned": "Не подписано",
+  "signedAt": "Подписано {date}",
+  "@signedAt": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "sign": "Подписать",
+  "revoke": "Отозвать",
+  "revokeTitle": "Отозвать согласие?",
+  "revokeText": "Школа перестанет записывать уроки с участием ребёнка.",
+  "revoked": "Согласие отозвано",
+  "consentSaved": "Сохранено",
+  "docNotPublished": "Документ ещё не опубликован",
+  "docVersion": "Версия {version} · действует с {date}",
+  "@docVersion": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      },
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "docUpcoming": "С {date} вступит версия {version}",
+  "@docUpcoming": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      },
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "fAll": "Все",
+  "fAttendance": "Посещения",
+  "fPayments": "Оплаты",
+  "fStudy": "Учёба",
+  "noNotifications": "Уведомлений нет",
+  "language": "Язык",
+  "theme": "Тема",
+  "themeLight": "Светлая",
+  "themeDark": "Тёмная",
+  "themeSystem": "Авто",
+  "security": "Безопасность",
+  "securitySub": "PIN-код, биометрия, устройства",
+  "logout": "Выйти",
+  "logoutTitle": "Выйти из аккаунта?",
+  "logoutText": "Чтобы войти снова, понадобится код из WhatsApp.",
+  "devices": "Устройства",
+  "devicesHint": "Если видите незнакомое устройство — завершите его сеанс и напишите менеджеру.",
+  "thisDevice": "Это устройство",
+  "endSession": "Завершить",
+  "endOthers": "Завершить другие сеансы",
+  "endOthersText": "На всех других устройствах придётся войти заново.",
+  "unknownDevice": "Неизвестное устройство",
+  "appDevice": "Приложение One English",
+  "web": "Браузер"
+}

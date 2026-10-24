@@ -26,6 +26,8 @@ const busy = ref(false)
 const report = ref('')
 const reportBusy = ref(false)
 const reportErr = ref<string | null>(null)
+/** The version saved on the server today; the local draft only keeps unsent edits */
+const saved = ref<{ text: string; at: string } | null>(null)
 useClickOutside([root], () => (open.value = false))
 
 const draftKey = () => `oe.report.${auth.user?.id}.${isoDate(new Date())}`
@@ -36,16 +38,19 @@ const label = computed(() => (state.value === 'in' ? t('checkin.since', { t: hm(
 async function load() {
   me.value = await workApi.me().catch(() => null)
   loaded.value = me.value !== null
+  if (!loaded.value) return
+  const r = await workApi.myReport().catch(() => null)
+  if (r?.text && r.updated_at) saved.value = { text: r.text, at: r.updated_at }
+  report.value = readPref(draftKey()) ?? r?.text ?? ''
 }
 onMounted(() => {
   refs.load()
   load()
-  report.value = readPref(draftKey()) ?? ''
 })
 watch(open, (v) => {
   if (v) branchId.value = me.value?.branch_id ?? branches.value[0]?.value ?? 0
 })
-watch(report, (v) => writePref(draftKey(), v || null))
+watch(report, (v) => writePref(draftKey(), v && v !== saved.value?.text ? v : null))
 
 async function checkIn() {
   if (!branchId.value) return
@@ -74,6 +79,8 @@ async function sendReport() {
   reportBusy.value = true
   try {
     await workApi.report(report.value.trim())
+    saved.value = { text: report.value.trim(), at: new Date().toISOString() }
+    writePref(draftKey(), null)
     toast.ok(t('checkin.reportSaved'))
   } catch (e) {
     reportErr.value = apiErr(e) ?? t('errors.generic')
@@ -107,7 +114,7 @@ async function sendReport() {
           <hr class="sep" />
           <UiTextarea v-model="report" :label="t('checkin.report')" :placeholder="t('checkin.reportPh')" :rows="4" :maxlength="8000" :error="reportErr" />
           <UiButton size="sm" :loading="reportBusy" @click="sendReport">{{ t('checkin.reportSend') }}</UiButton>
-          <p class="muted m0" style="font-size: 12px">{{ t('checkin.reportNote') }}</p>
+          <p class="muted m0" style="font-size: 12px">{{ saved ? (saved.text === report.trim() ? t('checkin.savedAt', { t: hm(saved.at, locale as Locale) }) : t('checkin.unsaved')) + ' ' : '' }}{{ t('checkin.reportNote') }}</p>
         </div>
       </div>
     </Transition>

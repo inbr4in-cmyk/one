@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { UiButton, UiCard, UiChip, UiEmptyState, UiSkeleton, UiTabs } from '@/components/ui'
+import { UiButton, UiCard, UiChip, UiEmptyState, UiPrompt, UiSkeleton, UiTabs } from '@/components/ui'
 import DocBody from '@/components/compliance/DocBody.vue'
-import { docsApi, type DocKind, type DocumentVersion } from '@/api/compliance'
+import { docsApi, type DocKind, type DocumentVersion, type MyConsent } from '@/api/compliance'
 import { portalApi, type PortalChild } from '@/api/portal'
 import { useAuthStore } from '@/stores/auth'
 import { useToastStore } from '@/stores/toast'
@@ -19,8 +19,8 @@ const kind = ref<DocKind>('rules')
 const docs = ref<Partial<Record<DocKind, DocumentVersion | null>>>({})
 const children = ref<PortalChild[]>([])
 const busy = ref<string | null>(null)
-/** Signed in this session (there is no "my consents" endpoint yet) */
-const signed = ref(new Set<string>())
+const consents = ref<MyConsent[]>([])
+const revoking = ref<MyConsent | null>(null)
 
 const tabs = computed(() => [{ value: 'rules' as const, label: t('rules.tab.rules') }, { value: 'recording' as const, label: t('rules.tab.recording') }])
 const doc = computed(() => docs.value[kind.value])
@@ -30,6 +30,7 @@ const rulesAccepted = computed(() => !!docs.value.rules && auth.user?.rules_acce
 onMounted(async () => {
   const [r, c] = await Promise.all([docsApi.get('rules').catch(() => null), docsApi.get('recording').catch(() => null)])
   docs.value = { rules: r, recording: c }
+  consents.value = await docsApi.my().catch(() => [])
   if (isParent.value) children.value = (await portalApi.me().catch(() => null))?.children ?? []
 })
 
@@ -41,13 +42,27 @@ async function accept(studentId: number | null = null) {
   try {
     const r = await docsApi.accept(d.id, studentId)
     if (d.kind === 'rules' && auth.user) auth.user.rules_accepted_version = r.version
-    signed.value = new Set([...signed.value, key])
+    consents.value = await docsApi.my().catch(() => consents.value)
     toast.ok(t('rules.accepted'))
   } finally {
     busy.value = null
   }
 }
-const isSigned = (studentId: number | null) => !!doc.value && signed.value.has(`${doc.value.id}:${studentId ?? 'me'}`)
+/** The active consent for the current document version, for me or for a child */
+const consentFor = (studentId: number | null) => consents.value.find((c) => c.document_id === doc.value?.id && c.student_id === studentId && !c.revoked_at) ?? null
+async function revoke() {
+  const c = revoking.value
+  if (!c) return
+  busy.value = `revoke:${c.id}`
+  try {
+    await docsApi.revoke(c.id)
+    consents.value = await docsApi.my().catch(() => consents.value)
+    revoking.value = null
+    toast.ok(t('rules.revoked'))
+  } finally {
+    busy.value = null
+  }
+}
 </script>
 
 <template>
@@ -76,15 +91,22 @@ const isSigned = (studentId: number | null) => !!doc.value && signed.value.has(`
         <template v-if="isParent">
           <div v-for="c in children" :key="c.id" class="list-row">
             <div class="grow"><b>{{ c.full_name }}</b></div>
-            <UiChip v-if="isSigned(c.id)" tone="ok" icon="ok" small>{{ t('rules.signed') }}</UiChip>
+            <template v-if="consentFor(c.id)">
+              <UiChip tone="ok" icon="ok" small :title="dmy(consentFor(c.id)!.accepted_at, loc)">{{ t('rules.signedAt', { date: dmy(consentFor(c.id)!.accepted_at, loc) }) }}</UiChip>
+              <UiButton size="sm" variant="ghost" @click="revoking = consentFor(c.id)">{{ t('rules.revoke') }}</UiButton>
+            </template>
             <UiButton v-else size="sm" variant="navy" :loading="busy === `${doc.id}:${c.id}`" @click="accept(c.id)">{{ t('rules.sign') }}</UiButton>
           </div>
         </template>
         <template v-else>
-          <UiChip v-if="isSigned(null)" tone="ok" icon="ok">{{ t('rules.signed') }}</UiChip>
+          <div v-if="consentFor(null)" class="chips-row">
+            <UiChip tone="ok" icon="ok">{{ t('rules.signedAt', { date: dmy(consentFor(null)!.accepted_at, loc) }) }}</UiChip>
+            <UiButton size="sm" variant="ghost" @click="revoking = consentFor(null)">{{ t('rules.revoke') }}</UiButton>
+          </div>
           <UiButton v-else variant="navy" :loading="busy !== null" @click="accept()">{{ t('rules.sign') }}</UiButton>
         </template>
       </template>
     </UiCard>
   </div>
+  <UiPrompt :open="!!revoking" :title="t('rules.revokeTitle')" :text="t('rules.revokeText')" :confirm-label="t('rules.revoke')" danger :busy="busy?.startsWith('revoke:')" @update:open="(v) => !v && (revoking = null)" @confirm="revoke" />
 </template>

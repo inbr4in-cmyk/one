@@ -4,7 +4,9 @@ import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import { onBeforeRouteLeave } from 'vue-router'
 import { UiAvatar, UiButton, UiChip, UiEmptyState, UiIcon, UiInput, UiSkeleton, UiTextarea } from '@/components/ui'
-import { academicsApi, type AttendanceStatus, type Roster, type RosterRow } from '@/api/academics'
+import { academicsApi, type AttendanceStatus, type Homework, type Roster, type RosterRow } from '@/api/academics'
+import HomeworkDrawer from '@/components/homework/HomeworkDrawer.vue'
+import HomeworkModal from '@/components/homework/HomeworkModal.vue'
 import { ApiError } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
 import { useRefsStore } from '@/stores/refs'
@@ -37,6 +39,12 @@ const rows = ref<Row[]>([])
 const topic = ref('')
 const reason = ref('')
 const hwTitle = ref('')
+/** Homework given at this lesson (the group's list filtered by lesson) */
+const lessonHw = ref<Homework[]>([])
+const hwModal = ref(false)
+const hwEditing = ref<Homework | null>(null)
+const hwOpen = ref<Homework | null>(null)
+const hwDrawer = ref(false)
 const error = ref<string | null>(null)
 const notFound = ref(false)
 const busy = ref(false)
@@ -70,9 +78,28 @@ async function load() {
   error.value = null
   try {
     fill(await academicsApi.roster(id.value))
+    loadHw()
   } catch (e) {
     if (e instanceof ApiError && (e.status === 404 || e.status === 403)) notFound.value = true
   }
+}
+async function loadHw() {
+  const gid = roster.value?.lesson.group_id
+  if (!gid || !auth.can('homework.view')) return
+  lessonHw.value = (await academicsApi.homework(gid).catch(() => [])).filter((h) => h.lesson_id === id.value)
+  if (hwOpen.value) hwOpen.value = lessonHw.value.find((h) => h.id === hwOpen.value!.id) ?? hwOpen.value
+}
+function newHw() {
+  hwEditing.value = null
+  hwModal.value = true
+}
+function editHw(h: Homework) {
+  hwEditing.value = h
+  hwModal.value = true
+}
+function onHwSaved() {
+  hwTitle.value = ''
+  loadHw()
 }
 watch(id, load, { immediate: true })
 
@@ -107,8 +134,13 @@ async function save() {
   try {
     fill(await academicsApi.mark(id.value, { marks, reason: reason.value.trim() || null, topic: topic.value.trim() || null }))
     if (hwTitle.value.trim() && lesson.value?.group_id && auth.can('homework.manage')) {
-      await academicsApi.addHomework(lesson.value.group_id, { title: hwTitle.value.trim(), lesson_id: id.value }).catch(() => null)
-      hwTitle.value = ''
+      try {
+        await academicsApi.addHomework(lesson.value.group_id, { title: hwTitle.value.trim(), lesson_id: id.value })
+        hwTitle.value = ''
+        loadHw()
+      } catch (e) {
+        toast.error(`${t('attendance.hw')}: ${e instanceof ApiError ? e.detail : t('errors.generic')}`)
+      }
     }
     reason.value = ''
     toast.ok(t('attendance.saved'))
@@ -187,9 +219,23 @@ onBeforeRouteLeave(() => (dirty.value && editable.value ? window.confirm(t('atte
       </div>
       <p v-if="!rows.length" class="muted" style="padding: 18px; margin: 0">{{ t('groups.noMembers') }}</p>
 
+      <div v-if="lessonHw.length || (!editable && lesson.group_id && auth.can('homework.manage'))" class="att-hw">
+        <div class="att-hw-h"><b>{{ t('hw.lessonHw') }}</b><span v-if="!lessonHw.length" class="muted">· {{ t('groups.hw.empty') }}</span><span class="sp" /><RouterLink :to="`/groups/${lesson.group_id}`" class="rowlink" style="font-size: 13px">{{ t('hw.openGroup') }}</RouterLink></div>
+        <button v-for="h in lessonHw" :key="h.id" type="button" class="list-row hw-row" @click="hwOpen = h; hwDrawer = true">
+          <UiIcon name="homework" :size="18" class="muted" />
+          <div class="grow"><b>{{ h.title }}</b><span>{{ t('groups.hw.stats', { s: h.submitted, c: h.checked }) }}</span></div>
+          <span v-if="h.submitted > h.checked" class="hw-pend">{{ h.submitted - h.checked }}</span>
+          <UiIcon name="arrow" :size="16" class="muted" />
+        </button>
+        <UiButton v-if="auth.can('homework.manage')" size="sm" variant="ghost" icon="plus" @click="newHw">{{ t('groups.hw.new') }}</UiButton>
+      </div>
+
       <div v-if="editable" class="att-extra-form">
         <UiInput v-model="topic" :label="t('attendance.topic')" :placeholder="t('attendance.topicPh')" @update:model-value="dirty = true" />
-        <UiInput v-if="auth.can('homework.manage') && lesson.group_id" v-model="hwTitle" :label="t('attendance.hw')" :placeholder="t('attendance.hwPh')" />
+        <div v-if="auth.can('homework.manage') && lesson.group_id && !lessonHw.length" class="hw-quick">
+          <UiInput v-model="hwTitle" :label="t('attendance.hw')" :placeholder="t('attendance.hwPh')" />
+          <UiButton size="sm" variant="ghost" @click="newHw">{{ t('hw.withDetails') }}</UiButton>
+        </div>
         <UiTextarea v-if="roster.needs_reason" v-model="reason" :label="t('attendance.reason')" :rows="2" />
       </div>
 
@@ -207,4 +253,6 @@ onBeforeRouteLeave(() => (dirty.value && editable.value ? window.confirm(t('atte
       <p v-if="error" class="form-err" role="alert" style="padding: 0 18px 14px; margin: 0">{{ error }}</p>
     </div>
   </template>
+  <HomeworkDrawer v-model:open="hwDrawer" :homework="hwOpen" @edit="editHw" @changed="loadHw" />
+  <HomeworkModal v-if="lesson?.group_id" v-model:open="hwModal" :group-id="lesson.group_id" :homework="hwEditing" :lesson-id="id" :default-title="hwTitle" @saved="onHwSaved" />
 </template>

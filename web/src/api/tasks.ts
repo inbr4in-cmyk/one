@@ -19,6 +19,7 @@ export interface Task {
   overdue: boolean
   link_type: TaskLink | null
   link_id: number | null
+  link_title?: string | null
   recurrence: 'daily' | 'weekly' | null
   assignees: { id: number; full_name: string }[]
   comments: number

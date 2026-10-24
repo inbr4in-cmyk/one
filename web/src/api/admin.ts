@@ -79,6 +79,8 @@ export interface ImportPreview {
 export const adminApi = {
   catalog: () => http.get<PermissionCatalog>('/permissions/catalog'),
   roles: () => http.get<Role[]>('/roles'),
+  /** Roles I may give when hiring or editing staff (none wider than my own rights) */
+  assignableRoles: () => http.get<AssignableRole[]>('/roles/assignable', { silent: true }),
   createRole: (body: RoleIn) => http.post<Role>('/roles', body, { silent: true }),
   updateRole: (id: number, body: RoleIn) => http.put<Role>(`/roles/${id}`, body, { silent: true }),
   archiveRole: (id: number) => http.post<null>(`/roles/${id}/archive`),
@@ -102,4 +104,11 @@ export const adminApi = {
     fd.append('file', file)
     return http.post<ImportPreview & { created?: number }>(`/import/students${qs({ commit })}`, fd, { silent: true })
   },
+}
+
+export interface AssignableRole {
+  id: number
+  code: string
+  name: string
+  description?: string | null
 }

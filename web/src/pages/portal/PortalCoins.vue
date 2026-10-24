@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { UiAvatar, UiButton, UiCard, UiChip, UiEmptyState, UiIcon, UiPrompt, UiSegmented, UiSkeleton, UiTabs } from '@/components/ui'
-import { coinsApi, shopApi, type LeaderRow, type ShopItem, type ShopOrder } from '@/api/store'
+import { coinsApi, shopApi, type CoinEntry, type LeaderRow, type ShopItem, type ShopOrder } from '@/api/store'
 import { usePortalStore } from '@/stores/portal'
 import { useToastStore } from '@/stores/toast'
 import { dmy } from '@/utils/dates'
@@ -12,16 +12,27 @@ import { iconOr } from '@/utils/icons'
 import type { Locale } from '@/i18n'
 
 /** Coins: balance, the shop (order, cancel a new order), and the group / branch leaderboard. */
-const { t, locale } = useI18n()
+const { t, te, locale } = useI18n()
 const portal = usePortalStore()
 const toast = useToastStore()
 const loc = computed(() => locale.value as Locale)
-const tab = ref<'shop' | 'orders' | 'top'>('shop')
+const tab = ref<'shop' | 'orders' | 'history' | 'top'>('shop')
 const tabs = computed(() => [
   { value: 'shop' as const, label: t('portal.shop') },
   { value: 'orders' as const, label: t('portal.orders'), count: orders.value?.filter((o) => o.status === 'placed' || o.status === 'ready').length || undefined },
+  { value: 'history' as const, label: t('coins.history') },
   { value: 'top' as const, label: t('portal.top') },
 ])
+const history = ref<CoinEntry[] | null>(null)
+const kindLabel = (k: string) => (te(`coins.kind.${k}`) ? t(`coins.kind.${k}`) : k)
+async function loadHistory() {
+  const c = child.value
+  if (!c) return
+  history.value = null
+  const r = await coinsApi.ofStudent(c.id).catch(() => null)
+  history.value = r?.items ?? []
+  if (r) balance.value = r.balance
+}
 const items = ref<ShopItem[] | null>(null)
 const orders = ref<ShopOrder[] | null>(null)
 const top = ref<LeaderRow[] | null>(null)
@@ -46,15 +57,16 @@ async function loadTop() {
 }
 watch(() => child.value?.id, async () => {
   const c = child.value
-  items.value = orders.value = top.value = null
+  items.value = orders.value = top.value = history.value = null
   if (!c) return
   balance.value = c.coins
   if (!group.value) scope.value = 'branch'
   const [i] = await Promise.all([shopApi.items(c.branch.id).catch(() => []), loadOrders()])
   items.value = i
   if (tab.value === 'top') loadTop()
+  if (tab.value === 'history') loadHistory()
 }, { immediate: true })
-watch([tab, scope], () => tab.value === 'top' && loadTop())
+watch([tab, scope], () => (tab.value === 'top' ? loadTop() : tab.value === 'history' && !history.value ? loadHistory() : undefined))
 
 async function buy() {
   const it = buying.value
@@ -94,6 +106,8 @@ async function cancel() {
   }
 }
 const TONE = { placed: 'warn', ready: 'info', issued: 'ok', cancelled: undefined } as const
+/** Automatic entries carry a server-side Russian reason; show the localized kind instead, free text only for manual ones */
+const MANUAL = new Set(['manual', 'writeoff'])
 </script>
 
 <template>
@@ -123,6 +137,15 @@ const TONE = { placed: 'warn', ready: 'info', issued: 'ok', cancelled: undefined
       <div class="grow"><b>{{ o.item }}</b><span>{{ dmy(o.created_at, loc) }} · {{ o.coins }} {{ t('coins.unit') }}<template v-if="o.status === 'ready'"> · {{ t('portal.pickUp') }}</template></span></div>
       <UiChip :tone="TONE[o.status]" small>{{ t(`shop.status.${o.status}`) }}</UiChip>
       <UiButton v-if="o.status === 'placed'" size="sm" variant="ghost" icon="x" :aria-label="t('shop.do.cancelled')" :title="t('shop.do.cancelled')" @click="cancelling = o" />
+    </div>
+  </UiCard>
+
+  <UiCard v-else-if="tab === 'history'">
+    <UiSkeleton v-if="!history" :lines="5" />
+    <UiEmptyState v-else-if="!history.length" icon="coin" :title="t('coins.noHistory')" />
+    <div v-for="(e, i) in history ?? []" :key="i" class="list-row">
+      <div class="grow"><b>{{ MANUAL.has(e.kind) && e.reason ? e.reason : kindLabel(e.kind) }}</b><span><template v-if="MANUAL.has(e.kind) && e.reason">{{ kindLabel(e.kind) }} · </template>{{ dmy(e.at, loc) }}</span></div>
+      <b class="num" :class="e.delta > 0 ? 'okc' : 'redc'">{{ e.delta > 0 ? '+' : '' }}{{ num(e.delta, loc) }}</b>
     </div>
   </UiCard>
 

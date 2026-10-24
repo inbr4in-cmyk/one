@@ -3,7 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { UiAvatar, UiButton, UiCard, UiChip, UiEmptyState, UiIcon, UiInput, UiModal, UiPager, UiPrompt, UiSkeleton, UiTabs } from '@/components/ui'
 import StaffDrawer from '@/components/admin/StaffDrawer.vue'
-import { adminApi, type Role, type Staff } from '@/api/admin'
+import { adminApi, type AssignableRole, type Staff } from '@/api/admin'
 import { workApi, type CheckinRow, type DailyReport } from '@/api/staffwork'
 import { useAuthStore } from '@/stores/auth'
 import { useBranchStore } from '@/stores/branch'
@@ -34,7 +34,7 @@ const q = ref('')
 const archived = ref(false)
 const offset = ref(0)
 const page = ref<{ items: Staff[]; total: number } | null>(null)
-const roles = ref<Role[]>([])
+const roles = ref<AssignableRole[]>([])
 const drawer = ref(false)
 const editing = ref<Staff | null>(null)
 const pwFor = ref<Staff | null>(null)
@@ -73,7 +73,7 @@ watch([tab, day, () => branch.filterId], loadDay)
 onMounted(async () => {
   refs.load()
   loadStaff()
-  if (auth.can('roles.view')) roles.value = await adminApi.roles().catch(() => [])
+  if (auth.can('staff.create')) roles.value = await adminApi.assignableRoles().catch(() => [])
 })
 
 function openNew() {

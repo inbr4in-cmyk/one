@@ -135,7 +135,7 @@ const signed = (n: number) => (n > 0 ? `+${money(n, loc.value)}` : n < 0 ? `−$
           <UiAvatar :name="p.full_name" />
           <div class="grow">
             <b>{{ p.full_name }}</b>
-            <span>{{ p.position ?? '—' }}<template v-for="[k, v] in topKinds(p)" :key="k"> · {{ v.title }} {{ money(v.amount, loc) }}</template></span>
+            <span>{{ p.position ?? '—' }}<template v-for="[k, v] in topKinds(p)" :key="k"> · {{ kindLabel(String(k)) }} {{ money(v.amount, loc) }}</template></span>
           </div>
           <b class="num">{{ money(p.total, loc) }}</b>
         </button>
@@ -169,7 +169,7 @@ const signed = (n: number) => (n > 0 ? `+${money(n, loc.value)}` : n < 0 ? `−$
       <div class="stack">
         <div class="muted">{{ detail.position ?? '' }} · {{ periodLabel(period, loc) }}</div>
         <div class="kv-grid">
-          <template v-for="(v, k) in detail.by_kind" :key="k"><span>{{ v.title }} <span class="muted">× {{ v.count }}</span></span><b class="num">{{ money(v.amount, loc) }}</b></template>
+          <template v-for="(v, k) in detail.by_kind" :key="k"><span>{{ kindLabel(String(k)) }} <span class="muted">× {{ v.count }}</span></span><b class="num">{{ money(v.amount, loc) }}</b></template>
           <span><b>{{ t('fin.total') }}</b></span><b class="num">{{ money(detail.total, loc) }}</b>
         </div>
         <h4 class="m0">{{ t('payroll.lines') }}</h4>

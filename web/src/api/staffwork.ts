@@ -57,6 +57,8 @@ export const workApi = {
   checkIn: (branch_id: number) => http.post<{ id: number; in_at: string }>('/checkin', { branch_id }),
   checkOut: () => http.post<{ in_at: string; out_at: string }>('/checkout'),
   checkins: (p: { day?: string; branch_id?: number | null }) => http.get<CheckinRow[]>(`/checkins${qs(p)}`),
+  /** My report for today, to prefill the form */
+  myReport: () => http.get<{ day: string; text: string | null; updated_at: string | null }>('/daily-report', { silent: true }),
   report: (text: string) => http.put<{ day: string }>('/daily-report', { text }, { silent: true }),
   reports: (day?: string) => http.get<DailyReport[]>(`/daily-reports${qs({ day })}`),
   courses: () => http.get<Course[]>('/training/courses'),

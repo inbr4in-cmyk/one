@@ -1,0 +1,66 @@
+name: one_english
+description: "One English — app for students and parents (iOS, Android)."
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.13.7
+
+dependencies:
+  audioplayers: ^6.8.1
+  crypto: ^3.0.7
+  file_picker: ^13.2.0
+  firebase_core: ^5.1.0
+  firebase_messaging: ^17.0.1
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  flutter_secure_storage: ^11.2.0
+  flutter_svg: ^2.3.0
+  go_router: ^18.1.1
+  http: ^1.6.0
+  http_parser: ^4.1.2
+  image_picker: ^1.2.4
+  intl: ^0.20.3
+  local_auth: ^3.0.2
+  path_provider: ^2.1.6
+  provider: ^6.1.5+1
+  record: ^7.1.2
+  shared_preferences: ^2.5.6
+  url_launcher: ^6.3.3
+  web_socket_channel: ^3.0.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  mocktail: ^1.0.5
+  stream_channel: ^2.1.4
+
+flutter:
+  uses-material-design: true
+  generate: true
+  fonts:
+    - family: Unbounded
+      fonts:
+        - asset: assets/fonts/Unbounded-500.ttf
+          weight: 500
+        - asset: assets/fonts/Unbounded-600.ttf
+          weight: 600
+        - asset: assets/fonts/Unbounded-700.ttf
+          weight: 700
+    - family: PlayfairDisplay
+      fonts:
+        - asset: assets/fonts/PlayfairDisplay-800.ttf
+          weight: 800
+    - family: GolosText
+      fonts:
+        - asset: assets/fonts/GolosText-400.ttf
+          weight: 400
+        - asset: assets/fonts/GolosText-500.ttf
+          weight: 500
+        - asset: assets/fonts/GolosText-600.ttf
+          weight: 600
+        - asset: assets/fonts/GolosText-700.ttf
+          weight: 700

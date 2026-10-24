@@ -77,7 +77,7 @@ export interface ExpenseIn {
 type BranchQ = { branch_id?: number | null }
 
 export const financeApi = {
-  dashboard: (p: BranchQ = {}) => http.get<Dashboard>(`/dashboard${qs(p)}`),
+  dashboard: (p: BranchQ & { period?: string } = {}) => http.get<Dashboard>(`/dashboard${qs(p)}`),
   ratings: (p: BranchQ & { period?: string } = {}) => http.get<Ratings>(`/payroll/ratings${qs(p)}`, { silent: true }),
   pnl: (p: BranchQ & { period: string }) => http.get<Pnl>(`/finance/pnl${qs(p)}`),
   categories: () => http.get<ExpenseCategory[]>('/expense-categories'),

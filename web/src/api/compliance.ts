@@ -17,6 +17,9 @@ export interface Complaint {
   /** Handler view only */
   author_id?: number
   against_user_id?: number | null
+  /** Handler list only */
+  author_name?: string | null
+  against_name?: string | null
   overdue?: boolean
 }
 
@@ -41,6 +44,16 @@ export const complaintsApi = {
     http.post<Complaint>(`/complaints/${id}`, { action, answer }, { silent: true }),
 }
 
+export interface MyConsent {
+  id: number
+  document_id: number
+  kind: DocKind
+  version: string
+  student_id: number | null
+  accepted_at: string
+  revoked_at: string | null
+}
+
 export const docsApi = {
   /** 404 when the school has not published this document yet */
   get: (kind: DocKind) => http.get<DocumentVersion>(`/documents/${kind}`, { silent: true }),
@@ -48,5 +61,8 @@ export const docsApi = {
     http.post<{ id: number }>('/documents', body, { silent: true }),
   accept: (document_id: number, student_id?: number | null) =>
     http.post<{ accepted_at: string; version: string }>('/consents', { document_id, student_id: student_id ?? null }),
+  /** Consents I gave (parents: one per child), newest first */
+  my: () => http.get<MyConsent[]>('/consents/my', { silent: true }),
+  revoke: (id: number) => http.post<void>(`/consents/${id}/revoke`),
   missing: (branch_id?: number | null) => http.get<{ student_id: number; full_name: string; branch_id: number }[]>(`/consents/status${qs({ branch_id })}`),
 }

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { UiButton, UiCard, UiChip, UiEmptyState, UiIcon, UiSkeleton } from '@/components/ui'
+import { UiButton, UiCard, UiChip, UiEmptyState, UiIcon, UiPeriod, UiSkeleton } from '@/components/ui'
 import BarChart from '@/components/charts/BarChart.vue'
 import HBars from '@/components/charts/HBars.vue'
 import { financeApi, type Dashboard, type Ratings } from '@/api/finance'
@@ -29,6 +29,9 @@ const lessons = ref<Lesson[] | null>(null)
 const stale = ref<Lead[] | null>(null)
 const failed = ref(false)
 const exporting = ref(false)
+/** Month the KPIs and ratings describe; today's lessons and waiting leads are always live */
+const period = ref(periodOf())
+const isCurrent = computed(() => period.value === periodOf())
 
 const SRC: Record<string, { cls: string; icon: string }> = {
   instagram: { cls: 'ig', icon: 'ig' }, whatsapp: { cls: 'wa', icon: 'wa' }, qr: { cls: 'qr', icon: 'qr' }, site: { cls: 'web', icon: 'globe' },
@@ -37,7 +40,7 @@ const SRC: Record<string, { cls: string; icon: string }> = {
 
 async function load() {
   failed.value = false
-  const b = { branch_id: branch.filterId }
+  const b = { branch_id: branch.filterId, period: period.value }
   const today = isoDate(new Date())
   const [d, r] = await Promise.allSettled([financeApi.dashboard(b), financeApi.ratings(b)])
   if (d.status === 'fulfilled') data.value = d.value
@@ -54,7 +57,7 @@ async function load() {
   }
 }
 onMounted(load)
-watch(() => branch.filterId, load)
+watch([() => branch.filterId, period], load)
 
 const hello = computed(() => {
   const h = new Date().getHours()
@@ -99,7 +102,7 @@ const salesRows = computed(() => (ratings.value?.sales ?? []).slice(0, 6))
 async function exportExcel() {
   exporting.value = true
   try {
-    await financeApi.exportPayments({ period: periodOf(), branch_id: branch.filterId })
+    await financeApi.exportPayments({ period: period.value, branch_id: branch.filterId })
   } catch {
     /* toast */
   } finally {
@@ -112,6 +115,7 @@ async function exportExcel() {
   <div class="ph">
     <div><h1>{{ hello }}</h1><p>{{ todayLabel }} · {{ t('dash.summary', { scope }) }}</p></div>
     <span class="sp" />
+    <UiPeriod v-model="period" />
     <UiButton v-if="auth.can('finance.export')" icon="file" :loading="exporting" @click="exportExcel">{{ t('dash.excel') }}</UiButton>
   </div>
 
@@ -134,12 +138,12 @@ async function exportExcel() {
         <div v-if="data.revenue_month !== undefined" class="card kpi">
           <div class="k"><UiIcon name="wallet" :size="18" />{{ t('dash.k.revenue', { month: periodLabel(data.period, loc, { month: 'long' }) }) }}</div>
           <div class="v num">{{ cm(data.revenue_month).v }}<small> {{ unitLabel(cm(data.revenue_month).unit) }} ₸</small></div>
-          <span class="muted" style="font-size: 12px">{{ t('dash.k.today', { sum: money(data.revenue_today, loc) }) }} · {{ t('dash.k.sales', { n: data.sales_month ?? 0 }) }}</span>
+          <span class="muted" style="font-size: 12px"><template v-if="isCurrent">{{ t('dash.k.today', { sum: money(data.revenue_today, loc) }) }} · </template>{{ t('dash.k.sales', { n: data.sales_month ?? 0 }) }}</span>
         </div>
         <div class="card kpi">
           <div class="k"><UiIcon name="check" :size="18" />{{ t('dash.k.attendance') }}</div>
           <div class="v num">{{ data.attendance_rate === null ? '—' : num(data.attendance_rate, loc, 1) }}<small v-if="data.attendance_rate !== null">%</small></div>
-          <span class="muted" style="font-size: 12px">{{ t('dash.k.lessonsToday', { n: data.lessons_today }) }}</span>
+          <span v-if="isCurrent" class="muted" style="font-size: 12px">{{ t('dash.k.lessonsToday', { n: data.lessons_today }) }}</span>
           <div v-if="data.attendance_rate !== null" class="bar-track"><i :style="{ width: `${data.attendance_rate}%` }" /></div>
         </div>
         <div class="card kpi">

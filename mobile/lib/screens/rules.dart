@@ -1,0 +1,263 @@
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import '../api/models.dart';
+import '../api/oe_api.dart';
+import '../l10n/l10n.dart';
+import '../state/session.dart';
+import '../ui/icons.dart';
+import '../ui/theme.dart';
+import '../ui/widgets.dart';
+import '../util/format.dart';
+
+/// Plain-text document body: `#` lines are headings, `-` lines list items, blank lines split paragraphs.
+class DocBody extends StatelessWidget {
+  const DocBody(this.body, {super.key});
+  final String body;
+
+  @override
+  Widget build(BuildContext context) {
+    final oe = context.oe;
+    final out = <Widget>[];
+    for (final chunk in body.replaceAll('\r', '').split(RegExp(r'\n\s*\n'))) {
+      final lines = chunk.split('\n').where((l) => l.trim().isNotEmpty).toList();
+      if (lines.isEmpty) continue;
+      final bullet = RegExp(r'^\s*[-•*]\s+');
+      if (lines.every(bullet.hasMatch)) {
+        for (final l in lines) {
+          out.add(Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('•  ', style: TextStyle(color: oe.tint)),
+              Expanded(child: Text(l.replaceFirst(bullet, ''), style: const TextStyle(height: 1.45))),
+            ]),
+          ));
+        }
+        out.add(const SizedBox(height: 8));
+        continue;
+      }
+      for (var i = 0; i < lines.length; i++) {
+        if (RegExp(r'^#{1,6}\s').hasMatch(lines[i])) {
+          out.add(Padding(
+            padding: const EdgeInsets.only(top: 6, bottom: 6),
+            child: Text(lines[i].replaceFirst(RegExp(r'^#+\s*'), ''), style: display(15, color: oe.brandInk)),
+          ));
+        } else {
+          out.add(Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Text(lines.sublist(i).join('\n'), style: const TextStyle(height: 1.45)),
+          ));
+          break;
+        }
+      }
+    }
+    return SelectionArea(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: out));
+  }
+}
+
+/// Blocks the app until the current platform rules are accepted (when /auth/me lags behind the published version).
+class RulesGateScreen extends StatefulWidget {
+  const RulesGateScreen({super.key});
+
+  @override
+  State<RulesGateScreen> createState() => _RulesGateScreenState();
+}
+
+class _RulesGateScreenState extends State<RulesGateScreen> {
+  bool _agree = false;
+  bool _busy = false;
+
+  Future<void> _accept() async {
+    setState(() => _busy = true);
+    try {
+      await context.read<Session>().acceptRules();
+    } catch (e) {
+      if (mounted) toastError(context, e);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.t;
+    final oe = context.oe;
+    final s = context.watch<Session>();
+    final doc = s.rules;
+    if (doc == null) return const SizedBox();
+    return Scaffold(
+      body: SafeArea(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              IconTile('shield', size: 48, radius: 16),
+              const SizedBox(height: 12),
+              Semantics(
+                  header: true,
+                  child: Text(s.me?.rulesAcceptedVersion != null ? t.rulesUpdated : t.rulesGateTitle,
+                      style: display(22, color: oe.brandInk))),
+              const SizedBox(height: 6),
+              Text(t.rulesGateText(doc.version, doc.effectiveFrom == null ? '' : dmy(doc.effectiveFrom!)),
+                  style: TextStyle(color: oe.muted)),
+            ]),
+          ),
+          Expanded(
+            child: Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: BoxDecoration(
+                  color: oe.surface, borderRadius: BorderRadius.circular(OeStyle.cardRadius), border: Border.all(color: oe.line)),
+              child: ListView(padding: const EdgeInsets.all(16), children: [
+                Text(doc.title, style: display(17, color: oe.brandInk)),
+                const SizedBox(height: 10),
+                DocBody(doc.body),
+              ]),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+            child: Column(children: [
+              CheckboxListTile.adaptive(
+                key: const Key('agree'),
+                value: _agree,
+                onChanged: (v) => setState(() => _agree = v ?? false),
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+                title: Text(t.rulesAgree, style: const TextStyle(fontSize: 14)),
+              ),
+              OeButton(t.rulesAccept, key: const Key('accept-rules'), loading: _busy, onPressed: _agree ? _accept : null),
+              TextButton(onPressed: () => s.signOut(), child: Text(t.logout, style: TextStyle(color: oe.muted))),
+            ]),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
+/// Rules and the lesson-recording consent. Parents sign the recording consent for each child.
+class RulesScreen extends StatefulWidget {
+  const RulesScreen({super.key, this.tab});
+  final String? tab;
+
+  @override
+  State<RulesScreen> createState() => _RulesScreenState();
+}
+
+class _RulesScreenState extends State<RulesScreen> {
+  late String _kind = widget.tab == 'recording' ? 'recording' : 'rules';
+  String? _busy;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.t;
+    return Scaffold(
+      appBar: NavBar(backLabel: t.back, title: t.rulesTitle),
+      body: Loader<(DocVersion?, DocVersion?, List<MyConsent>)>(
+        load: () async {
+          final api = context.read<OeApi>();
+          final r = await Future.wait<Object?>([api.document('rules'), api.document('recording'), api.myConsents()]);
+          return (r[0] as DocVersion?, r[1] as DocVersion?, r[2] as List<MyConsent>);
+        },
+        builder: (context, d, reload) => _body(context, d, reload),
+      ),
+    );
+  }
+
+  Widget _body(BuildContext context, (DocVersion?, DocVersion?, List<MyConsent>) d, Future<void> Function() reload) {
+    final t = context.t;
+    final oe = context.oe;
+    final s = context.watch<Session>();
+    final doc = _kind == 'rules' ? d.$1 : d.$2;
+    MyConsent? consentFor(int? studentId) =>
+        d.$3.where((c) => c.documentId == doc?.id && c.studentId == studentId && c.revokedAt == null).firstOrNull;
+
+    Future<void> accept(int? studentId) async {
+      setState(() => _busy = 'a$studentId');
+      try {
+        if (doc!.kind == 'rules') {
+          await s.acceptRules();
+        } else {
+          await context.read<OeApi>().acceptDocument(doc.id, studentId: studentId);
+        }
+        if (context.mounted) toast(context, t.consentSaved);
+        await reload();
+      } catch (e) {
+        if (context.mounted) toastError(context, e);
+      } finally {
+        if (mounted) setState(() => _busy = null);
+      }
+    }
+
+    Future<void> revoke(MyConsent c) async {
+      if (!await confirm(context, title: t.revokeTitle, text: t.revokeText, ok: t.revoke, danger: true)) return;
+      if (!context.mounted) return;
+      try {
+        await context.read<OeApi>().revokeConsent(c.id);
+        if (context.mounted) toast(context, t.revoked);
+        await reload();
+      } catch (e) {
+        if (context.mounted) toastError(context, e);
+      }
+    }
+
+    Widget signRow(String title, int? studentId) {
+      final c = consentFor(studentId);
+      return OeRow(
+        title: title,
+        titleStyle: const TextStyle(fontWeight: FontWeight.w600),
+        subtitle: c?.acceptedAt == null ? t.notSigned : t.signedAt(dmy(c!.acceptedAt!)),
+        trailing: c != null
+            ? OeButton(t.revoke, small: true, expand: false, kind: BtnKind.ghost, onPressed: () => revoke(c))
+            : OeButton(t.sign,
+                key: Key('sign-${studentId ?? 'me'}'),
+                small: true,
+                expand: false,
+                loading: _busy == 'a$studentId',
+                onPressed: _busy == null ? () => accept(studentId) : null),
+      );
+    }
+
+    return PageList(onRefresh: reload, children: [
+      OeSegmented<String>(
+        value: _kind,
+        onChanged: (v) => setState(() => _kind = v),
+        options: [('rules', t.tabRules), ('recording', t.tabRecording)],
+      ),
+      if (doc == null)
+        EmptyState(icon: 'file', title: t.docNotPublished)
+      else ...[
+        if (_kind == 'rules')
+          s.me?.rulesAcceptedVersion == doc.version
+              ? Banner2(tone: Tone.ok, icon: 'check', title: t.rulesAcceptedV(doc.version))
+              : OeButton(t.rulesAccept, loading: _busy != null, onPressed: () => accept(null))
+        else ...[
+          Text(s.isParent ? t.recordingParent : t.recordingSelf, style: TextStyle(color: oe.muted, fontSize: 14)),
+          OeList(children: [
+            if (s.isParent)
+              for (final c in s.children) signRow(c.fullName, c.id)
+            else
+              signRow(s.me?.fullName ?? '', null),
+          ]),
+        ],
+        OeCard(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(doc.title, style: display(17, color: oe.brandInk)),
+            const SizedBox(height: 4),
+            Text(t.docVersion(doc.version, doc.effectiveFrom == null ? '' : dmy(doc.effectiveFrom!)),
+                style: TextStyle(fontSize: 13, color: oe.muted)),
+            if (doc.upcomingVersion != null) ...[
+              const SizedBox(height: 10),
+              Banner2(title: t.docUpcoming(doc.upcomingVersion!, doc.upcomingFrom == null ? '' : dmy(doc.upcomingFrom!))),
+            ],
+            const SizedBox(height: 12),
+            DocBody(doc.body),
+          ]),
+        ),
+      ],
+    ]);
+  }
+}
+
+/// Small icon for the rules link in lists.
+Widget rulesIcon(BuildContext context) => OeIcon('file', color: context.oe.tint);

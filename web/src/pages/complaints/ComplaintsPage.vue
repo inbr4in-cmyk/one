@@ -41,7 +41,7 @@ const openId = computed(() => (route.params.id ? Number(route.params.id) : null)
 const current = computed(() => items.value?.find((c) => c.id === openId.value) ?? null)
 const drawer = computed({ get: () => openId.value !== null, set: (v) => !v && router.replace('/complaints') })
 const actions = computed(() => (current.value && auth.can('complaints.answer') ? complaintActions(current.value.status, !!auth.user?.roles.includes('owner')) : []))
-const name = (id: number | null | undefined) => (id ? refs.staffById.get(id)?.full_name ?? t('complaints.userN', { n: id }) : '')
+const name = (n: string | null | undefined, id: number | null | undefined) => n ?? (id ? refs.staffById.get(id)?.full_name ?? t('complaints.userN', { n: id }) : '')
 
 async function load() {
   items.value = await complaintsApi.list().catch(() => [])
@@ -97,7 +97,7 @@ const dueText = (c: Complaint) => (c.overdue ? t('complaints.overdue', { when: r
         <UiIcon name="flag" :size="18" :class="c.overdue ? 'redc' : 'muted'" />
         <div class="grow">
           <b>{{ c.subject }}</b>
-          <span>{{ refs.branchName(c.branch_id) || t('complaints.noBranch') }} · {{ relativeTime(c.created_at, loc) }}<template v-if="c.against_user_id"> · {{ t('complaints.about', { name: name(c.against_user_id) }) }}</template></span>
+          <span>{{ refs.branchName(c.branch_id) || t('complaints.noBranch') }} · {{ relativeTime(c.created_at, loc) }}<template v-if="c.against_user_id"> · {{ t('complaints.about', { name: name(c.against_name, c.against_user_id) }) }}</template></span>
         </div>
         <div class="task-side">
           <UiChip :tone="COMPLAINT_TONE[c.status]" small>{{ t(`complaints.status.${c.status}`) }}</UiChip>
@@ -116,8 +116,8 @@ const dueText = (c: Complaint) => (c.overdue ? t('complaints.overdue', { when: r
         <span v-else-if="OPEN.includes(current.status)" class="chip">{{ dueText(current) }}</span>
       </div>
       <dl class="dl">
-        <dt>{{ t('complaints.from') }}</dt><dd>{{ name(current.author_id) }}</dd>
-        <template v-if="current.against_user_id"><dt>{{ t('complaints.against') }}</dt><dd>{{ name(current.against_user_id) }}</dd></template>
+        <dt>{{ t('complaints.from') }}</dt><dd>{{ name(current.author_name, current.author_id) }}</dd>
+        <template v-if="current.against_user_id"><dt>{{ t('complaints.against') }}</dt><dd>{{ name(current.against_name, current.against_user_id) }}</dd></template>
         <dt>{{ t('branch.label') }}</dt><dd>{{ refs.branchName(current.branch_id) || '—' }}</dd>
         <dt>{{ t('complaints.created') }}</dt><dd>{{ dmy(current.created_at, loc) }} {{ hm(current.created_at, loc) }}</dd>
         <template v-if="current.acknowledged_at"><dt>{{ t('complaints.acknowledged') }}</dt><dd>{{ dmy(current.acknowledged_at, loc) }} {{ hm(current.acknowledged_at, loc) }}</dd></template>

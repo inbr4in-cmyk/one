@@ -192,3 +192,28 @@ button.list-row:hover{background:var(--navy-50)}
 .limit-meter .lm-h b{color:var(--ink)}
 .limit-meter.red .lm-h b{color:var(--red)}
 .limit-meter.red .bar-track i{background:var(--red)}
+.set-row.wrap{flex-wrap:wrap}
+/* homework (teacher) */
+.hw-body,.hw-answer{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.5}
+.hw-sub{display:grid;gap:8px;padding:12px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--surface)}
+.hw-sub.submitted{border-color:var(--info)}
+.hw-sub-h{display:flex;align-items:center;gap:10px;min-width:0}
+.hw-sub-h .grow{min-width:0;display:grid}
+.hw-sub-h .grow b{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hw-sub-h .grow span{font-size:12px;color:var(--muted)}
+.hw-answer{padding:10px 12px;border-radius:var(--r-sm);background:var(--paper)}
+.hw-file{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--accent-ink);width:max-content}
+.hw-comment{margin:0;font-size:13px;color:var(--muted)}
+.hw-grade{min-width:26px;height:26px;border-radius:50%;display:grid;place-items:center;background:var(--ok-bg);color:var(--ok);font-family:var(--font-display);font-size:13px}
+.hw-check{padding-top:4px}
+.hw-grade-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
+.hw-row{cursor:pointer;text-align:left;width:100%;background:none;border-left:0;border-right:0;border-top:0;font:inherit;color:inherit}
+.hw-row:hover b{color:var(--accent-ink)}
+.hw-row .hw-pend{font-size:11px;font-weight:600;padding:2px 7px;border-radius:10px;background:var(--info-bg);color:var(--info)}
+.att-hw{display:grid;gap:2px;padding:12px 18px;border-bottom:1px solid var(--line)}
+.att-hw-h{display:flex;align-items:center;gap:8px;font-size:13.5px}
+.att-hw .btn{justify-self:start}
+.hw-quick{display:grid;gap:4px;align-content:start}
+.hw-quick .btn{justify-self:start}
+@media (max-width:420px){.att-extra-form{grid-template-columns:minmax(0,1fr)}}
+.hw-sub.assigned{padding:8px 12px}

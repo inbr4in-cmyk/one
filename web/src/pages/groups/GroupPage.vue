@@ -2,10 +2,12 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
-import { UiAvatar, UiButton, UiCard, UiChip, UiEmptyState, UiField, UiIcon, UiInput, UiModal, UiPrompt, UiSelect, UiSkeleton, UiTextarea } from '@/components/ui'
+import { UiAvatar, UiButton, UiCard, UiChip, UiEmptyState, UiField, UiIcon, UiInput, UiModal, UiPrompt, UiSelect, UiSkeleton } from '@/components/ui'
 import LevelTag from '@/components/students/LevelTag.vue'
 import StudentPicker from '@/components/students/StudentPicker.vue'
 import GroupFormDrawer from '@/components/schedule/GroupFormDrawer.vue'
+import HomeworkDrawer from '@/components/homework/HomeworkDrawer.vue'
+import HomeworkModal from '@/components/homework/HomeworkModal.vue'
 import { academicsApi, type Group, type GroupMember, type Homework, type Lesson } from '@/api/academics'
 import type { Room } from '@/api/org'
 import type { StudentListItem } from '@/api/students'
@@ -134,23 +136,34 @@ async function endRule() {
 }
 
 /* ---- homework ---- */
-const hw = reactive({ title: '', body: '', due: '' })
-function openHw() {
-  Object.assign(hw, { title: '', body: '', due: isoDate(addDays(new Date(), 2)) })
+const hwEditing = ref<Homework | null>(null)
+const hwOpen = ref<Homework | null>(null)
+const hwDrawer = ref(false)
+function openHw(h: Homework | null = null) {
+  hwEditing.value = h
   modal.value = 'hw'
 }
-async function addHw() {
-  if (hw.title.trim().length < 2) return
-  busy.value = true
-  try {
-    await academicsApi.addHomework(id.value, { title: hw.title.trim(), body: hw.body.trim() || null, due_at: hw.due ? `${hw.due}T23:59:00` : null })
-    toast.ok(t('groups.hw.added'))
-    modal.value = null
-    homework.value = await academicsApi.homework(id.value).catch(() => [])
-  } finally {
-    busy.value = false
-  }
+function showHw(h: Homework) {
+  hwOpen.value = h
+  hwDrawer.value = true
 }
+async function reloadHw() {
+  homework.value = await academicsApi.homework(id.value).catch(() => homework.value)
+  if (hwOpen.value) hwOpen.value = homework.value?.find((x) => x.id === hwOpen.value!.id) ?? hwOpen.value
+}
+function onHwSaved(h: Homework) {
+  reloadHw()
+  if (hwOpen.value?.id === h.id) hwOpen.value = { ...hwOpen.value, ...h }
+}
+// Deep link from the attendance sheet: /groups/:id?hw=<homework id>
+watch(homework, (list) => {
+  const want = Number(route.query.hw)
+  const h = want ? list?.find((x) => x.id === want) : null
+  if (h) {
+    showHw(h)
+    router.replace({ query: { ...route.query, hw: undefined } })
+  }
+})
 
 async function archive() {
   busy.value = true
@@ -256,10 +269,12 @@ const lessonState = (l: Lesson) => (l.status === 'cancelled' ? 'red' : l.attenda
         </UiCard>
 
         <UiCard v-if="auth.can('homework.view')" :title="t('groups.hw.title')" icon="homework">
-          <template v-if="auth.can('homework.manage')" #actions><UiButton size="sm" variant="ghost" icon="plus" @click="openHw">{{ t('common.add') }}</UiButton></template>
-          <div v-for="h in homework ?? []" :key="h.id" class="list-row">
-            <div class="grow"><b>{{ h.title }}</b><span>{{ h.due_at ? t('groups.hw.due', { date: dmy(h.due_at, loc) }) : '' }} · {{ t('groups.hw.stats', { s: h.submitted, c: h.checked }) }}</span></div>
-          </div>
+          <template v-if="auth.can('homework.manage')" #actions><UiButton size="sm" variant="ghost" icon="plus" @click="openHw()">{{ t('common.add') }}</UiButton></template>
+          <button v-for="h in homework ?? []" :key="h.id" type="button" class="list-row hw-row" @click="showHw(h)">
+            <div class="grow"><b>{{ h.title }}</b><span><template v-if="h.due_at">{{ t('groups.hw.due', { date: dmy(h.due_at, loc) }) }} · </template>{{ t('groups.hw.stats', { s: h.submitted, c: h.checked }) }}</span></div>
+            <span v-if="h.submitted > h.checked" class="hw-pend" :title="t('hw.f.submitted')">{{ h.submitted - h.checked }}</span>
+            <UiIcon name="arrow" :size="16" class="muted" />
+          </button>
           <p v-if="homework && !homework.length" class="muted m0">{{ t('groups.hw.empty') }}</p>
         </UiCard>
       </div>
@@ -295,17 +310,8 @@ const lessonState = (l: Lesson) => (l.status === 'cancelled' ? 'red' : l.attenda
       </template>
     </UiModal>
 
-    <UiModal :open="modal === 'hw'" :title="t('groups.hw.new')" @update:open="(v) => !v && (modal = null)">
-      <form id="hw-form" class="stack" @submit.prevent="addHw">
-        <UiInput v-model="hw.title" :label="t('groups.hw.name')" autofocus />
-        <UiTextarea v-model="hw.body" :label="t('groups.hw.body')" :rows="3" />
-        <UiInput v-model="hw.due" type="date" :label="t('groups.hw.dueLabel')" />
-      </form>
-      <template #footer="{ close }">
-        <UiButton @click="close">{{ t('common.cancel') }}</UiButton>
-        <UiButton variant="navy" type="submit" form="hw-form" :loading="busy" :disabled="hw.title.trim().length < 2">{{ t('common.add') }}</UiButton>
-      </template>
-    </UiModal>
+    <HomeworkDrawer v-model:open="hwDrawer" :homework="hwOpen" @edit="openHw" @changed="reloadHw" />
+    <HomeworkModal :open="modal === 'hw'" :group-id="g.id" :homework="hwEditing" @update:open="(v) => !v && (modal = null)" @saved="onHwSaved" />
 
     <UiPrompt :open="removing !== null" :title="t('groups.removeMember')" :text="t('groups.removeText', { name: removing?.full_name ?? '' })" :confirm-label="t('common.remove')" danger :busy="busy" @update:open="(v) => !v && (removing = null)" @confirm="removeMember" />
     <UiPrompt :open="endingRule !== null" :title="t('groups.rule.end')" :text="t('groups.rule.endText')" :confirm-label="t('groups.rule.end')" danger :busy="busy" @update:open="(v) => !v && (endingRule = null)" @confirm="endRule" />

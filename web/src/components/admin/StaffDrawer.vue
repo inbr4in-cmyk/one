@@ -2,19 +2,17 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { UiButton, UiDrawer, UiField, UiInput, UiPhoneInput } from '@/components/ui'
-import { adminApi, type Role, type Staff } from '@/api/admin'
-import { useAuthStore } from '@/stores/auth'
+import { adminApi, type AssignableRole, type Staff } from '@/api/admin'
 import { useBranchStore } from '@/stores/branch'
 import { useToastStore } from '@/stores/toast'
 import { apiErr } from '@/utils/err'
 import { isCompletePhone } from '@/utils/phone'
 
 /** Create or edit a staff member: position, salary, roles (only ones the editor may grant; the server re-checks), branches. */
-const props = defineProps<{ staff: Staff | null; roles: Role[] }>()
+const props = defineProps<{ staff: Staff | null; roles: AssignableRole[] }>()
 const open = defineModel<boolean>('open', { required: true })
 const emit = defineEmits<{ saved: [Staff] }>()
 const { t, te } = useI18n()
-const auth = useAuthStore()
 const branch = useBranchStore()
 const toast = useToastStore()
 const form = reactive({ full_name: '', phone: '', position: '', salary: '', password: '', role_ids: [] as number[], branch_ids: [] as number[] })
@@ -22,7 +20,7 @@ const error = ref<string | null>(null)
 const busy = ref(false)
 
 const branches = computed(() => branch.options.filter((o) => o.id !== null) as { id: number; name: string }[])
-const roleChoices = computed(() => props.roles.filter((r) => !r.archived_at && (r.code !== 'owner' || auth.user?.roles.includes('owner'))))
+const roleChoices = computed(() => props.roles)
 
 watch(open, (v) => {
   if (!v) return

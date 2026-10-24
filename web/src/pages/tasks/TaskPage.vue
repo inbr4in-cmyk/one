@@ -141,7 +141,7 @@ const due = (x: Task) => (x.due_at ? `${dayLabel(x.due_at, loc.value, { weekday:
           <dt>{{ t('tasks.author') }}</dt><dd>{{ task.creator_name ?? '—' }}</dd>
           <dt>{{ t('tasks.assignees') }}</dt><dd><span v-for="a in task.assignees" :key="a.id" class="who2"><UiAvatar :name="a.full_name" size="sm" />{{ a.full_name }}</span></dd>
           <template v-if="task.branch_id"><dt>{{ t('branch.label') }}</dt><dd>{{ refs.branchName(task.branch_id) }}</dd></template>
-          <template v-if="link"><dt>{{ t('tasks.linkLabel') }}</dt><dd><RouterLink :to="link" class="rowlink"><UiIcon name="clip" :size="14" /> {{ t(`tasks.link.${task.link_type}`) }} #{{ task.link_id }}</RouterLink></dd></template>
+          <template v-if="link"><dt>{{ t('tasks.linkLabel') }}</dt><dd><RouterLink :to="link" class="rowlink"><UiIcon name="clip" :size="14" /> {{ t(`tasks.link.${task.link_type}`) }}: {{ task.link_title ?? `#${task.link_id}` }}</RouterLink></dd></template>
           <dt>{{ t('tasks.createdAt') }}</dt><dd>{{ relativeTime(task.created_at, loc) }}</dd>
           <template v-if="task.done_at"><dt>{{ t('tasks.doneAt') }}</dt><dd>{{ relativeTime(task.done_at, loc) }}</dd></template>
         </dl>

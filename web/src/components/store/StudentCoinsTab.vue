@@ -24,6 +24,8 @@ async function load() {
 }
 onMounted(load)
 const kind = (k: string) => (te(`coins.kind.${k}`) ? t(`coins.kind.${k}`) : k)
+/** Automatic entries carry a server-side Russian reason; show the localized kind instead, free text only for manual ones */
+const MANUAL = new Set(['manual', 'writeoff'])
 </script>
 
 <template>
@@ -38,7 +40,7 @@ const kind = (k: string) => (te(`coins.kind.${k}`) ? t(`coins.kind.${k}`) : k)
         <UiEmptyState v-else-if="!data.items.length" icon="coin" :title="t('coins.noHistory')" />
         <div v-else class="short-list">
           <div v-for="(e, i) in data.items" :key="i" class="list-row">
-            <div class="grow"><b>{{ e.reason || kind(e.kind) }}</b><span>{{ kind(e.kind) }} · {{ dmy(e.at, loc) }}</span></div>
+            <div class="grow"><b>{{ MANUAL.has(e.kind) && e.reason ? e.reason : kind(e.kind) }}</b><span><template v-if="MANUAL.has(e.kind) && e.reason">{{ kind(e.kind) }} · </template>{{ dmy(e.at, loc) }}</span></div>
             <b class="num" :class="e.delta > 0 ? 'okc' : 'redc'">{{ e.delta > 0 ? '+' : '' }}{{ num(e.delta, loc) }}</b>
           </div>
         </div>

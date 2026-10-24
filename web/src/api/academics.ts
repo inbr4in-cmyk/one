@@ -117,6 +117,26 @@ export interface Homework {
   checked: number
 }
 
+export interface HomeworkIn {
+  title: string
+  body: string | null
+  due_at: string | null
+  lesson_id: number | null
+}
+
+export type SubmissionStatus = 'assigned' | 'submitted' | 'checked'
+
+export interface HomeworkSubmission {
+  student_id: number
+  full_name: string
+  status: SubmissionStatus
+  answer: string | null
+  file_url: string | null
+  grade: number | null
+  teacher_comment: string | null
+  submitted_at: string | null
+}
+
 export interface LessonQuery {
   from: string
   to: string
@@ -151,6 +171,12 @@ export const academicsApi = {
   mark: (lessonId: number, body: { marks: MarkIn[]; reason?: string | null; topic?: string | null }) =>
     http.put<Roster>(`/lessons/${lessonId}/attendance`, body),
   homework: (groupId: number) => http.get<Homework[]>(`/groups/${groupId}/homework`, { silent: true }),
-  addHomework: (groupId: number, body: { title: string; body?: string | null; due_at?: string | null; lesson_id?: number | null }) =>
-    http.post<Homework>(`/groups/${groupId}/homework`, body),
+  addHomework: (groupId: number, body: Partial<HomeworkIn> & { title: string }) =>
+    http.post<Homework>(`/groups/${groupId}/homework`, body, { silent: true }),
+  editHomework: (id: number, body: Partial<HomeworkIn>) => http.patch<Homework>(`/homework/${id}`, body, { silent: true }),
+  archiveHomework: (id: number) => http.post<void>(`/homework/${id}/archive`),
+  /** One row per active group member */
+  submissions: (id: number) => http.get<HomeworkSubmission[]>(`/homework/${id}/submissions`),
+  check: (id: number, studentId: number, body: { grade: number | null; comment: string | null }) =>
+    http.put<void>(`/homework/${id}/submissions/${studentId}`, body, { silent: true }),
 }
