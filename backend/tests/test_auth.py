@@ -104,11 +104,12 @@ async def test_otp_login_for_parent(client, db):
     from app.core.security import sha256
 
     stored = await get_kv().get("otp:+77015550000")
-    assert stored and stored.endswith(":0")
+    assert stored and len(stored) == 64
     # We can't read the code (only its hash is stored); brute-force guard: 5 wrong tries burn it.
     for _ in range(5):
         r = await client.post("/api/auth/otp/verify", json={"phone": "+77015550000", "code": "999999"})
         assert r.status_code == 401
-    assert sha256("999999") != stored.split(":")[0]
+    assert sha256("999999") != stored
     r = await client.post("/api/auth/otp/verify", json={"phone": "+77015550000", "code": "999999"})
     assert r.status_code == 401
+    assert await get_kv().get("otp:+77015550000") is None  # burnt after the 6th try

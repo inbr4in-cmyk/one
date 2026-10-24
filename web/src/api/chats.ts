@@ -83,3 +83,21 @@ export const notifyApi = {
   counters: () => http.get<Counters>('/counters', { silent: true }),
   wsTicket: () => http.post<{ ticket: string }>('/ws/ticket', undefined, { silent: true }),
 }
+
+export interface SearchHit {
+  id: number
+  title: string
+  status?: string
+  source?: string
+  branch_id?: number
+  position?: string | null
+}
+export interface SearchOut {
+  students?: SearchHit[]
+  leads?: SearchHit[]
+  groups?: SearchHit[]
+  staff?: SearchHit[]
+}
+export const searchApi = {
+  search: (q: string, signal?: AbortSignal) => http.get<SearchOut>(`/search${qs({ q })}`, { silent: true, signal }),
+}

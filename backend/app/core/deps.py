@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.db import get_db
 from app.core.errors import forbidden
-from app.core.permissions import BRANCH, NETWORK, OWN, SENSITIVE_MODULES, Grants
+from app.core.permissions import BRANCH, NETWORK, OWN, PORTAL_MODULES, Grants
 from app.core.ratelimit import client_ip
 from app.core.security import decode_access_token
 from app.models.identity import AuthSession, User, UserKind
@@ -112,9 +112,12 @@ def require(module: str, action: str):
     async def dep(actor: CurrentActor) -> Actor:
         if not actor.can(module, action):
             raise forbidden()
-        s = get_settings()
-        if module in SENSITIVE_MODULES and actor.is_staff and s.require_staff_2fa and not actor.mfa:
-            raise forbidden("Для этого раздела включите двухфакторную защиту")
+        # Portal accounts never reach staff modules, whatever a role says.
+        if not actor.is_staff and module not in PORTAL_MODULES:
+            raise forbidden()
+        # Every staff action needs a 2FA session: money, contacts and exports are spread across many modules.
+        if actor.is_staff and get_settings().require_staff_2fa and not actor.mfa:
+            raise forbidden("Включите двухфакторную защиту, чтобы работать в системе")
         return actor
 
     return Depends(dep)
@@ -124,6 +127,8 @@ def require_staff():
     async def dep(actor: CurrentActor) -> Actor:
         if not actor.is_staff:
             raise forbidden()
+        if get_settings().require_staff_2fa and not actor.mfa:
+            raise forbidden("Включите двухфакторную защиту, чтобы работать в системе")
         return actor
 
     return Depends(dep)

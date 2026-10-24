@@ -65,6 +65,19 @@ def _check_grantable(actor: Actor, perms: list[PermIn]) -> None:
             raise forbidden(f"Нельзя выдать право шире собственного: {p.module}.{p.action}")
 
 
+async def _ensure_outranks(db: DB, actor: Actor, target: User) -> None:
+    """Managing an account (password, profile, archive) needs every right that account has, at least as wide —
+    otherwise resetting a password would be a way to borrow someone's bigger rights."""
+    if actor.is_owner:
+        return
+    perms = await db.execute(select(RolePermission.module, RolePermission.action, RolePermission.scope)
+                             .join(UserRole, UserRole.role_id == RolePermission.role_id).where(UserRole.user_id == target.id))
+    for module, action, scope in perms:
+        mine = actor.grants.scope(module, action)
+        if mine is None or wider(mine, scope) != mine:
+            raise forbidden("У сотрудника есть права шире ваших — обратитесь к руководителю")
+
+
 @router.get("/roles", response_model=list[RoleOut])
 async def list_roles(db: DB, actor: Actor = require("roles", "view")) -> list[RoleOut]:
     roles = list(await db.scalars(select(Role).order_by(Role.is_system.desc(), Role.id)))
@@ -103,6 +116,8 @@ async def update_role(role_id: int, body: RoleIn, db: DB, actor: Actor = require
         raise not_found("Роль")
     if role.code == "owner":
         raise forbidden("Права супер-админа не редактируются")
+    if role.is_system and not actor.is_owner:
+        raise forbidden("Системные роли меняет только супер-админ")
     if role.code in actor.role_codes and not actor.is_owner:
         raise forbidden("Нельзя менять права собственной роли")
     _check_grantable(actor, body.permissions)
@@ -250,11 +265,16 @@ async def create_staff(body: StaffIn, db: DB, actor: Actor = require("staff", "c
 
 @router.patch("/staff/{user_id}", response_model=StaffOut)
 async def update_staff(user_id: int, body: StaffPatch, db: DB, actor: Actor = require("staff", "edit")) -> StaffOut:
-    u = await db.get(User, user_id)
+    u = await db.get(User, user_id, populate_existing=True)
     if u is None or u.kind != UserKind.STAFF or not _staff_visible(actor, u):
         raise not_found("Сотрудник")
-    if u.id == actor.id and (body.role_ids is not None or body.branch_ids is not None):
-        raise forbidden("Нельзя менять собственные роли и филиалы")
+    if u.id == actor.id and (body.role_ids is not None or body.branch_ids is not None or body.salary is not None
+                             or body.is_active is not None):
+        raise forbidden("Нельзя менять собственные роли, филиалы, оклад и статус")
+    if u.id != actor.id:
+        await _ensure_outranks(db, actor, u)
+    if body.salary is not None and not actor.can("payroll", "adjust"):
+        raise forbidden("Оклад меняет сотрудник с правом на зарплату")
     before = snapshot(u, ["full_name", "email", "position", "salary", "is_active"])
     before["roles"] = sorted(ur.role.code for ur in u.roles)
     if "owner" in before["roles"] and not actor.is_owner:
@@ -303,11 +323,12 @@ async def _ensure_not_last_owner(db: DB, user_id: int) -> None:
 
 @router.post("/staff/{user_id}/archive", status_code=204)
 async def archive_staff(user_id: int, db: DB, actor: Actor = require("staff", "archive")) -> None:
-    u = await db.get(User, user_id)
+    u = await db.get(User, user_id, populate_existing=True)
     if u is None or u.kind != UserKind.STAFF or not _staff_visible(actor, u):
         raise not_found("Сотрудник")
     if u.id == actor.id:
         raise forbidden("Нельзя архивировать себя")
+    await _ensure_outranks(db, actor, u)
     if any(ur.role.code == "owner" for ur in u.roles):
         await _ensure_not_last_owner(db, u.id)
     u.archived_at = datetime.now(UTC)
@@ -321,7 +342,7 @@ async def archive_staff(user_id: int, db: DB, actor: Actor = require("staff", "a
 async def reset_2fa(user_id: int, db: DB, actor: Actor = require("security", "manage")) -> None:
     if not actor.is_owner:
         raise forbidden("Сбросить 2FA может только супер-админ")
-    u = await db.get(User, user_id)
+    u = await db.get(User, user_id, populate_existing=True)
     if u is None:
         raise not_found("Сотрудник")
     u.totp_enabled, u.totp_secret = False, None
@@ -336,11 +357,13 @@ class PasswordSet(BaseModel):
 
 @router.post("/staff/{user_id}/password", status_code=204)
 async def set_password(user_id: int, body: PasswordSet, db: DB, actor: Actor = require("staff", "edit")) -> None:
-    u = await db.get(User, user_id)
+    u = await db.get(User, user_id, populate_existing=True)
     if u is None or u.kind != UserKind.STAFF or not _staff_visible(actor, u):
         raise not_found("Сотрудник")
     if any(ur.role.code == "owner" for ur in u.roles) and not actor.is_owner:
         raise forbidden()
+    if u.id != actor.id:
+        await _ensure_outranks(db, actor, u)
     if err := validate_password_strength(body.password):
         raise bad_request(err)
     u.password_hash = hash_password(body.password)

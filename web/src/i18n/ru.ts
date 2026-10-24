@@ -1,4 +1,7 @@
+import modules from './modules.ru'
+
 const ru = {
+  ...modules,
   app: {
     name: 'One English',
     tagline: 'Innovation in Learning',
@@ -20,6 +23,18 @@ const ru = {
     more: 'Ещё',
     menu: 'Меню',
     toHome: 'На главную',
+    add: 'Добавить',
+    edit: 'Изменить',
+    remove: 'Убрать',
+    reset: 'Сбросить',
+    saved: 'Сохранено',
+    reason: 'Причина',
+    reasonRequired: 'Укажите причину (минимум 3 символа)',
+    nothingFound: 'Ничего не найдено',
+    breadcrumbs: 'Навигация',
+    prev: 'Назад',
+    next: 'Дальше',
+    range: '{from}–{to} из {total}',
   },
   errors: {
     network: 'Нет связи с сервером. Проверьте интернет и попробуйте ещё раз.',
@@ -35,8 +50,10 @@ const ru = {
     inbox: 'Входящие',
     chats: 'Чаты',
     schedule: 'Расписание',
+    groups: 'Группы',
     students: 'Ученики',
     attendance: 'Посещаемость',
+    payments: 'Оплаты',
     finance: 'Финансы',
     coins: 'Коины',
     tasks: 'Задачи',
@@ -55,6 +72,8 @@ const ru = {
     searchSoon: 'Поиск по ученикам, лидам и группам появится вместе с этими разделами.',
     notifications: 'Уведомления',
     noNotifications: 'Новых уведомлений нет',
+    readAll: 'Прочитать все',
+    searchHint: 'Введите минимум 2 символа: имя, телефон или группу.',
     noNotificationsHint: 'Здесь появятся новые лиды, пропуски и задачи.',
     openMenu: 'Открыть меню',
     userMenu: 'Меню пользователя',
@@ -184,6 +203,9 @@ const ru = {
   time: {
     now: 'сейчас',
     yesterday: 'вчера, {time}',
+    min: 'мин',
+    h: 'ч',
+    d: 'дн',
   },
 }
 

@@ -10,11 +10,11 @@ from app.core.errors import bad_request, conflict, forbidden, not_found
 from app.core.schemas import ORM
 from app.models import (
     Book, BookMovement, BookStock, Branch, CoinEntry, Expense, ExpenseCategory, GroupMember, Payment, Role, ShopItem,
-    ShopOrder, Student, UserRole,
+    ShopOrder, Student, User, UserRole,
 )
 from app.models.finance import PaymentMethod
 from app.modules.finance.router import month_bounds
-from app.modules.portal.access import portal_student
+from app.modules.portal.access import my_students, portal_student
 from app.modules.students.scope import get_student_scoped
 from app.services import coins as coin_svc
 from app.services.clock import now, period_of, today
@@ -241,7 +241,7 @@ async def sell(body: SaleIn, db: DB, actor: Actor = require("books", "sell")) ->
     """Only to the school's students: the sale is a separate payment (category «Книги») on the student card."""
     if body.method not in PaymentMethod.ALL:
         raise bad_request("Способ оплаты")
-    s = await get_student_scoped(db, actor, body.student_id, "books", "sell")
+    s = await get_student_scoped(db, actor, body.student_id, "books", "sell", lock=True)
     actor.ensure_branch("books", "sell", s.branch_id)
     book = await db.get(Book, body.book_id)
     if book is None or book.archived_at:
@@ -330,7 +330,8 @@ class AwardIn(BaseModel):
 @router.post("/coins/award", status_code=201)
 async def award(body: AwardIn, db: DB, actor: Actor = require("coins", "award")) -> dict:
     """Manual award within the monthly limit of the role, always with a comment (ТЗ 14.1)."""
-    s = await get_student_scoped(db, actor, body.student_id, "coins", "award")
+    s = await get_student_scoped(db, actor, body.student_id, "coins", "award", lock=True)
+    await db.get(User, actor.id, with_for_update=True)  # the monthly limit is per giver: serialize their awards
     limit = await _coin_limit(db, actor)
     _, _, a, b = month_bounds(period_of(today()))
     used = int(await db.scalar(select(func.coalesce(func.sum(CoinEntry.delta), 0)).where(
@@ -350,7 +351,7 @@ async def award(body: AwardIn, db: DB, actor: Actor = require("coins", "award"))
 
 @router.post("/coins/writeoff", status_code=201)
 async def coin_writeoff(body: AwardIn, db: DB, actor: Actor = require("coins", "writeoff")) -> dict:
-    s = await get_student_scoped(db, actor, body.student_id, "coins", "writeoff")
+    s = await get_student_scoped(db, actor, body.student_id, "coins", "writeoff", lock=True)
     bal = await coin_svc.balance(db, s.id)
     if body.amount > bal:
         raise conflict(f"У ученика только {bal} коинов")
@@ -372,7 +373,24 @@ async def student_coins(student_id: int, db: DB, actor: Actor = require("coins",
 @router.get("/coins/top")
 async def coins_top(db: DB, actor: CurrentActor, group_id: int | None = None, branch_id: int | None = None,
                     limit: int = 20) -> list[dict]:
-    """Leaderboard (ТЗ 14.3). Students see first names only."""
+    """Leaderboard (ТЗ 14.3). Staff see their scope; students and parents see their group or branch, first names only."""
+    if actor.is_staff:
+        allowed = actor.branches_for("coins", "view")
+        if branch_id is not None:
+            actor.ensure_branch("coins", "view", branch_id)
+        branches = {branch_id} if branch_id is not None else allowed
+    else:
+        kids = await my_students(db, actor)
+        if not kids:
+            return []
+        branches = {k.branch_id for k in kids}
+        if branch_id is not None and branch_id not in branches:
+            raise forbidden()
+        if branch_id is not None:
+            branches = {branch_id}
+        if group_id is not None and not await db.scalar(select(GroupMember.id).where(
+                GroupMember.group_id == group_id, GroupMember.student_id.in_([k.id for k in kids]), GroupMember.left_on.is_(None))):
+            raise forbidden()
     total = func.sum(CoinEntry.delta).label("total")
     q = (select(Student.id, Student.full_name, Student.branch_id, total).join(CoinEntry, CoinEntry.student_id == Student.id)
          .where(Student.archived_at.is_(None), CoinEntry.kind.not_in(("order_hold", "order_release", "order_spend")))
@@ -380,8 +398,8 @@ async def coins_top(db: DB, actor: CurrentActor, group_id: int | None = None, br
     if group_id:
         q = q.where(Student.id.in_(select(GroupMember.student_id).where(GroupMember.group_id == group_id,
                                                                          GroupMember.left_on.is_(None))))
-    if branch_id:
-        q = q.where(Student.branch_id == branch_id)
+    if branches is not None:
+        q = q.where(Student.branch_id.in_(branches))
     staff = actor.is_staff
     return [{"student_id": i if staff else None, "name": n if staff else n.split(" ")[0], "branch_id": b, "coins": int(t)}
             for i, n, b, t in (await db.execute(q)).all()]
@@ -427,6 +445,11 @@ async def update_item(item_id: int, body: ItemIn, db: DB, actor: Actor = require
     i = await db.get(ShopItem, item_id)
     if i is None or i.archived_at:
         raise not_found("Товар")
+    for b in {i.branch_id, body.branch_id}:
+        if b is None and actor.branches_for("shop", "edit") is not None:
+            raise forbidden("Общие товары сети меняет владелец")
+        if b is not None:
+            actor.ensure_branch("shop", "edit", b)
     for k, v in body.model_dump().items():
         setattr(i, k, v)
     await write_audit(db, actor_id=actor.id, action="shop.item_update", entity="shop_item", entity_id=i.id, ip=actor.ip,

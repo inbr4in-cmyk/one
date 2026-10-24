@@ -72,7 +72,7 @@ async def _staff(db: AsyncSession, role: str, branch: Branch, name: str, positio
 
 
 async def seed_demo(db: AsyncSession) -> None:
-    if get_settings().env == "production":
+    if get_settings().is_prod:
         raise SystemExit("Demo data is never loaded into production")
     if await db.scalar(select(User.id).where(User.phone == _phone(9000000))):
         print("demo already loaded")

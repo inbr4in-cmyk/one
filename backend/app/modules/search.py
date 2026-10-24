@@ -18,7 +18,7 @@ async def search(db: DB, actor: Actor = require_staff(), q: str = Query(min_leng
     out: dict[str, list] = {}
     if actor.can("students", "view"):
         cond = Student.full_name.ilike(term)
-        if len(digits) >= 4:
+        if len(digits) >= 4 and actor.can("students", "view_contacts"):  # no guessing masked phones
             cond = cond | Student.phone.contains(digits)
         rows = await db.scalars(select(Student).where(student_filter(actor), Student.archived_at.is_(None), cond).limit(8))
         out["students"] = [{"id": s.id, "title": s.full_name, "status": s.status, "branch_id": s.branch_id} for s in rows]

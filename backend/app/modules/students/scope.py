@@ -22,8 +22,13 @@ def student_filter(actor: Actor, module: str = "students", action: str = "view")
     return Student.branch_id.in_(actor.branch_ids or {-1})
 
 
-async def get_student_scoped(db, actor: Actor, student_id: int, module: str = "students", action: str = "view") -> Student:
-    s = await db.scalar(select(Student).where(Student.id == student_id, student_filter(actor, module, action)))
+async def get_student_scoped(db, actor: Actor, student_id: int, module: str = "students", action: str = "view",
+                             lock: bool = False) -> Student:
+    """lock=True takes a row lock: use it for anything that changes balances, coins or stock."""
+    q = select(Student).where(Student.id == student_id, student_filter(actor, module, action))
+    if lock:
+        q = q.with_for_update(of=Student).execution_options(populate_existing=True)
+    s = await db.scalar(q)
     if s is None:
         # Same answer for "doesn't exist" and "not yours": no probing of other branches' ids.
         raise not_found("Ученик")

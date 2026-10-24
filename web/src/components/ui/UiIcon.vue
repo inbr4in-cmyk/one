@@ -1,7 +1,7 @@
 <script setup lang="ts">
 const props = withDefaults(defineProps<{
   name: string
-  size?: 16 | 18 | 20 | 24 | 40
+  size?: 11 | 14 | 16 | 18 | 20 | 24 | 40
   /** Accessible name; without it the icon is decorative. */
   label?: string
 }>(), { size: 20, label: undefined })

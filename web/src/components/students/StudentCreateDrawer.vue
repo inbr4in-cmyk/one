@@ -28,7 +28,7 @@ const blank = () => ({
   create_account: true,
 })
 const form = reactive(blank())
-const guardians = ref<(GuardianIn & { key: number })[]>([])
+const guardians = ref<(GuardianIn & { key: number; relation: string; notify: boolean })[]>([])
 const errors = reactive<Record<string, string | null>>({})
 const busy = ref(false)
 let seq = 0
@@ -123,9 +123,9 @@ async function submit() {
           <UiInput v-model="g.full_name" :label="t('students.form.guardianName')" :error="errors[`g${i}name`]" autocomplete="off" />
           <div class="form-2">
             <UiPhoneInput v-model="g.phone" :label="t('students.form.phone')" :error="errors[`g${i}phone`]" />
-            <UiInput v-model="g.relation as string" :label="t('students.form.relation')" :placeholder="t('students.form.relationPh')" />
+            <UiInput v-model="g.relation" :label="t('students.form.relation')" :placeholder="t('students.form.relationPh')" />
           </div>
-          <UiCheck v-model="g.notify as boolean" :label="t('students.form.notify')" />
+          <UiCheck v-model="g.notify" :label="t('students.form.notify')" />
         </fieldset>
       </TransitionGroup>
 

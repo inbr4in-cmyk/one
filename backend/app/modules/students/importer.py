@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 
 from app.core.audit import write_audit
 from app.core.deps import DB, Actor, require
-from app.core.errors import bad_request
+from app.core.errors import bad_request, forbidden
 from app.core.security import normalize_phone
 from app.models import Branch, Group, GroupMember, Level, Student
 from app.models.identity import UserKind
@@ -139,6 +139,8 @@ async def import_students(db: DB, actor: Actor = require("students", "create"), 
                 "valid": len(ok), "errors": errors}
     if errors:
         raise bad_request(f"Исправьте ошибки в файле: {len(errors)} строк")
+    if any(r["lessons_left"] for r in ok) and not actor.can("payments", "create"):
+        raise forbidden("Остатки уроков переносит сотрудник с правом приёма оплат")
     created = 0
     for r in ok:
         s = Student(full_name=r["full_name"], phone=r["phone"], birth_date=r["birth_date"], branch_id=r["branch_id"],
@@ -153,6 +155,8 @@ async def import_students(db: DB, actor: Actor = require("students", "create"), 
         if r["lessons_left"]:
             await bal.apply(db, s, "manual", lessons=r["lessons_left"], price=r["lesson_price"], actor_id=actor.id,
                             note="Остаток при переносе из таблицы")
+            await write_audit(db, actor_id=actor.id, action="student.import_balance", entity="student", entity_id=s.id,
+                              branch_id=s.branch_id, ip=actor.ip, after={"lessons": r["lessons_left"], "price": r["lesson_price"]})
         if r["group_id"]:
             g = await db.get(Group, r["group_id"])
             cnt = await db.scalar(select(func.count()).select_from(GroupMember).where(GroupMember.group_id == g.id,

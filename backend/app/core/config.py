@@ -21,6 +21,8 @@ class Settings(BaseSettings):
 
     cors_origins: list[str] = ["http://localhost:5173"]
     cookie_secure: bool = False
+    # Set only when the API sits behind our nginx, which overwrites X-Real-IP; otherwise clients could spoof it.
+    trust_proxy: bool = False
 
     # Meta (Instagram / WhatsApp Cloud API)
     meta_app_secret: str = "dev-meta-secret"
@@ -37,12 +39,19 @@ class Settings(BaseSettings):
 
     @property
     def is_prod(self) -> bool:
-        return self.env == "prod"
+        return self.env in ("prod", "production")
 
 
 @lru_cache
 def get_settings() -> Settings:
     s = Settings()
-    if s.is_prod and s.jwt_secret.startswith("dev-only"):
-        raise RuntimeError("OE_JWT_SECRET must be set in production")
+    if s.is_prod:
+        problems = [name for name, bad in (
+            ("OE_JWT_SECRET", s.jwt_secret.startswith("dev-only")),
+            ("OE_META_APP_SECRET", s.meta_app_secret.startswith("dev-") or len(s.meta_app_secret) < 16),
+            ("OE_META_VERIFY_TOKEN", s.meta_verify_token.startswith("dev-") or len(s.meta_verify_token) < 16),
+            ("OE_COOKIE_SECURE", not s.cookie_secure),
+        ) if bad]
+        if problems:
+            raise RuntimeError("Unsafe production settings: " + ", ".join(problems))
     return s

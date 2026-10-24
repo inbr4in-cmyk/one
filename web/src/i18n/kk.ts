@@ -1,6 +1,8 @@
 import type { Messages } from './ru'
+import modules from './modules.kk'
 
 const kk: Messages = {
+  ...modules,
   app: {
     name: 'One English',
     tagline: 'Innovation in Learning',
@@ -22,6 +24,18 @@ const kk: Messages = {
     more: 'Тағы',
     menu: 'Мәзір',
     toHome: 'Басты бетке',
+    add: 'Қосу',
+    edit: 'Өзгерту',
+    remove: 'Алып тастау',
+    reset: 'Тазалау',
+    saved: 'Сақталды',
+    reason: 'Себебі',
+    reasonRequired: 'Себебін көрсетіңіз (кемінде 3 таңба)',
+    nothingFound: 'Ештеңе табылмады',
+    breadcrumbs: 'Навигация',
+    prev: 'Артқа',
+    next: 'Әрі қарай',
+    range: '{from}–{to} / {total}',
   },
   errors: {
     network: 'Сервермен байланыс жоқ. Интернетті тексеріп, қайталап көріңіз.',
@@ -37,8 +51,10 @@ const kk: Messages = {
     inbox: 'Кіріс хаттар',
     chats: 'Чаттар',
     schedule: 'Кесте',
+    groups: 'Топтар',
     students: 'Оқушылар',
     attendance: 'Қатысу',
+    payments: 'Төлемдер',
     finance: 'Қаржы',
     coins: 'Коиндер',
     tasks: 'Тапсырмалар',
@@ -57,6 +73,8 @@ const kk: Messages = {
     searchSoon: 'Оқушылар, лидтер және топтар бойынша іздеу осы бөлімдермен бірге қосылады.',
     notifications: 'Хабарландырулар',
     noNotifications: 'Жаңа хабарландыру жоқ',
+    readAll: 'Барлығын оқу',
+    searchHint: 'Кемінде 2 таңба енгізіңіз: аты, телефоны немесе топ.',
     noNotificationsHint: 'Мұнда жаңа лидтер, сабақ қалдыру және тапсырмалар шығады.',
     openMenu: 'Мәзірді ашу',
     userMenu: 'Пайдаланушы мәзірі',
@@ -186,6 +204,9 @@ const kk: Messages = {
   time: {
     now: 'қазір',
     yesterday: 'кеше, {time}',
+    min: 'мин',
+    h: 'сағ',
+    d: 'күн',
   },
 }
 

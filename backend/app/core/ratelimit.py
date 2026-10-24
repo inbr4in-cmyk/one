@@ -1,11 +1,14 @@
 from fastapi import HTTPException, Request, status
 
+from app.core.config import get_settings
 from app.core.kv import get_kv
 
 
 def client_ip(request: Request) -> str:
-    # Behind the reverse proxy the real IP comes in X-Real-IP (nginx sets it, clients cannot).
-    return request.headers.get("x-real-ip") or (request.client.host if request.client else "unknown")
+    # X-Real-IP is trusted only behind our nginx, which always overwrites it.
+    if get_settings().trust_proxy and request.headers.get("x-real-ip"):
+        return request.headers["x-real-ip"]
+    return request.client.host if request.client else "unknown"
 
 
 async def hit(bucket: str, limit: int, window_s: int) -> None:

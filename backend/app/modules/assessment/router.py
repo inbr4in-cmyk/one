@@ -12,13 +12,12 @@ from app.core.audit import write_audit
 from app.core.config import get_settings
 from app.core.deps import DB, Actor, CurrentActor, require
 from app.core.errors import bad_request, forbidden, not_found
-from app.core.permissions import OWN
 from app.core.ratelimit import client_ip, hit
 from app.core.schemas import ORM
 from app.core.security import create_purpose_token, decode_purpose_token, normalize_phone
 from app.models import Attempt, Branch, Group, GroupMember, Lead, LeadEvent, Level, Question, Student, Test
 from app.models.crm import LeadSource
-from app.modules.crm.service import create_lead, find_by_phone
+from app.modules.crm.service import create_lead, crm_people, find_by_phone
 from app.modules.students.scope import get_student_scoped
 from app.services.clock import now
 from app.services.coins import award_auto
@@ -323,6 +322,20 @@ async def finalize_final(db: DB, a: Attempt, t: Test, actor_id: int | None) -> N
         await award_auto(db, s.id, "final_test", ("test", t.id), f"Финальный тест: {a.score}")
 
 
+async def _bonus_teacher(db: DB, s: Student, t: Test) -> int | None:
+    return await db.scalar(select(Group.teacher_id).join(GroupMember, GroupMember.group_id == Group.id)
+                           .where(GroupMember.student_id == s.id, GroupMember.left_on.is_(None), Group.level_id == t.level_id))
+
+
+async def _hold_for_approval(db: DB, a: Attempt, s: Student, t: Test) -> None:
+    """A hand-entered score that would pay the person entering it waits for an admin (no self-approved bonuses)."""
+    a.status = "needs_review"
+    for uid in await crm_people(db, s.branch_id, "tests", "review"):
+        if uid != a.reviewed_by:
+            await notify_user(db, uid, "test", f"Подтвердите результат теста: {s.full_name}", body=f"{t.title}",
+                              link=f"/tests/attempts/{a.id}")
+
+
 @router.post("/tests/{test_id}/results", response_model=AttemptOut, status_code=201)
 async def record_result(test_id: int, body: ResultIn, db: DB, actor: Actor = require("tests", "review")) -> AttemptOut:
     t = await db.get(Test, test_id)
@@ -336,9 +349,13 @@ async def record_result(test_id: int, body: ResultIn, db: DB, actor: Actor = req
                 status="needs_review" if needs and body.manual_score is None else "done", reviewed_by=actor.id)
     if body.answers is None and body.manual_score is not None:
         a.auto_score = 0
+    if a.auto_score + (a.manual_score or 0) > t.max_score:
+        raise bad_request(f"Сумма больше максимума {t.max_score}")
     db.add(a)
     await db.flush()
-    if a.status == "done":
+    if a.status == "done" and body.manual_score is not None and await _bonus_teacher(db, s, t) == actor.id:
+        await _hold_for_approval(db, a, s, t)
+    elif a.status == "done":
         await finalize_final(db, a, t, actor.id)
     await write_audit(db, actor_id=actor.id, action="test.result", entity="attempt", entity_id=a.id, branch_id=s.branch_id,
                       ip=actor.ip, after={"student_id": s.id, "score": a.auto_score + (a.manual_score or 0)})
@@ -359,10 +376,14 @@ async def review(attempt_id: int, body: ReviewIn, db: DB, actor: Actor = require
     t = await db.get(Test, a.test_id)
     if a.auto_score + body.manual_score > t.max_score:
         raise bad_request(f"Сумма больше максимума {t.max_score}")
-    if a.status == "done" and actor.scope("tests", "review") == OWN:
+    if a.status == "done":
         raise forbidden("Результат уже утверждён")
     a.manual_score, a.reviewed_by = body.manual_score, actor.id
-    await finalize_final(db, a, t, actor.id)
+    s = await db.get(Student, a.student_id)
+    if await _bonus_teacher(db, s, t) == actor.id and not actor.is_owner:
+        await _hold_for_approval(db, a, s, t)
+    else:
+        await finalize_final(db, a, t, actor.id)
     await db.commit()
     return AttemptOut.model_validate(a)
 

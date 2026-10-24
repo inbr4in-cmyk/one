@@ -92,3 +92,17 @@ export function weekdayShort(i: number, locale: Locale): string {
 export function ruleSummary(rules: { weekdays: number[]; start: string; end: string }[], locale: Locale): string {
   return rules.map((r) => `${r.weekdays.map((d) => weekdayShort(d, locale)).join('/')} ${r.start.slice(0, 5)}–${r.end.slice(0, 5)}`).join(', ')
 }
+
+/** "Сегодня", "Вчера" or "12 октября" for day separators in a thread. */
+export function dayTitle(iso: string, locale: Locale, today: string, yesterday: string): string {
+  const d = new Date(iso)
+  const now = new Date()
+  if (sameDay(d, now)) return today
+  if (sameDay(d, addDays(now, -1))) return yesterday
+  return d.toLocaleDateString(intlLocale(locale), { day: 'numeric', month: 'long', ...(d.getFullYear() !== now.getFullYear() ? { year: 'numeric' } : {}) })
+}
+
+/** Adds `day` to the first message of each calendar day. */
+export function withDays<T extends { at: string }>(items: T[]): (T & { newDay: boolean })[] {
+  return items.map((m, i) => ({ ...m, newDay: i === 0 || !sameDay(new Date(items[i - 1]!.at), new Date(m.at)) }))
+}

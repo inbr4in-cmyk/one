@@ -44,7 +44,8 @@ async def open_session(db: AsyncSession, user: User, mfa: bool, ip: str, ua: str
 async def rotate(db: AsyncSession, refresh: str, ip: str) -> tuple[str, str]:
     h = sha256(refresh)
     t = now()
-    sess = await db.scalar(select(AuthSession).where(AuthSession.refresh_hash == h))
+    # Row lock: two parallel refreshes with the same token can't both rotate it.
+    sess = await db.scalar(select(AuthSession).where(AuthSession.refresh_hash == h).with_for_update())
     if sess is None:
         # Reuse of an already-rotated token means it was stolen: revoke that whole session.
         stolen = await db.scalar(select(AuthSession).where(AuthSession.prev_refresh_hash == h))

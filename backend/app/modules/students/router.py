@@ -143,7 +143,7 @@ async def list_students(
     stmt = stmt.where(Student.archived_at.is_not(None) if archived else Student.archived_at.is_(None))
     if q:
         digits = "".join(c for c in q if c.isdigit())
-        stmt = stmt.where(Student.full_name.ilike(f"%{q}%") | (Student.phone.contains(digits) if len(digits) >= 4 else False))
+        stmt = stmt.where(Student.full_name.ilike(f"%{q}%") | (Student.phone.contains(digits) if len(digits) >= 4 and actor.can("students", "view_contacts") else False))
     if branch_id:
         stmt = stmt.where(Student.branch_id == branch_id)
     if status:

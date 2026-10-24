@@ -386,23 +386,34 @@ async def counters(db: DB, actor: CurrentActor) -> dict:
 async def ws_ticket(actor: CurrentActor) -> dict:
     """A one-time, 30-second ticket: the access token never goes into a URL."""
     t = secrets.token_urlsafe(24)
-    await get_kv().set(f"ws:{t}", str(actor.id), 30)
+    await get_kv().set(f"ws:{t}", f"{actor.id}:{actor.session_id}", 30)
     return {"ticket": t}
+
+
+async def _session_alive(user_id: int, session_id: int) -> bool:
+    from app.models import AuthSession
+
+    async with SessionLocal() as db:
+        sess = await db.get(AuthSession, session_id)
+        user = await db.get(User, user_id)
+        return bool(sess and user and sess.user_id == user.id and sess.is_live(now()) and user.is_active
+                    and user.archived_at is None)
 
 
 @router.websocket("/ws")
 async def ws(websocket: WebSocket, ticket: str):
     kv = get_kv()
-    uid = await kv.get(f"ws:{ticket}")
+    value = await kv.get(f"ws:{ticket}")
     await kv.delete(f"ws:{ticket}")
-    if not uid:
+    if not value:
+        await websocket.close(code=4401)
+        return
+    uid, sid = (int(x) for x in value.split(":"))
+    if not await _session_alive(uid, sid):
         await websocket.close(code=4401)
         return
     async with SessionLocal() as db:
-        user = await db.get(User, int(uid))
-        if user is None or not user.is_active:
-            await websocket.close(code=4401)
-            return
+        user = await db.get(User, uid)
         from app.core.deps import load_actor
 
         actor = await load_actor(db, user, 0, True, "")
@@ -426,6 +437,10 @@ async def ws(websocket: WebSocket, ticket: str):
         async def keepalive():
             while True:
                 msg = await websocket.receive_text()
+                # Logout, "end session" or archiving closes the socket at the next ping (clients ping every 25 s).
+                if not await _session_alive(uid, sid):
+                    await websocket.close(code=4401)
+                    return
                 if msg == "ping":
                     await websocket.send_text(json.dumps({"type": "pong"}))
 

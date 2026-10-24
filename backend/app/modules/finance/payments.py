@@ -69,6 +69,11 @@ async def _quote(db: DB, s: Student, body: PaymentIn, actor: Actor) -> tuple[Pay
     level = await db.get(Level, body.level_id or s.level_id) if (body.level_id or s.level_id) else None
     if level is None:
         raise bad_request("У ученика не указан уровень")
+    if body.level_id and s.level_id and body.level_id != s.level_id and not actor.can("payments", "discount"):
+        # Paying at another level's price is a discount in disguise; only the next level is allowed (moving up).
+        current = await db.get(Level, s.level_id)
+        if current is None or current.next_level_id != body.level_id:
+            raise forbidden("Оплата по цене другого уровня — только у сотрудников с правом на скидки")
     if body.discount and not actor.can("payments", "discount"):
         raise forbidden("Скидки — только у сотрудников с правом")
     gross = body.lessons * level.lesson_price
@@ -90,7 +95,7 @@ async def quote(body: PaymentIn, db: DB, actor: Actor = require("payments", "cre
 async def take_payment(body: PaymentIn, db: DB, actor: Actor = require("payments", "create")) -> PaymentOut:
     if body.method not in PaymentMethod.ALL:
         raise bad_request("Неизвестный способ оплаты")
-    s = await get_student_scoped(db, actor, body.student_id, "payments", "create")
+    s = await get_student_scoped(db, actor, body.student_id, "payments", "create", lock=True)
     actor.ensure_branch("payments", "create", s.branch_id)
     q, level = await _quote(db, s, body, actor)
     prior = await db.scalar(select(func.count()).select_from(Payment).where(Payment.student_id == s.id, Payment.category == "course"))
@@ -183,11 +188,11 @@ class RefundIn(BaseModel):
 
 @router.post("/payments/{payment_id}/refund", status_code=201)
 async def refund(payment_id: int, body: RefundIn, db: DB, actor: Actor = require("payments", "refund")) -> dict:
-    p = await db.get(Payment, payment_id)
+    p = await db.get(Payment, payment_id, with_for_update=True, populate_existing=True)
     if p is None:
         raise not_found("Оплата")
     actor.ensure_branch("payments", "refund", p.branch_id)
-    s = await db.get(Student, p.student_id)
+    s = await db.get(Student, p.student_id, with_for_update=True, populate_existing=True)
     if body.amount > p.amount - p.refunded:
         raise bad_request("Сумма возврата больше оплаченной")
     if body.lessons > s.lessons_left:

@@ -44,7 +44,8 @@ CATALOG: dict[str, tuple[str, dict[str, str]]] = {
 }
 
 # Modules where staff must have 2FA confirmed in this session.
-SENSITIVE_MODULES = {"roles", "finance", "payroll", "security", "audit", "settings", "staff"}
+# Modules a student or parent account may use; everything else is staff-only.
+PORTAL_MODULES = {"chats"}
 
 
 def is_valid(module: str, action: str) -> bool:

@@ -18,6 +18,7 @@ from app.models import (
     HomeworkSubmission,
     Lead,
     Level,
+    UserBranch,
     Lesson,
     Room,
     ScheduleRule,
@@ -98,8 +99,10 @@ async def _get_group(db: DB, actor: Actor, group_id: int, action: str = "view") 
 
 async def _check_teacher(db: DB, teacher_id: int, branch_id: int) -> User:
     t = await db.get(User, teacher_id)
-    if t is None or t.kind != UserKind.STAFF or not t.is_active:
+    if t is None or t.kind != UserKind.STAFF or not t.is_active or t.archived_at is not None:
         raise bad_request("Учитель не найден")
+    if not await db.scalar(select(UserBranch.id).where(UserBranch.user_id == t.id, UserBranch.branch_id == branch_id)):
+        raise bad_request("Учитель не работает в этом филиале")
     return t
 
 
@@ -380,6 +383,7 @@ async def create_lesson(body: LessonIn, db: DB, actor: Actor = require("schedule
     if room is None:
         raise bad_request("Кабинет не найден")
     actor.ensure_branch("schedule", "create", room.branch_id)
+    await _check_teacher(db, body.teacher_id, room.branch_id)
     level_id = None
     if body.group_id:
         g = await _get_group(db, actor, body.group_id)
@@ -749,6 +753,8 @@ async def check_submission(homework_id: int, student_id: int, body: CheckIn, db:
     g = await _get_group(db, actor, h.group_id)
     if actor.scope("homework", "manage") == OWN and g.teacher_id != actor.id:
         raise forbidden()
+    if not await db.scalar(select(GroupMember.id).where(GroupMember.group_id == g.id, GroupMember.student_id == student_id)):
+        raise not_found("Ученик в группе")
     sub = await db.scalar(select(HomeworkSubmission).where(HomeworkSubmission.homework_id == h.id,
                                                            HomeworkSubmission.student_id == student_id))
     if sub is None:

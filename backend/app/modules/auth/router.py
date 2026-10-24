@@ -1,3 +1,4 @@
+import hmac
 from datetime import UTC, datetime
 from typing import Annotated
 
@@ -92,6 +93,9 @@ async def login(body: LoginIn, request: Request, response: Response, db: DB) -> 
     user = await db.scalar(select(User).where(User.phone == phone, User.archived_at.is_(None)))
     ok = verify_password(body.password, user.password_hash if user else None)
     if user is None or not user.is_active:
+        # Unknown phones behave like real ones (same lock after 5 tries), so the answer doesn't reveal who has an account.
+        if await get_kv().incr(f"login:ghost:{phone}", service.LOCK_MINUTES * 60) > service.MAX_FAILED:
+            raise HTTPException(status.HTTP_423_LOCKED, "Аккаунт временно заблокирован после неудачных попыток входа")
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Неверный телефон или пароль")
     service.check_lock(user)
     if not ok:
@@ -140,7 +144,8 @@ async def otp_request(body: OtpRequestIn, request: Request, db: DB) -> None:
     if user is None or not user.is_active or user.kind == UserKind.STAFF:
         return None
     code = new_otp_code()
-    await get_kv().set(f"otp:{phone}", f"{sha256(code)}:0", 300)
+    await get_kv().set(f"otp:{phone}", sha256(code), 300)
+    await get_kv().delete(f"otp-tries:{phone}")
     await send_whatsapp_text(db, phone, f"One English: код для входа {code}. Никому его не сообщайте.",
                              template_code="otp", to_user_id=user.id, sensitive=True)
     await db.commit()
@@ -155,12 +160,11 @@ async def otp_verify(body: OtpVerifyIn, request: Request, response: Response, db
     fail = HTTPException(status.HTTP_401_UNAUTHORIZED, "Неверный или устаревший код")
     if not stored:
         raise fail
-    code_hash, tries = stored.split(":")
-    if int(tries) >= 5:
+    # Atomic counter: parallel guesses can't share one "try".
+    if await kv.incr(f"otp-tries:{phone}", 300) > 5:
         await kv.delete(f"otp:{phone}")
         raise fail
-    if sha256(body.code) != code_hash:
-        await kv.set(f"otp:{phone}", f"{code_hash}:{int(tries) + 1}", 300)
+    if not hmac.compare_digest(sha256(body.code), stored):
         raise fail
     await kv.delete(f"otp:{phone}")
     user = await db.scalar(select(User).where(User.phone == phone, User.archived_at.is_(None)))
