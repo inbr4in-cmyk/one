@@ -4,6 +4,7 @@ from datetime import datetime
 from sqlalchemy import BigInteger, DateTime, func
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.orm.decl_base import _declarative_constructor
 
 from app.core.config import get_settings
 
@@ -12,7 +13,17 @@ SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
 
 class Base(DeclarativeBase):
-    pass
+    def __init__(self, **kwargs):
+        # Apply scalar column defaults at construction time, so fresh objects are usable before flush.
+        for col in self.__table__.columns:
+            key = col.key
+            if key in kwargs or col.default is None:
+                continue
+            if col.default.is_scalar:
+                kwargs[key] = col.default.arg
+            elif col.default.is_callable and col.type.__class__.__name__ == "JSONB":
+                kwargs[key] = col.default.arg(None)
+        _declarative_constructor(self, **kwargs)
 
 
 class IdMixin:

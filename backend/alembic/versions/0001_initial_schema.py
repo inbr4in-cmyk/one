@@ -1,8 +1,8 @@
 """initial schema
 
-Revision ID: 6505d15d1eef
+Revision ID: 0001
 Revises: 
-Create Date: 2026-10-24 15:45:55.686547
+Create Date: 2026-10-24 16:00:56.821795
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = '6505d15d1eef'
+revision: str = '0001'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -427,6 +427,8 @@ def upgrade() -> None:
     sa.Column('lessons_done', sa.Integer(), nullable=False),
     sa.Column('lessons_left', sa.Integer(), nullable=False),
     sa.Column('money_balance', sa.BigInteger(), nullable=False),
+    sa.Column('balance_lesson_price', sa.BigInteger(), nullable=False),
+    sa.Column('access_blocked_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('last_payment_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('last_visit_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('left_at', sa.DateTime(timezone=True), nullable=True),
@@ -1164,7 +1166,8 @@ def upgrade() -> None:
     op.create_index(op.f('ix_external_messages_conversation_id'), 'external_messages', ['conversation_id'], unique=False)
     # ### end Alembic commands ###
 
-    # ТЗ 1.4 + решение заказчика: журнал действий неизменяем, даже для владельца.
+    # --- hand-written (scripts/regen_initial_migration.py) ---
+    # ТЗ 1.4 + решение заказчика: журнал действий и леджеры неизменяемы, даже для владельца.
     op.execute("""
         CREATE OR REPLACE FUNCTION append_only() RETURNS trigger AS $$
         BEGIN
@@ -1175,10 +1178,23 @@ def upgrade() -> None:
     for t in ("audit_log", "balance_entries", "coin_entries"):
         op.execute(f"CREATE TRIGGER {t}_no_change BEFORE UPDATE OR DELETE ON {t} FOR EACH ROW EXECUTE FUNCTION append_only();")
         op.execute(f"CREATE TRIGGER {t}_no_truncate BEFORE TRUNCATE ON {t} EXECUTE FUNCTION append_only();")
+    # ТЗ 4.2: a room and a teacher can't hold two lessons at once — enforced by the database itself.
+    op.execute("CREATE EXTENSION IF NOT EXISTS btree_gist")
+    op.execute("""
+        ALTER TABLE lessons ADD CONSTRAINT lessons_room_no_overlap
+        EXCLUDE USING gist (room_id WITH =, tstzrange(starts_at, ends_at) WITH &&) WHERE (status <> 'cancelled')
+    """)
+    op.execute("""
+        ALTER TABLE lessons ADD CONSTRAINT lessons_teacher_no_overlap
+        EXCLUDE USING gist ((coalesce(actual_teacher_id, teacher_id)) WITH =, tstzrange(starts_at, ends_at) WITH &&)
+        WHERE (status <> 'cancelled')
+    """)
 
 
 def downgrade() -> None:
     """Downgrade schema."""
+    op.execute("ALTER TABLE lessons DROP CONSTRAINT IF EXISTS lessons_room_no_overlap")
+    op.execute("ALTER TABLE lessons DROP CONSTRAINT IF EXISTS lessons_teacher_no_overlap")
     for t in ("audit_log", "balance_entries", "coin_entries"):
         op.execute(f"DROP TRIGGER IF EXISTS {t}_no_change ON {t}")
         op.execute(f"DROP TRIGGER IF EXISTS {t}_no_truncate ON {t}")

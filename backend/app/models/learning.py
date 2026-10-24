@@ -38,6 +38,9 @@ class Student(IdMixin, TimestampMixin, ArchiveMixin, Base):
     lessons_done: Mapped[Int]
     lessons_left: Mapped[Int]
     money_balance: Mapped[Money]
+    # Price per lesson of the lessons currently on the balance (price at payment time, ТЗ 5.2).
+    balance_lesson_price: Mapped[Money]
+    access_blocked_at: Mapped[DTN]
     last_payment_at: Mapped[DTN]
     last_visit_at: Mapped[DTN]
     left_at: Mapped[DTN]
