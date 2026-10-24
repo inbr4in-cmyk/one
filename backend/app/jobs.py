@@ -8,7 +8,7 @@ Every job is idempotent: running it twice sends nothing twice.
 import asyncio
 import logging
 import sys
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from sqlalchemy import exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,11 +16,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.audit import write_audit
 from app.core.db import SessionLocal
 from app.core.kv import get_kv
-from app.models import BalanceEntry, GroupMember, Lead, LeadStage, Lesson, Student
+from app.models import BalanceEntry, GroupMember, Lead, LeadStage, Lesson, Student, Task, TaskAssignee
+from app.models.work import TaskStatus
 from app.models.learning import LessonStatus, StudentStatus
 from app.modules.academics.schedule import extend_all
 from app.modules.crm.service import create_lead, crm_people
-from app.services.clock import local, now
+from app.services.clock import at_local, end_of_local_day, local, now, today
 from app.services.messaging import notify_user, retry_failed
 from app.services.values import setting
 
@@ -87,8 +88,23 @@ async def stale_leads(db: AsyncSession) -> int:
     return sent
 
 
+async def overdue_tasks(db: AsyncSession) -> int:
+    rows = await db.scalars(select(Task).where(
+        Task.archived_at.is_(None), Task.due_at < now(), Task.due_at > now() - timedelta(days=7),
+        Task.status.not_in((TaskStatus.DONE, TaskStatus.CANCELLED, TaskStatus.REVIEW))))
+    sent = 0
+    for t in rows:
+        if not await once(f"task-overdue:{t.id}:{int(t.due_at.timestamp())}"):
+            continue
+        for uid in set(await db.scalars(select(TaskAssignee.user_id).where(TaskAssignee.task_id == t.id))) | {t.creator_id}:
+            await notify_user(db, uid, "task", f"Просрочена задача: {t.title}", link=f"/tasks/{t.id}")
+            sent += 1
+    return sent
+
+
 async def minutely(db: AsyncSession) -> dict:
-    out = {"attendance": await attendance_reminders(db), "stale_leads": await stale_leads(db)}
+    out = {"attendance": await attendance_reminders(db), "stale_leads": await stale_leads(db),
+           "overdue_tasks": await overdue_tasks(db)}
     await db.commit()
     out["wa_retried"] = await retry_failed(db)
     await db.commit()
@@ -138,8 +154,32 @@ async def block_nonpayers(db: AsyncSession) -> int:
     return n
 
 
+async def spawn_recurring_tasks(db: AsyncSession) -> int:
+    """A recurring task is a template: each day (or its weekday) a fresh copy goes to the same people."""
+    d = today()
+    start = at_local(d, datetime.min.time())
+    n = 0
+    for tpl in await db.scalars(select(Task).where(Task.archived_at.is_(None), Task.recurrence.is_not(None),
+                                                   Task.parent_task_id.is_(None))):
+        if tpl.recurrence == "weekly" and local(tpl.created_at).weekday() != d.weekday():
+            continue
+        if await db.scalar(select(Task.id).where(Task.parent_task_id == tpl.id, Task.created_at >= start)):
+            continue
+        due = (at_local(d, local(tpl.due_at).time()) if tpl.due_at else end_of_local_day(now()))
+        copy = Task(title=tpl.title, description=tpl.description, creator_id=tpl.creator_id, branch_id=tpl.branch_id,
+                    priority=tpl.priority, due_at=due, status=TaskStatus.NEW, link_type=tpl.link_type, link_id=tpl.link_id,
+                    parent_task_id=tpl.id)
+        db.add(copy)
+        await db.flush()
+        for uid in await db.scalars(select(TaskAssignee.user_id).where(TaskAssignee.task_id == tpl.id)):
+            db.add(TaskAssignee(task_id=copy.id, user_id=uid))
+            await notify_user(db, uid, "task", f"Задача на сегодня: {copy.title}", link=f"/tasks/{copy.id}")
+        n += 1
+    return n
+
+
 async def nightly(db: AsyncSession) -> dict:
-    out = {"lessons": await extend_all(db)}
+    out = {"lessons": await extend_all(db), "tasks": await spawn_recurring_tasks(db)}
     await db.commit()
     out["left"] = await mark_left(db)
     out["blocked"] = await block_nonpayers(db)

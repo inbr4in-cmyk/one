@@ -5,8 +5,12 @@ from app.modules.auth.router import router as auth_router
 from app.modules.chats.router import router as chats_router
 from app.modules.crm.router import router as crm_router
 from app.modules.finance.payments import router as payments_router
+from app.modules.finance.payroll import router as payroll_router
+from app.modules.finance.router import router as finance_router
 from app.modules.inbox.router import router as inbox_router
 from app.modules.org.router import router as org_router
 from app.modules.students.router import router as students_router
+from app.modules.work.router import router as tasks_router
 
-ROUTERS = [auth_router, admin_router, org_router, students_router, academics_router, payments_router, crm_router, inbox_router, tests_router, chats_router]
+ROUTERS = [auth_router, admin_router, org_router, students_router, academics_router, payments_router, crm_router, inbox_router, tests_router, chats_router,
+           finance_router, payroll_router, tasks_router]
