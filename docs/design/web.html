@@ -1,0 +1,1360 @@
+<title>One English Web</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=Unbounded:wght@500;600;700&family=Playfair+Display:wght@800&display=swap">
+<style>
+:root{
+  --navy:#01225F; --navy-700:#0B2E73; --navy-600:#1A3F8A; --navy-100:#E6ECF7; --navy-50:#F3F6FB;
+  --red:#BB1027; --red-600:#9E0D21; --red-100:#FBE7EA;
+  --paper:#FAF6F3; --surface:#FFFFFF; --line:#E3E6EE; --ink:#0F1A33; --muted:#5B6782;
+  --ok:#1E8E5A; --warn:#C98A06; --info:#1A6FD1;
+  --ig:#D6286E; --wa:#1FAF54;
+  --ok-bg:#E5F4EC; --warn-bg:#FBF1DC; --info-bg:#E4EFFB;
+  --side:#01225F; --side-ink:#FFFFFF; --side-muted:rgba(255,255,255,.66); --side-hover:rgba(255,255,255,.08); --side-active:rgba(255,255,255,.14);
+  --bubble-in:#FFFFFF; --bubble-out:#01225F; --bubble-out-ink:#FFFFFF;
+  --chart-bar:#01225F; --chart-bar-soft:#9DB0D6; --grid:#ECEEF3;
+  --shadow:0 1px 2px rgba(15,26,51,.06),0 4px 16px rgba(15,26,51,.05);
+  --lv-beg:#2E9A6E; --lv-ele:#1A6FD1; --lv-pre:#C9631A; --lv-int:#7B52C7; --lv-up:#B08900; --lv-ielts:#C2417F; --lv-kids:#0E8FA8;
+  --r:12px; --r-sm:8px;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#0A1630; --surface:#111F3D; --line:#22325A; --ink:#EAF0FB; --muted:#9AA8C7;
+    --navy-100:#18295180; --navy-50:#0E1B38; --red:#E0354B; --red-600:#C42A3F; --red-100:#3A1622;
+    --ok:#3DB585; --warn:#E3A82B; --info:#5A9BEA; --ok-bg:#12322A; --warn-bg:#352A12; --info-bg:#132B4D;
+    --side:#07102A; --side-hover:rgba(255,255,255,.06); --side-active:rgba(255,255,255,.11);
+    --bubble-in:#1A2A4D; --bubble-out:#2A4C96; --chart-bar:#7FA2E6; --chart-bar-soft:#3A4F7E; --grid:#1D2C50;
+    --shadow:0 1px 2px rgba(0,0,0,.3);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#0A1630; --surface:#111F3D; --line:#22325A; --ink:#EAF0FB; --muted:#9AA8C7;
+  --navy-100:#18295180; --navy-50:#0E1B38; --red:#E0354B; --red-600:#C42A3F; --red-100:#3A1622;
+  --ok:#3DB585; --warn:#E3A82B; --info:#5A9BEA; --ok-bg:#12322A; --warn-bg:#352A12; --info-bg:#132B4D;
+  --side:#07102A; --side-hover:rgba(255,255,255,.06); --side-active:rgba(255,255,255,.11);
+  --bubble-in:#1A2A4D; --bubble-out:#2A4C96; --chart-bar:#7FA2E6; --chart-bar-soft:#3A4F7E; --grid:#1D2C50;
+  --shadow:0 1px 2px rgba(0,0,0,.3);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--paper);color:var(--ink);font:14px/1.45 'Golos Text',system-ui,sans-serif;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+.ico{width:20px;height:20px;flex:none;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
+.ico.s16{width:16px;height:16px}.ico.s18{width:18px;height:18px}.ico.s24{width:24px;height:24px}
+.num{font-variant-numeric:tabular-nums}
+.h-display{font-family:'Unbounded',sans-serif;font-weight:600;letter-spacing:-.01em}
+.muted{color:var(--muted)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+
+/* Prototype bar */
+.proto{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:8px max(16px,env(safe-area-inset-right,0px)) 8px max(16px,env(safe-area-inset-left,0px));background:var(--surface);border-bottom:1px solid var(--line);font-size:13px}
+.proto b{font-weight:600}
+.proto .tag{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.seg{display:inline-flex;background:var(--navy-50);border:1px solid var(--line);border-radius:999px;padding:2px}
+.seg button{border:0;background:transparent;padding:4px 12px;border-radius:999px;font-size:13px;color:var(--muted);white-space:nowrap}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12);font-weight:600}
+.proto .sp{flex:1}
+
+/* App shell */
+.app{display:grid;grid-template-columns:252px minmax(0,1fr);min-height:calc(100vh - 45px)}
+.side{background:var(--side);color:var(--side-ink);display:flex;flex-direction:column;padding:18px 14px;gap:16px;position:sticky;top:0;height:100vh;overflow-y:auto}
+.logo{display:flex;align-items:center;gap:10px;padding:2px 6px}
+.logo .wm{display:flex;flex-direction:column;line-height:.95}
+.logo .wm span{font-family:'Playfair Display',serif;font-weight:800;font-size:17px;letter-spacing:.01em}
+.logo .wm span:last-child{color:#FF6B7E}
+.logo small{display:block;font-size:7.5px;letter-spacing:.24em;color:var(--side-muted);margin-top:4px}
+.branch{background:rgba(255,255,255,.06);border-radius:10px;padding:4px;display:grid;grid-template-columns:1fr 1fr;gap:4px}
+.branch button{border:0;background:transparent;color:var(--side-muted);padding:7px 6px;border-radius:7px;font-size:12.5px;font-weight:500}
+.branch button[aria-pressed="true"]{background:#fff;color:#01225F;font-weight:600}
+.side .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--side-muted);padding:0 10px;margin-bottom:-8px}
+.nav{display:flex;flex-direction:column;gap:2px}
+.nav a{display:flex;align-items:center;gap:12px;padding:9px 10px;border-radius:9px;color:var(--side-muted);text-decoration:none;font-weight:500;position:relative}
+.nav a:hover{background:var(--side-hover);color:#fff}
+.nav a.on{background:var(--side-active);color:#fff}
+.nav a.on::before{content:"";position:absolute;left:-14px;top:8px;bottom:8px;width:3px;border-radius:0 3px 3px 0;background:#FF4D63}
+.nav .cnt{margin-left:auto;background:var(--red);color:#fff;font-size:11px;font-weight:600;border-radius:999px;padding:1px 7px;min-width:20px;text-align:center}
+.nav .cnt.soft{background:rgba(255,255,255,.14)}
+.side .foot{margin-top:auto;font-size:12px;color:var(--side-muted);padding:10px;border-top:1px solid rgba(255,255,255,.1)}
+
+.main{min-width:0;display:flex;flex-direction:column}
+.top{display:flex;align-items:center;gap:12px;height:64px;padding:0 24px;border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--paper) 88%,transparent);backdrop-filter:blur(8px);position:sticky;top:0;z-index:20}
+.search{flex:1;max-width:460px;display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:0 12px;height:40px;color:var(--muted)}
+.search input{border:0;outline:0;background:transparent;flex:1;min-width:0;color:var(--ink)}
+.kbd{font-size:11px;border:1px solid var(--line);border-radius:5px;padding:1px 6px}
+.top .sp{flex:1}
+.iconbtn{width:40px;height:40px;border-radius:10px;border:1px solid var(--line);background:var(--surface);display:grid;place-items:center;color:var(--ink);position:relative}
+.iconbtn .dot{position:absolute;top:8px;right:9px;width:8px;height:8px;border-radius:50%;background:var(--red);box-shadow:0 0 0 2px var(--surface)}
+.me{display:flex;align-items:center;gap:10px;padding:4px 10px 4px 4px;border-radius:999px;border:1px solid var(--line);background:var(--surface)}
+.me .who{line-height:1.15}.me .who b{display:block;font-size:13px}.me .who span{font-size:12px;color:var(--muted)}
+.av{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:600;color:#fff;background:var(--navy-600);flex:none;position:relative}
+.av.lg{width:64px;height:64px;font-size:22px;font-family:'Unbounded';font-weight:600}
+.av.sm{width:24px;height:24px;font-size:10px}
+.av .ch{position:absolute;right:-3px;bottom:-3px;width:16px;height:16px;border-radius:50%;display:grid;place-items:center;box-shadow:0 0 0 2px var(--surface)}
+.av .ch svg{width:10px;height:10px;stroke:#fff}
+.ch.ig{background:var(--ig)}.ch.wa{background:var(--wa)}
+.c1{background:#7B52C7}.c2{background:#1A6FD1}.c3{background:#2E9A6E}.c4{background:#C9631A}.c5{background:#C2417F}.c6{background:#0E8FA8}.c7{background:#01225F}.c8{background:#8A6D00}
+.burger{display:none}
+.notif{position:absolute;right:24px;top:58px;width:340px;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.14);padding:8px;display:none;z-index:40}
+.notif.open{display:block}
+.notif .it{display:flex;gap:10px;padding:10px;border-radius:8px}
+.notif .it:hover{background:var(--navy-50)}
+.notif .it p{margin:0;font-size:13px}.notif .it span{font-size:12px;color:var(--muted)}
+
+.screen{display:none;padding:24px;min-width:0}
+.screen.on{display:block}
+.ph{display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:20px}
+.ph h1{font-family:'Unbounded';font-weight:600;font-size:24px;margin:0;letter-spacing:-.02em;line-height:1.15}
+.ph p{margin:4px 0 0;color:var(--muted)}
+.ph .sp{flex:1}
+.btn{display:inline-flex;align-items:center;gap:8px;height:38px;padding:0 14px;border-radius:10px;border:1px solid var(--line);background:var(--surface);font-weight:500;white-space:nowrap;color:var(--ink)}
+.btn:hover{border-color:var(--navy-600)}
+.btn.primary{background:var(--red);border-color:var(--red);color:#fff}
+.btn.primary:hover{background:var(--red-600)}
+.btn.navy{background:var(--navy);border-color:var(--navy);color:#fff}
+:root[data-theme="dark"] .btn.navy{background:#2A4C96;border-color:#2A4C96}
+.btn.sm{height:32px;padding:0 10px;font-size:13px;border-radius:8px}
+.btn.ghost{background:transparent;border-color:transparent}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow)}
+.card-h{display:flex;align-items:center;gap:10px;padding:16px 18px 0}
+.card-h h3{margin:0;font-size:15px;font-weight:600}
+.card-h .sp{flex:1}
+.card-b{padding:14px 18px 18px}
+.chip{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:500;padding:2px 8px;border-radius:999px;background:var(--navy-50);border:1px solid var(--line);color:var(--ink);white-space:nowrap}
+.chip.ok{background:var(--ok-bg);color:var(--ok);border-color:transparent}
+.chip.warn{background:var(--warn-bg);color:var(--warn);border-color:transparent}
+.chip.red{background:var(--red-100);color:var(--red);border-color:transparent}
+.chip.info{background:var(--info-bg);color:var(--info);border-color:transparent}
+.lv{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;white-space:nowrap}
+.lv::before{content:"";width:8px;height:8px;border-radius:2px;background:var(--c)}
+.grid{display:grid;gap:16px}
+.scroll-x{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table{border-collapse:collapse;width:100%}
+th{font-size:12px;font-weight:500;color:var(--muted);text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:10px;border-bottom:1px solid var(--line);vertical-align:middle}
+tr:last-child td{border-bottom:0}
+td.r,th.r{text-align:right}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:16px;overflow-x:auto}
+.tabs button{border:0;background:none;padding:10px 12px;color:var(--muted);font-weight:500;border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap}
+.tabs button.on{color:var(--ink);border-bottom-color:var(--red)}
+.tabs .n{font-size:12px;color:var(--muted);margin-left:4px}
+
+/* Dashboard */
+.kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:16px;margin-bottom:16px}
+.kpi{padding:16px 18px}
+.kpi .k{font-size:13px;color:var(--muted);display:flex;align-items:center;gap:8px}
+.kpi .k .ico{color:var(--navy-600)}
+:root[data-theme="dark"] .kpi .k .ico{color:var(--chart-bar)}
+.kpi .v{font-family:'Unbounded';font-weight:600;font-size:24px;margin:10px 0 6px;letter-spacing:-.02em;white-space:nowrap}
+.kpi .v small{font-size:14px;font-weight:500}
+.delta{font-size:12px;font-weight:500;display:inline-flex;align-items:center;gap:3px}
+.delta.up{color:var(--ok)}.delta.down{color:var(--red)}
+.bar-track{height:6px;border-radius:3px;background:var(--navy-50);overflow:hidden;margin-top:8px}
+.bar-track i{display:block;height:100%;background:var(--navy-600);border-radius:3px}
+.dash-a{grid-template-columns:minmax(0,1.7fr) minmax(0,1fr);margin-bottom:16px}
+.dash-b{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+.chart{position:relative}
+.chart svg text{font:12px 'Golos Text';fill:var(--muted)}
+.tip{position:absolute;pointer-events:none;background:var(--ink);color:var(--paper);font-size:12px;padding:6px 9px;border-radius:7px;white-space:nowrap;transform:translate(-50%,-110%);opacity:0;transition:opacity .1s}
+.src-row{display:grid;grid-template-columns:132px minmax(0,1fr) 64px;align-items:center;gap:10px;padding:7px 0}
+.src-row .nm{display:flex;align-items:center;gap:8px;font-weight:500}
+.src-row .tr{height:10px;border-radius:0 4px 4px 0;background:var(--grid)}
+.src-row .tr i{display:block;height:100%;background:var(--chart-bar);border-radius:0 4px 4px 0}
+.src-row .vv{text-align:right;font-variant-numeric:tabular-nums}
+.src-row .vv span{color:var(--muted);font-size:12px;margin-left:4px}
+.list-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
+.list-row:last-child{border-bottom:0}
+.list-row .t{font-variant-numeric:tabular-nums;font-weight:600;width:48px}
+.list-row .grow{flex:1;min-width:0}
+.list-row .grow b{font-weight:600;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.list-row .grow span{font-size:12.5px;color:var(--muted)}
+.late{color:var(--red);font-weight:600;font-size:12.5px;display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
+
+/* CRM */
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+.select{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);font-size:13px;white-space:nowrap}
+.kanban{display:grid;grid-auto-flow:column;grid-auto-columns:272px;gap:12px;padding-bottom:12px;align-items:start}
+.col{background:var(--navy-50);border:1px solid var(--line);border-radius:12px;padding:10px;min-height:200px}
+.col-h{display:flex;align-items:center;gap:8px;padding:2px 4px 10px}
+.col-h b{font-size:13.5px}
+.col-h .c{font-size:12px;color:var(--muted);background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:0 7px}
+.col-h .sp{flex:1}
+.col-h .st{width:8px;height:8px;border-radius:50%}
+.col.drop{outline:2px dashed var(--navy-600);outline-offset:-2px}
+.lead{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px;cursor:grab;box-shadow:0 1px 1px rgba(15,26,51,.04)}
+.lead:hover{border-color:var(--navy-600)}
+.lead.hot{box-shadow:inset 3px 0 0 var(--red)}
+.lead .r1{display:flex;align-items:center;gap:8px}
+.lead .r1 b{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lead .meta{font-size:12.5px;color:var(--muted);margin:4px 0 8px}
+.lead .r3{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.lead .r3 .sp{flex:1}
+.srcico{width:22px;height:22px;border-radius:6px;display:grid;place-items:center;flex:none}
+.srcico svg{width:14px;height:14px;stroke:#fff}
+.srcico.ig{background:var(--ig)}.srcico.wa{background:var(--wa)}.srcico.qr{background:var(--navy-600)}.srcico.web{background:var(--info)}.srcico.ref{background:var(--warn)}.srcico.call{background:var(--muted)}
+.wait{font-size:12px;color:var(--muted);display:inline-flex;align-items:center;gap:3px;white-space:nowrap}
+.wait.bad{color:var(--red);font-weight:600}
+
+/* Inbox */
+.inbox{display:grid;grid-template-columns:320px minmax(0,1fr) 300px;height:calc(100vh - 64px - 45px - 48px);min-height:560px;overflow:hidden;padding:0}
+.ib-list{border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.ib-list .hd{padding:14px 14px 10px;border-bottom:1px solid var(--line)}
+.ib-list .items{overflow-y:auto;flex:1}
+.dlg{display:flex;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line);cursor:pointer}
+.dlg:hover{background:var(--navy-50)}
+.dlg.on{background:var(--navy-50);box-shadow:inset 3px 0 0 var(--navy-600)}
+.dlg .grow{flex:1;min-width:0}
+.dlg .l1{display:flex;gap:6px;align-items:center}
+.dlg .l1 b{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.dlg .l1 time{font-size:12px;color:var(--muted)}
+.dlg .l2{display:flex;gap:6px;align-items:center;margin-top:2px}
+.dlg .l2 p{margin:0;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted);font-size:13px}
+.badge{background:var(--red);color:#fff;font-size:11px;font-weight:600;border-radius:999px;padding:0 6px;min-width:18px;text-align:center}
+.ib-chat{display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--paper)}
+.ib-chat .hd{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line);background:var(--surface)}
+.ib-chat .hd .grow{flex:1;min-width:0}
+.ib-chat .hd b{display:block}
+.ib-chat .hd span{font-size:12.5px;color:var(--muted)}
+.msgs{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:8px}
+.day{align-self:center;font-size:12px;color:var(--muted);background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:2px 10px;margin:6px 0}
+.sys{align-self:center;max-width:520px;display:flex;gap:10px;align-items:flex-start;background:var(--info-bg);color:var(--ink);border-radius:10px;padding:10px 12px;font-size:13px}
+.sys .ico{color:var(--info);margin-top:1px}
+.sys a{color:var(--info);font-weight:600;text-decoration:none}
+.b{max-width:min(440px,80%);padding:8px 12px;border-radius:14px;font-size:14px;position:relative}
+.b.in{align-self:flex-start;background:var(--bubble-in);border:1px solid var(--line);border-bottom-left-radius:4px}
+.b.out{align-self:flex-end;background:var(--bubble-out);color:var(--bubble-out-ink);border-bottom-right-radius:4px}
+.b time{display:block;font-size:11px;opacity:.65;text-align:right;margin-top:2px}
+.b .by{font-size:11.5px;font-weight:600;opacity:.8;display:block;margin-bottom:2px}
+.story{display:flex;gap:10px;align-items:center;font-size:12px;color:var(--muted);margin-bottom:6px;border-left:2px solid var(--line);padding-left:8px}
+.story .thumb{width:36px;height:52px;border-radius:6px;background:linear-gradient(160deg,#01225F,#BB1027);display:grid;place-items:center;color:#fff;font-family:'Unbounded';font-size:9px;text-align:center;line-height:1.1}
+.voice{display:flex;align-items:center;gap:10px;min-width:220px}
+.voice .pl{width:32px;height:32px;border-radius:50%;background:var(--navy-600);display:grid;place-items:center;color:#fff;flex:none}
+.b.out .voice .pl{background:#fff;color:var(--navy)}
+.wave{display:flex;align-items:center;gap:2px;height:26px;flex:1}
+.wave i{display:block;width:3px;border-radius:2px;background:currentColor;opacity:.55}
+.file{display:flex;align-items:center;gap:10px;padding:6px 2px}
+.file .fi{width:36px;height:36px;border-radius:8px;background:var(--red-100);color:var(--red);display:grid;place-items:center;font-size:10px;font-weight:700}
+.composer{border-top:1px solid var(--line);background:var(--surface);padding:10px 12px}
+.tpls{display:flex;gap:6px;overflow-x:auto;padding-bottom:8px}
+.tpls button{border:1px solid var(--line);background:var(--navy-50);border-radius:999px;padding:4px 10px;font-size:12.5px;white-space:nowrap;display:inline-flex;align-items:center;gap:5px}
+.tpls button:hover{border-color:var(--navy-600)}
+.cin{display:flex;align-items:flex-end;gap:6px}
+.cin textarea{flex:1;min-width:0;resize:none;border:1px solid var(--line);border-radius:10px;padding:9px 12px;background:var(--paper);height:40px;outline:0}
+.cin textarea:focus{border-color:var(--navy-600)}
+.send{width:40px;height:40px;border-radius:10px;background:var(--red);color:#fff;border:0;display:grid;place-items:center;flex:none}
+.window{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;margin-top:6px}
+.ib-lead{border-left:1px solid var(--line);overflow-y:auto;padding:16px;background:var(--surface)}
+.ib-lead h4{margin:18px 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:500}
+.kv{display:grid;grid-template-columns:110px minmax(0,1fr);gap:6px 10px;font-size:13px}
+.kv dt{color:var(--muted)}.kv dd{margin:0;font-weight:500}
+.stepper{display:flex;flex-direction:column;gap:0}
+.step{display:flex;gap:10px;align-items:center;font-size:13px;padding:5px 0;color:var(--muted);position:relative}
+.step i{width:14px;height:14px;border-radius:50%;border:2px solid var(--line);background:var(--surface);flex:none;z-index:1}
+.step.done{color:var(--ink)}.step.done i{background:var(--navy-600);border-color:var(--navy-600)}
+.step.cur{color:var(--ink);font-weight:600}.step.cur i{border-color:var(--red);box-shadow:0 0 0 3px var(--red-100)}
+.step:not(:last-child)::after{content:"";position:absolute;left:6px;top:19px;height:14px;width:2px;background:var(--line)}
+.tl{list-style:none;margin:0;padding:0}
+.tl li{display:flex;gap:10px;font-size:13px;padding:6px 0}
+.tl li .ico{color:var(--muted);margin-top:1px}
+.tl li span{display:block;font-size:12px;color:var(--muted)}
+.full{width:100%;justify-content:center}
+
+/* Chats */
+.chats{grid-template-columns:300px minmax(0,1fr)}
+.grp-h{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);padding:12px 14px 4px}
+.role{font-size:10.5px;font-weight:600;letter-spacing:.02em;padding:1px 6px;border-radius:4px;white-space:nowrap}
+.role.t{background:var(--navy-100);color:var(--navy-600)}
+.role.s{background:var(--info-bg);color:var(--info)}
+.role.p{background:var(--warn-bg);color:var(--warn)}
+.role.m{background:var(--ok-bg);color:var(--ok)}
+:root[data-theme="dark"] .role.t{color:#9DB6EE}
+.pinned{display:flex;gap:10px;align-items:flex-start;padding:10px 16px;background:var(--surface);border-bottom:1px solid var(--line);font-size:13px}
+.pinned .ico{color:var(--red);margin-top:2px}
+.pinned b{display:block;font-size:12px;color:var(--red)}
+.gm{display:flex;gap:8px;align-items:flex-end;max-width:80%}
+.gm.me{align-self:flex-end;flex-direction:row-reverse}
+.gm .b{max-width:none}
+.photo{width:220px;max-width:100%;height:140px;border-radius:10px;background:repeating-linear-gradient(0deg,#fff 0 18px,#cfd8ea 18px 19px);position:relative;overflow:hidden;margin-bottom:4px}
+.photo::after{content:"Workbook p.42 · ex.1–3";position:absolute;left:14px;top:12px;font:600 13px 'Golos Text';color:#1A3F8A;transform:rotate(-2deg)}
+.photo::before{content:"";position:absolute;left:14px;right:30px;top:44px;height:60px;background:repeating-linear-gradient(0deg,transparent 0 17px,rgba(26,63,138,.55) 17px 18px);transform:rotate(-2deg)}
+
+/* Schedule */
+.sched-wrap{padding:0}
+.sched{display:grid;grid-template-columns:60px repeat(6,minmax(130px,1fr));min-width:860px;position:relative}
+.sched .dh{position:sticky;top:0;background:var(--surface);border-bottom:1px solid var(--line);padding:10px 8px;font-size:13px;font-weight:600;text-align:center;z-index:2}
+.sched .dh span{display:block;font-size:12px;font-weight:400;color:var(--muted)}
+.sched .dh.today{color:var(--red)}
+.sched .tc{border-right:1px solid var(--line);font-size:11.5px;color:var(--muted);text-align:right;padding-right:8px}
+.sched .day-col{position:relative;border-right:1px solid var(--line)}
+.sched .day-col:last-child{border-right:0}
+.hr{height:56px;border-bottom:1px dashed var(--grid)}
+.tc .hr{border-bottom:0;padding-top:3px}
+.blk{position:absolute;left:4px;right:4px;border-radius:8px;padding:6px 8px;font-size:12px;overflow:hidden;background:color-mix(in srgb,var(--c) 13%,var(--surface));border-left:3px solid var(--c);line-height:1.3;cursor:pointer}
+.blk:hover{background:color-mix(in srgb,var(--c) 20%,var(--surface))}
+.blk b{display:block;font-size:12.5px}
+.blk span{color:var(--muted)}
+.blk .trial{position:absolute;top:5px;right:5px;background:var(--red);color:#fff;font-size:10px;font-weight:600;border-radius:4px;padding:0 5px;display:inline-flex;align-items:center;gap:3px}
+.blk.has-trial{outline:1.5px dashed var(--red);outline-offset:-1.5px}
+.nowline{position:absolute;left:0;right:0;height:2px;background:var(--red);z-index:3}
+.nowline::before{content:"";position:absolute;left:-4px;top:-3px;width:8px;height:8px;border-radius:50%;background:var(--red)}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+.rooms{display:flex;gap:6px;flex-wrap:wrap}
+.rooms button{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:5px 12px;font-size:13px;display:inline-flex;align-items:center;gap:8px}
+.rooms button.on{background:var(--navy);color:#fff;border-color:var(--navy)}
+:root[data-theme="dark"] .rooms button.on{background:#2A4C96;border-color:#2A4C96}
+.rooms .ld{font-size:11px;opacity:.75}
+
+/* Student */
+.stu-head{display:flex;gap:18px;align-items:center;padding:20px;flex-wrap:wrap}
+.stu-head h2{margin:0;font-family:'Unbounded';font-weight:600;font-size:20px;letter-spacing:-.01em}
+.stu-head .facts{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.alert{display:flex;gap:12px;align-items:center;padding:12px 16px;border-radius:10px;background:var(--warn-bg);border:1px solid color-mix(in srgb,var(--warn) 30%,transparent);margin-bottom:16px;flex-wrap:wrap}
+.alert .ico{color:var(--warn)}
+.alert .grow{flex:1;min-width:200px}
+.alert b{display:block}
+.alert span{font-size:13px;color:var(--muted)}
+.stu-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr)}
+.balance{display:flex;gap:16px;align-items:center}
+.ring{width:96px;height:96px;flex:none}
+.ring text{font-family:'Unbounded';font-weight:600}
+.bal-l{display:grid;grid-template-columns:auto auto;gap:4px 16px;font-size:13px}
+.bal-l dt{color:var(--muted)}.bal-l dd{margin:0;text-align:right;font-weight:600;font-variant-numeric:tabular-nums}
+.att-dots{display:grid;grid-template-columns:repeat(12,1fr);gap:5px;margin:10px 0}
+.att-dots i{aspect-ratio:1;border-radius:4px;display:grid;place-items:center}
+.att-dots i.p{background:var(--ok)}
+.att-dots i.l{background:var(--warn)}
+.att-dots i.a{background:var(--red)}
+.att-dots i.f{background:var(--grid)}
+.att-dots i svg{width:10px;height:10px;stroke:#fff;stroke-width:3}
+.mini-leg{display:flex;gap:12px;font-size:12px;color:var(--muted);flex-wrap:wrap}
+.mini-leg span{display:inline-flex;align-items:center;gap:5px}
+.mini-leg i{width:10px;height:10px;border-radius:3px;display:inline-block}
+.grade{width:28px;height:28px;border-radius:7px;display:grid;place-items:center;font-weight:700;font-size:13px;background:var(--navy-50);border:1px solid var(--line)}
+.coins{display:flex;align-items:center;gap:10px}
+.coin{width:40px;height:40px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#F5C84B,#C98A06);display:grid;place-items:center;color:#fff;font-family:'Unbounded';font-size:13px;font-weight:700;box-shadow:inset 0 -2px 0 rgba(0,0,0,.15)}
+.coin.sm{width:18px;height:18px;font-size:8px}
+
+/* Attendance */
+.att-head{display:flex;gap:14px;align-items:center;padding:16px 18px;flex-wrap:wrap;border-bottom:1px solid var(--line)}
+.att-head .grow{flex:1;min-width:220px}
+.att-row{display:grid;grid-template-columns:minmax(0,1fr) 120px auto;gap:14px;align-items:center;padding:12px 18px;border-bottom:1px solid var(--line)}
+.att-row .who{display:flex;gap:12px;align-items:center;min-width:0}
+.att-row .who b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.att-row .who span{font-size:12.5px;color:var(--muted)}
+.att-row.trial{background:color-mix(in srgb,var(--red) 5%,var(--surface))}
+.mark{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--surface)}
+.mark button{border:0;background:transparent;padding:0 12px;height:36px;font-size:13px;font-weight:500;color:var(--muted);display:inline-flex;align-items:center;gap:6px;border-right:1px solid var(--line)}
+.mark button:last-child{border-right:0}
+.mark button[aria-pressed="true"].p{background:var(--ok-bg);color:var(--ok)}
+.mark button[aria-pressed="true"].a{background:var(--red-100);color:var(--red)}
+.mark button[aria-pressed="true"].l{background:var(--warn-bg);color:var(--warn)}
+.mark button[aria-pressed="true"].e{background:var(--info-bg);color:var(--info)}
+.att-foot{position:sticky;bottom:0;display:flex;gap:14px;align-items:center;flex-wrap:wrap;padding:14px 18px;background:var(--surface);border-top:1px solid var(--line);border-radius:0 0 var(--r) var(--r)}
+.wa-note{display:flex;gap:10px;align-items:center;flex:1;min-width:240px;font-size:13px}
+.wa-note .srcico{width:28px;height:28px;border-radius:8px}
+.wa-note .srcico svg{width:16px;height:16px}
+.toast{position:fixed;left:50%;bottom:24px;transform:translate(-50%,20px);background:var(--ink);color:var(--paper);padding:12px 16px;border-radius:10px;font-size:14px;opacity:0;transition:.2s;z-index:100;display:flex;gap:10px;align-items:center;max-width:calc(100vw - 32px)}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+
+/* Finance & coins */
+.fin-k{grid-template-columns:repeat(4,minmax(0,1fr));margin-bottom:16px}
+.fin-a{grid-template-columns:minmax(0,1.3fr) minmax(0,1fr)}
+.method{display:inline-flex;align-items:center;gap:6px;font-size:12.5px}
+.method i{width:18px;height:18px;border-radius:5px;display:grid;place-items:center;font-style:normal;font-size:9px;font-weight:700;color:#fff}
+.kaspi{background:#E5352B}
+.shop{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+.prod{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--surface)}
+.prod .pic{height:92px;display:grid;place-items:center;color:#fff}
+.prod .pic svg{width:40px;height:40px;stroke-width:1.5}
+.prod .pi{padding:10px}
+.prod .pi b{display:block;font-size:13px;font-weight:600}
+.prod .pi .pr{display:flex;align-items:center;gap:5px;margin-top:6px;font-weight:600;font-variant-numeric:tabular-nums}
+.prod .pi .st{font-size:12px;color:var(--muted)}
+.rank{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}
+.rank:last-child{border-bottom:0}
+.rank .pos{width:22px;font-family:'Unbounded';font-weight:600;font-size:13px;color:var(--muted)}
+.rank .pos.g{color:var(--warn)}
+body:not([data-role="owner"]) .admin-only{display:none!important}
+body[data-role="owner"] .self-only{display:none}
+.stub{padding:56px 24px;text-align:center;color:var(--muted)}
+.stub .ico{width:40px;height:40px;color:var(--navy-600);margin-bottom:10px}
+
+
+/* Settings: roles & security */
+.nav .sep{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--side-muted);padding:14px 10px 4px}
+.me{cursor:pointer}
+.menu{position:absolute;right:24px;top:58px;width:240px;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.14);padding:6px;display:none;z-index:40}
+.menu.open{display:block}
+.menu a{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;color:var(--ink);text-decoration:none;font-size:14px}
+.menu a:hover{background:var(--navy-50)}
+.menu hr{border:0;border-top:1px solid var(--line);margin:4px 0}
+.menu .hd2{padding:8px 10px 6px;font-size:12px;color:var(--muted)}
+.roles-l{grid-template-columns:260px minmax(0,1fr);align-items:start}
+.rlist{padding:8px}
+.ritem{display:flex;align-items:center;gap:10px;padding:10px;border-radius:9px;cursor:pointer;border:0;background:none;width:100%;text-align:left}
+.ritem:hover{background:var(--navy-50)}
+.ritem.on{background:var(--navy-50);box-shadow:inset 3px 0 0 var(--red)}
+.ritem .ri{width:32px;height:32px;border-radius:8px;display:grid;place-items:center;background:var(--navy-100);color:var(--navy-600);flex:none}
+:root[data-theme="dark"] .ritem .ri{color:#9DB6EE}
+.ritem .grow{flex:1;min-width:0}.ritem b{display:block;font-weight:600;font-size:13.5px}.ritem span{font-size:12px;color:var(--muted)}
+.ritem .lock{color:var(--muted)}
+.perm th.c,.perm td.c{text-align:center;width:84px}
+.perm td:first-child{font-weight:500}
+.perm td:first-child span{display:block;font-size:12px;color:var(--muted);font-weight:400}
+.cb{width:24px;height:24px;border-radius:6px;border:1.5px solid var(--line);background:var(--surface);display:inline-grid;place-items:center;color:#fff;padding:0}
+.cb svg{width:14px;height:14px;stroke-width:2.5;opacity:0}
+.cb[aria-pressed="true"]{background:var(--navy-600);border-color:var(--navy-600)}
+.cb[aria-pressed="true"] svg{opacity:1}
+.cb:disabled{cursor:not-allowed;opacity:.55;background:repeating-linear-gradient(135deg,var(--surface) 0 3px,var(--line) 3px 4px)}
+.scope{height:30px;border:1px solid var(--line);border-radius:7px;background:var(--surface);padding:0 8px;font-size:12.5px}
+.mx th.c,.mx td.c{text-align:center}
+.mxv{border:1px solid var(--line);border-radius:999px;padding:3px 10px;font-size:12px;font-weight:500;background:var(--surface);min-width:96px;display:inline-flex;align-items:center;justify-content:center;gap:4px;white-space:nowrap}
+.mxv[data-v="yes"]{background:var(--ok-bg);color:var(--ok);border-color:transparent}
+.mxv[data-v="group"]{background:var(--info-bg);color:var(--info);border-color:transparent}
+.mxv[data-v="no"]{color:var(--muted)}
+.mxv:disabled{cursor:default;opacity:.6}
+.opt{display:flex;gap:14px;align-items:flex-start;padding:14px 0;border-bottom:1px solid var(--line)}
+.opt:last-child{border-bottom:0}
+.opt .grow{flex:1;min-width:0}
+.opt b{display:block;font-weight:600}
+.opt p{margin:2px 0 0;font-size:13px;color:var(--muted)}
+.opt .ex{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
+.opt>.ico{color:var(--navy-600);margin-top:2px}
+:root[data-theme="dark"] .opt>.ico{color:#9DB6EE}
+.sw{width:40px;height:24px;border-radius:999px;border:0;background:var(--line);position:relative;flex:none;padding:0;transition:background .15s}
+.sw::after{content:"";position:absolute;left:3px;top:3px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform .15s}
+.sw[aria-checked="true"]{background:var(--ok)}
+.sw[aria-checked="true"]::after{transform:translateX(16px)}
+.sw:disabled{opacity:.7;cursor:not-allowed}
+.tin{height:30px;border:1px solid var(--line);border-radius:7px;background:var(--surface);padding:0 8px;width:84px;font-variant-numeric:tabular-nums}
+.roles-l>.grid,.sec-grid>.grid{grid-template-columns:minmax(0,1fr);min-width:0}
+.sec-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:start}
+.score{display:flex;gap:18px;align-items:center;padding:18px;flex-wrap:wrap;margin-bottom:16px}
+.score .grow{flex:1;min-width:220px}
+.score h3{margin:0;font-size:16px}
+.score .meter{display:flex;gap:4px;margin-top:10px}
+.score .meter i{flex:1;height:8px;border-radius:2px;background:var(--grid)}
+.score .meter i.on{background:var(--ok)}
+.shield{width:56px;height:56px;border-radius:14px;background:var(--ok-bg);color:var(--ok);display:grid;place-items:center;flex:none}
+.shield .ico{width:30px;height:30px}
+.sess{display:flex;gap:12px;align-items:center;padding:11px 0;border-bottom:1px solid var(--line)}
+.sess:last-child{border-bottom:0}
+.sess .dv{width:36px;height:36px;border-radius:9px;background:var(--navy-50);border:1px solid var(--line);display:grid;place-items:center;flex:none}
+.sess .grow{flex:1;min-width:0}.sess b{display:block;font-weight:600;font-size:13.5px}.sess span{font-size:12.5px;color:var(--muted)}
+.mask{font-variant-numeric:tabular-nums;font-weight:600;letter-spacing:.02em}
+.code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;background:var(--navy-50);border:1px solid var(--line);border-radius:5px;padding:1px 6px;white-space:nowrap}
+.audit td{font-size:13px}
+.audit .who2{display:flex;gap:8px;align-items:center;white-space:nowrap}
+.diff{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}
+.diff s{color:var(--muted)}
+.diff b{font-weight:600}
+@media (max-width:980px){.roles-l,.sec-grid{grid-template-columns:minmax(0,1fr)}
+ .rlist{display:flex;overflow-x:auto;gap:6px}.ritem{width:auto;flex:none}.ritem .grow span{display:none}.ritem .grow b{white-space:nowrap}}
+@media (max-width:760px){.menu{left:16px;right:16px;width:auto}.opt{gap:10px}}
+
+/* Bottom nav (mobile) */
+.bnav{display:none}
+.hd-cta{display:none!important}
+.scrim{display:none}
+
+@media (max-width:1240px){
+  .kpis{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .inbox{grid-template-columns:280px minmax(0,1fr)}
+  .ib-lead{display:none}
+  .hd-cta{display:inline-flex!important}
+  .stu-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+}
+@media (max-width:980px){
+  .app{grid-template-columns:minmax(0,1fr)}
+  .side{position:fixed;left:0;top:0;bottom:0;width:280px;z-index:60;transform:translateX(-100%);transition:transform .22s ease}
+  .side.open{transform:none;box-shadow:0 0 40px rgba(0,0,0,.35)}
+  .scrim.open{display:block;position:fixed;inset:0;background:rgba(5,12,30,.45);z-index:55}
+  .burger{display:grid}
+  .dash-a,.dash-b,.fin-a{grid-template-columns:minmax(0,1fr)}
+}
+@media (max-width:760px){
+  .top{padding:0 max(16px,env(safe-area-inset-right,0px)) 0 max(16px,env(safe-area-inset-left,0px));gap:8px;height:56px}
+  .search{display:none}
+  .top .sp{display:block}
+  .me .who{display:none}
+  .me{padding:3px;border-radius:50%}
+  .screen{padding:16px max(16px,env(safe-area-inset-right,0px)) 96px max(16px,env(safe-area-inset-left,0px))}
+  .ph h1{font-size:20px}
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .kpis .kpi:first-child{grid-column:1/-1}
+  .kpi{padding:14px}
+  .kpi .v{font-size:20px}
+  .fin-k{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .stu-grid{grid-template-columns:minmax(0,1fr)}
+  .inbox,.chats{grid-template-columns:minmax(0,1fr);height:auto}
+  .ib-list .items{max-height:300px}
+  .ib-chat{height:600px}
+  .ib-list{border-right:0;border-bottom:1px solid var(--line)}
+  .att-row{grid-template-columns:minmax(0,1fr);gap:8px}
+  .att-row .bal{display:none}
+  .mark{width:100%}
+  .mark button{flex:1;justify-content:center;padding:0 2px;flex-direction:column;gap:1px;height:48px;font-size:11.5px}
+  .att-foot{bottom:calc(62px + env(safe-area-inset-bottom,0px))}
+  .hd-stage{display:none!important}
+  .hd-cta .cta-t{display:none}
+  .rooms{flex-wrap:nowrap;overflow-x:auto;width:100%;padding-bottom:2px}
+  .rooms button{flex:none}
+  .kanban{grid-auto-columns:min(272px,80vw)}
+  .scroll-x:has(.kanban){scroll-snap-type:x mandatory}
+  .col{scroll-snap-align:start}
+  .src-row{grid-template-columns:128px minmax(0,1fr) 58px;gap:8px}
+  .src-row .nm{font-size:13px}
+  .proto .tag{display:none}
+  .bnav{display:grid;grid-template-columns:repeat(5,1fr);position:fixed;left:0;right:0;bottom:0;z-index:50;background:var(--surface);border-top:1px solid var(--line);padding:6px max(8px,env(safe-area-inset-left,0px)) calc(6px + env(safe-area-inset-bottom,0px))}
+  .bnav a,.bnav button{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:10.5px;color:var(--muted);text-decoration:none;border:0;background:none;padding:4px 0;position:relative}
+  .bnav a.on{color:var(--red)}
+  .bnav .cnt{position:absolute;top:0;left:calc(50% + 6px);background:var(--red);color:#fff;font-size:10px;border-radius:999px;padding:0 5px}
+  .toast{bottom:84px}
+  .notif{left:16px;right:16px;width:auto}
+}
+</style>
+
+<!-- Icon sprite: 24×24, stroke 1.75, round; .d = duotone secondary layer -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+<defs>
+<style>.d{fill:currentColor;fill-opacity:.15;stroke:none}</style>
+<symbol id="i-dash" viewBox="0 0 24 24"><rect class="d" x="3" y="3" width="8" height="10" rx="2"/><rect x="3" y="3" width="8" height="10" rx="2"/><rect x="13" y="3" width="8" height="6" rx="2"/><rect x="13" y="11" width="8" height="10" rx="2"/><rect x="3" y="15" width="8" height="6" rx="2"/></symbol>
+<symbol id="i-crm" viewBox="0 0 24 24"><path class="d" d="M4 4h16l-6 8v6l-4 2v-8z"/><path d="M4 4h16l-6 8v6l-4 2v-8z"/></symbol>
+<symbol id="i-inbox" viewBox="0 0 24 24"><path class="d" d="M3 13h5l1.5 3h5l1.5-3h5v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M3 13l2.6-7.2A2 2 0 0 1 7.5 4.5h9a2 2 0 0 1 1.9 1.3L21 13v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M3 13h5l1.5 3h5l1.5-3h5"/></symbol>
+<symbol id="i-chat" viewBox="0 0 24 24"><path class="d" d="M4 5h11a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H9l-4 3v-3a2 2 0 0 1-1-2V7a2 2 0 0 1 2-2z"/><path d="M4 5h11a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H9l-4 3v-3H4a1 1 0 0 1-1-1V7a2 2 0 0 1 1-2z"/><path d="M17 9h2a2 2 0 0 1 2 2v9l-3-2h-6a2 2 0 0 1-2-2v-1"/></symbol>
+<symbol id="i-cal" viewBox="0 0 24 24"><rect class="d" x="3" y="5" width="18" height="5" rx="2"/><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M8 14h2M14 14h2M8 17.5h2"/></symbol>
+<symbol id="i-users" viewBox="0 0 24 24"><circle class="d" cx="9" cy="8" r="4"/><circle cx="9" cy="8" r="4"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.3a4 4 0 0 1 0 7.4M18.5 14.5A6.5 6.5 0 0 1 21.5 20"/></symbol>
+<symbol id="i-check" viewBox="0 0 24 24"><rect class="d" x="3" y="3" width="18" height="18" rx="2"/><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7.5 12.5l3 3 6-6.5"/></symbol>
+<symbol id="i-wallet" viewBox="0 0 24 24"><path class="d" d="M3 8h16a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M3 8v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2H5a2 2 0 0 1-2-2 2 2 0 0 1 2-2h11v4"/><circle cx="16.5" cy="14" r="1.2"/></symbol>
+<symbol id="i-coin" viewBox="0 0 24 24"><circle class="d" cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="9"/><path d="M12 7v10M14.8 9.2c-.6-.8-1.6-1.2-2.8-1.2-1.7 0-2.8.9-2.8 2s1 1.7 2.8 2 2.8.9 2.8 2-1.1 2-2.8 2c-1.2 0-2.3-.5-2.9-1.3"/></symbol>
+<symbol id="i-task" viewBox="0 0 24 24"><rect class="d" x="5" y="4" width="14" height="17" rx="2"/><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1M9 11l2 2 4-4M9 17h6"/></symbol>
+<symbol id="i-book" viewBox="0 0 24 24"><path class="d" d="M4 5a2 2 0 0 1 2-2h13v15H6a2 2 0 0 0-2 2z"/><path d="M4 20V5a2 2 0 0 1 2-2h13v15H6a2 2 0 0 0-2 2 2 2 0 0 0 2 2h13v-4"/><path d="M9 7h6"/></symbol>
+<symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
+<symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></symbol>
+<symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 21h4"/></symbol>
+<symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+<symbol id="i-ig" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><path d="M17.2 6.8h.01"/></symbol>
+<symbol id="i-wa" viewBox="0 0 24 24"><path d="M3.5 20.5l1.3-4.2A8.5 8.5 0 1 1 8 19.6z"/><path d="M9 8.5c0 3.5 3 6.5 6.5 6.5l1.2-1.5-2-1-1 .8a5 5 0 0 1-2.5-2.5l.8-1-1-2z"/></symbol>
+<symbol id="i-qr" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><path d="M14 14h3v3M21 14v.01M14 21h3M20 18v3"/></symbol>
+<symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.5 3.8 5.5 3.8 9s-1.3 6.5-3.8 9c-2.5-2.5-3.8-5.5-3.8-9S9.5 5.5 12 3z"/></symbol>
+<symbol id="i-ref" viewBox="0 0 24 24"><circle cx="9" cy="8" r="4"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M19 8v6M16 11h6"/></symbol>
+<symbol id="i-phone" viewBox="0 0 24 24"><path d="M5 4h3.5l1.5 4-2 1.5a10 10 0 0 0 6.5 6.5L16 14l4 1.5V19a2 2 0 0 1-2 2A15 15 0 0 1 3 6a2 2 0 0 1 2-2z"/></symbol>
+<symbol id="i-clip" viewBox="0 0 24 24"><path d="M20 11.5l-8 8a5 5 0 0 1-7-7l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7L9.7 17.2a1.7 1.7 0 0 1-2.4-2.4L15 7"/></symbol>
+<symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></symbol>
+<symbol id="i-send" viewBox="0 0 24 24"><path d="M4 12l16-8-6 16-2.5-6.5z"/><path d="M11.5 13.5L20 4"/></symbol>
+<symbol id="i-pin" viewBox="0 0 24 24"><path d="M9 3h6l-1 6 4 4H6l4-4z"/><path d="M12 13v8"/></symbol>
+<symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+<symbol id="i-down" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+<symbol id="i-up" viewBox="0 0 24 24"><path d="M7 14l5-5 5 5"/></symbol>
+<symbol id="i-more" viewBox="0 0 24 24"><path d="M5 12h.01M12 12h.01M19 12h.01"/></symbol>
+<symbol id="i-filter" viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4"/></symbol>
+<symbol id="i-ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+<symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+<symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.3 4.2L2.8 17.5A2 2 0 0 0 4.5 20.5h15a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0z"/><path d="M12 9.5v4M12 17h.01"/></symbol>
+<symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+<symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4"/></symbol>
+<symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></symbol>
+<symbol id="i-gift" viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="5" rx="2"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6M12 8v13M12 8c-1-3-5-4.5-5.5-2S10 8 12 8zm0 0c1-3 5-4.5 5.5-2S14 8 12 8z"/></symbol>
+<symbol id="i-star" viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></symbol>
+<symbol id="i-flag" viewBox="0 0 24 24"><path d="M5 21V4M5 4h11l-2 4 2 4H5"/></symbol>
+<symbol id="i-zap" viewBox="0 0 24 24"><path d="M13 3L5 13.5h6L10 21l8-10.5h-6z"/></symbol>
+<symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l10-6.5z"/></symbol>
+<symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="9.5" r="1.5"/><path d="M21 16l-5-5-9 9"/></symbol>
+<symbol id="i-cup" viewBox="0 0 24 24"><path d="M5 8h11v7a4 4 0 0 1-4 4H9a4 4 0 0 1-4-4z"/><path d="M16 10h1.5a2.5 2.5 0 0 1 0 5H16M8 3v2M12 3v2"/></symbol>
+<symbol id="i-shirt" viewBox="0 0 24 24"><path d="M8 3l-5 3 2 5 2.5-1V21h9V10l2.5 1 2-5-5-3a4 4 0 0 1-8 0z"/></symbol>
+<symbol id="i-head" viewBox="0 0 24 24"><path d="M4 15v-3a8 8 0 0 1 16 0v3"/><rect x="3" y="14" width="4" height="6" rx="2"/><rect x="17" y="14" width="4" height="6" rx="2"/></symbol>
+<symbol id="i-note" viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h3"/></symbol>
+<symbol id="i-bag" viewBox="0 0 24 24"><path d="M5 8h14l-1 12a2 2 0 0 1-2 1.8H8A2 2 0 0 1 6 20z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></symbol>
+<symbol id="i-trend" viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8M15 7h6v6"/></symbol>
+<symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+<symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></symbol>
+<symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M5 20a7 7 0 0 1 14 0"/></symbol>
+<symbol id="i-door" viewBox="0 0 24 24"><path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16M3 21h18M15 12h.01"/></symbol>
+<symbol id="i-shield" viewBox="0 0 24 24"><path class="d" d="M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6z"/><path d="M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></symbol>
+<symbol id="i-key" viewBox="0 0 24 24"><circle class="d" cx="8" cy="15" r="4.5"/><circle cx="8" cy="15" r="4.5"/><path d="M11.2 11.8L20 3M16 7l3 3M18 5l2 2"/></symbol>
+<symbol id="i-log" viewBox="0 0 24 24"><rect class="d" x="4" y="3" width="16" height="18" rx="2"/><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></symbol>
+<symbol id="i-lock" viewBox="0 0 24 24"><rect x="4.5" y="10" width="15" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14.5v2.5"/></symbol>
+<symbol id="i-laptop" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="11" rx="2"/><path d="M2 19h20"/></symbol>
+<symbol id="i-mobile" viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="2"/><path d="M11 18h2"/></symbol>
+<symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12S6 5 12 5s9.5 7 9.5 7-3.5 7-9.5 7S2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+<symbol id="i-dl" viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></symbol>
+<symbol id="i-db" viewBox="0 0 24 24"><ellipse cx="12" cy="5.5" rx="7.5" ry="2.5"/><path d="M4.5 5.5v13c0 1.4 3.4 2.5 7.5 2.5s7.5-1.1 7.5-2.5v-13M4.5 12c0 1.4 3.4 2.5 7.5 2.5s7.5-1.1 7.5-2.5"/></symbol>
+<symbol id="i-video" viewBox="0 0 24 24"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10.5l5-3v9l-5-3z"/></symbol>
+<symbol id="i-net" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="5" rx="2"/><rect x="3" y="16" width="6" height="5" rx="2"/><rect x="15" y="16" width="6" height="5" rx="2"/><path d="M12 8v4M6 16v-2h12v2"/></symbol>
+<symbol id="i-logout" viewBox="0 0 24 24"><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4M10 8l-4 4 4 4M6 12h10"/></symbol>
+<symbol id="i-msgoff" viewBox="0 0 24 24"><path d="M4 5h12a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H9l-4 3v-3H4a1 1 0 0 1-1-1V7a2 2 0 0 1 1-2z"/><path d="M8 9l4 4M12 9l-4 4"/></symbol>
+</defs>
+</svg>
+
+<div class="proto" role="region" aria-label="Панель прототипа">
+  <span class="tag">Прототип · веб</span>
+  <span>Роль:</span>
+  <div class="seg" id="roleSeg">
+    <button data-role="owner" aria-pressed="true">Владелец</button>
+    <button data-role="sales" aria-pressed="false">Продажи</button>
+    <button data-role="teacher" aria-pressed="false">Учитель</button>
+  </div>
+  <span class="sp"></span>
+  <div class="seg" id="themeSeg" aria-label="Тема">
+    <button data-t="auto" aria-pressed="true">Авто</button>
+    <button data-t="light" aria-pressed="false"><span class="sr">Светлая</span><svg class="ico s16"><use href="#i-sun"/></svg></button>
+    <button data-t="dark" aria-pressed="false"><span class="sr">Тёмная</span><svg class="ico s16"><use href="#i-moon"/></svg></button>
+  </div>
+</div>
+
+<div class="app">
+  <aside class="side" id="side">
+    <div class="logo">
+      <svg width="46" height="34" viewBox="0 0 46 34" aria-hidden="true">
+        <path fill="#FF4D63" d="M1 7.5 9.5 1H15v27h3v5H2v-5h4V10.2L1 11.6z"/>
+        <g fill="#FFFFFF"><rect x="20" y="1" width="25" height="9" rx=".5"/><rect x="20" y="12.5" width="21" height="9" rx=".5"/><rect x="20" y="24" width="25" height="9" rx=".5"/></g>
+        <g fill="#01225F" opacity=".0"></g>
+      </svg>
+      <div class="wm"><span>ONE</span><span>ENGLISH</span><small>INNOVATION IN LEARNING</small></div>
+    </div>
+    <div>
+      <div class="branch" id="branchSeg" role="group" aria-label="Филиал">
+        <button aria-pressed="true" data-b="Янги шахар">Янги шахар</button>
+        <button aria-pressed="false" data-b="Север">Север</button>
+      </div>
+    </div>
+    <div class="lbl">Меню</div>
+    <nav class="nav" id="nav"></nav>
+    <div class="foot">One English · Шымкент<br>с 2018 года</div>
+  </aside>
+  <div class="scrim" id="scrim"></div>
+
+  <div class="main">
+    <header class="top">
+      <button class="iconbtn burger" id="burger" aria-label="Меню"><svg class="ico"><use href="#i-menu"/></svg></button>
+      <label class="search"><svg class="ico s18"><use href="#i-search"/></svg><input placeholder="Ученик, лид, телефон, группа…"><span class="kbd">Ctrl K</span></label>
+      <span class="sp"></span>
+      <button class="iconbtn" aria-label="Создать"><svg class="ico"><use href="#i-plus"/></svg></button>
+      <button class="iconbtn" id="bell" aria-label="Уведомления"><svg class="ico"><use href="#i-bell"/></svg><span class="dot"></span></button>
+      <div class="me" id="meBtn" role="button" tabindex="0" aria-haspopup="menu"><div class="av c7" id="meAv">ЕЖ</div><div class="who"><b id="meName">Ерлан Жумабеков</b><span id="meRole">Владелец · вся сеть</span></div><svg class="ico s16 muted"><use href="#i-down"/></svg></div>
+      <div class="menu" id="meMenu" role="menu">
+        <div class="hd2" id="meMenuHd">Ерлан Жумабеков · Владелец</div>
+        <a href="#student" role="menuitem"><svg class="ico s18"><use href="#i-user"/></svg>Мой профиль</a>
+        <a href="#security" role="menuitem"><svg class="ico s18"><use href="#i-shield"/></svg>Безопасность<span class="chip ok" style="margin-left:auto;font-size:11px">2FA вкл.</span></a>
+        <a href="#security" role="menuitem"><svg class="ico s18"><use href="#i-laptop"/></svg>Мои сессии и устройства</a>
+        <hr>
+        <a href="#" role="menuitem" style="color:var(--red)"><svg class="ico s18"><use href="#i-logout"/></svg>Выйти</a>
+      </div>
+      <div class="notif" id="notif">
+        <div class="it"><span class="srcico ig"><svg><use href="#i-ig"/></svg></span><div><p><b>Новый лид из Instagram</b> — Айгерим Садыкова</p><span>2 мин назад · назначен Мадине Т.</span></div></div>
+        <div class="it"><span class="srcico qr"><svg><use href="#i-qr"/></svg></span><div><p><b>QR-тест пройден</b> — Бекзат Ермеков, Elementary (54/100)</p><span>18 мин назад · Север</span></div></div>
+        <div class="it"><span class="srcico call" style="background:var(--red)"><svg><use href="#i-alert"/></svg></span><div><p><b>3 лида без ответа &gt; 30 мин</b></p><span>Зависшие лиды · Янги шахар</span></div></div>
+        <div class="it"><span class="srcico call" style="background:var(--warn)"><svg><use href="#i-check"/></svg></span><div><p><b>Посещаемость не отмечена</b> — FF3-2, 14:00</p><span>Учитель: Асель Нурланова</span></div></div>
+      </div>
+    </header>
+
+    <!-- 1. DASHBOARD -->
+    <section class="screen" id="s-dashboard" aria-label="Дашборд">
+      <div class="ph">
+        <div><h1>Добрый день, Ерлан</h1><p>Суббота, 24 октября · сводка по <span class="js-branch">Янги шахар</span> и сети</p></div>
+        <span class="sp"></span>
+        <div class="seg"><button aria-pressed="false">Неделя</button><button aria-pressed="true">Месяц</button><button aria-pressed="false">Квартал</button></div>
+        <button class="btn"><svg class="ico s18"><use href="#i-file"/></svg>Excel</button>
+      </div>
+      <div class="kpis">
+        <div class="card kpi"><div class="k"><svg class="ico s18"><use href="#i-users"/></svg>Активные ученики</div><div class="v num">412</div><span class="delta up"><svg class="ico s16"><use href="#i-up"/></svg>+18 за месяц</span></div>
+        <div class="card kpi"><div class="k"><svg class="ico s18"><use href="#i-crm"/></svg>Новые лиды за неделю</div><div class="v num">64</div><span class="delta up"><svg class="ico s16"><use href="#i-up"/></svg>+12% к прошлой</span></div>
+        <div class="card kpi"><div class="k"><svg class="ico s18"><use href="#i-trend"/></svg>Конверсия лид → оплата</div><div class="v num">23,4<small>%</small></div><span class="delta up"><svg class="ico s16"><use href="#i-up"/></svg>+2,1 п.п.</span></div>
+        <div class="card kpi"><div class="k"><svg class="ico s18"><use href="#i-wallet"/></svg>Выручка октября</div><div class="v num">14,86<small> млн ₸</small></div><span class="muted" style="font-size:12px">93% плана 16 млн ₸</span><div class="bar-track"><i style="width:93%"></i></div></div>
+        <div class="card kpi"><div class="k"><svg class="ico s18" style="color:var(--red)"><use href="#i-alert"/></svg>Долги учеников</div><div class="v num">1,24<small> млн ₸</small></div><span class="delta down">27 учеников · 6 > 30 дней</span></div>
+      </div>
+      <div class="grid dash-a">
+        <div class="card">
+          <div class="card-h"><h3>Выручка по месяцам, млн ₸</h3><span class="sp"></span><span class="chip">Вся сеть</span></div>
+          <div class="card-b"><div class="chart" id="revChart"></div><div class="mini-leg" style="margin-top:6px"><span><i style="background:var(--chart-bar)"></i>Факт</span><span><i style="background:var(--chart-bar-soft)"></i>Октябрь — по 24-е</span><span><svg width="18" height="2"><line x1="0" y1="1" x2="18" y2="1" stroke="var(--red)" stroke-width="2" stroke-dasharray="4 3"/></svg>План 16 млн</span></div></div>
+        </div>
+        <div class="card">
+          <div class="card-h"><h3>Лиды по источникам</h3><span class="sp"></span><span class="muted" style="font-size:12px">за 7 дней · 64</span></div>
+          <div class="card-b" id="srcBars"></div>
+        </div>
+      </div>
+      <div class="grid dash-b">
+        <div class="card">
+          <div class="card-h"><h3>Ближайшие уроки</h3><span class="sp"></span><a href="#schedule" class="btn sm ghost">Расписание<svg class="ico s16"><use href="#i-arrow"/></svg></a></div>
+          <div class="card-b" style="padding-top:6px">
+            <div class="list-row"><span class="t">16:00</span><div class="grow"><b>PI-3 · Pre-Intermediate</b><span>Жасур Каримов · Каб. 2 «Оксфорд» · 10/12 + 1 пробный</span></div><span class="lv" style="--c:var(--lv-pre)">Pre-Int</span></div>
+            <div class="list-row"><span class="t">16:00</span><div class="grow"><b>FF3-1 · Family &amp; Friends 3</b><span>Асель Нурланова · Каб. 4 «Kids» · 8/10</span></div><span class="lv" style="--c:var(--lv-kids)">Kids</span></div>
+            <div class="list-row"><span class="t">17:30</span><div class="grow"><b>IE-1 · IELTS Evening</b><span>Дильноза Рахимова · Каб. 1 «Лондон» · 7/8</span></div><span class="lv" style="--c:var(--lv-ielts)">IELTS</span></div>
+            <div class="list-row"><span class="t">18:00</span><div class="grow"><b>EL-5 · Elementary</b><span>Тимур Ахметов · Каб. 3 «Кембридж» · 9/12</span></div><span class="lv" style="--c:var(--lv-ele)">Elementary</span></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-h"><h3>Зависшие лиды</h3><span class="chip red">5</span><span class="sp"></span><a href="#crm" class="btn sm ghost">В CRM<svg class="ico s16"><use href="#i-arrow"/></svg></a></div>
+          <div class="card-b" style="padding-top:6px">
+            <div class="list-row"><span class="srcico ig"><svg><use href="#i-ig"/></svg></span><div class="grow"><b>Айгерим Садыкова</b><span>Новая заявка · Мадина Т.</span></div><span class="late"><svg class="ico s16"><use href="#i-clock"/></svg>47 мин</span></div>
+            <div class="list-row"><span class="srcico wa"><svg><use href="#i-wa"/></svg></span><div class="grow"><b>Нурсултан Беков</b><span>Новая заявка · не назначен</span></div><span class="late"><svg class="ico s16"><use href="#i-clock"/></svg>1 ч 12 мин</span></div>
+            <div class="list-row"><span class="srcico web"><svg><use href="#i-globe"/></svg></span><div class="grow"><b>Камила Юсупова</b><span>Связались · Мадина Т. · без задачи</span></div><span class="late"><svg class="ico s16"><use href="#i-clock"/></svg>2 дня</span></div>
+            <div class="list-row"><span class="srcico qr"><svg><use href="#i-qr"/></svg></span><div class="grow"><b>Бекзат Ермеков</b><span>Новая заявка · Ерболат С. · Elementary</span></div><span class="late"><svg class="ico s16"><use href="#i-clock"/></svg>36 мин</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. CRM -->
+    <section class="screen" id="s-crm" aria-label="CRM">
+      <div class="ph">
+        <div><h1>Воронка продаж</h1><p>Перетащите карточку, чтобы сменить этап. Отказ — только с причиной.</p></div>
+        <span class="sp"></span>
+        <button class="btn"><svg class="ico s18"><use href="#i-qr"/></svg>QR-тест</button>
+        <button class="btn primary"><svg class="ico s18"><use href="#i-plus"/></svg>Новый лид</button>
+      </div>
+      <div class="tabs"><button class="on">Продажи<span class="n">58</span></button><button>Возврат ушедших<span class="n">14</span></button><button>Аналитика</button></div>
+      <div class="toolbar">
+        <span class="select"><svg class="ico s16"><use href="#i-filter"/></svg>Источник: все</span>
+        <span class="select">Ответственный: все<svg class="ico s16"><use href="#i-down"/></svg></span>
+        <span class="select">Уровень: все<svg class="ico s16"><use href="#i-down"/></svg></span>
+        <span class="select" style="color:var(--red);border-color:color-mix(in srgb,var(--red) 40%,var(--line))"><svg class="ico s16"><use href="#i-clock"/></svg>Без ответа &gt; 30 мин · 3</span>
+      </div>
+      <div class="scroll-x"><div class="kanban" id="kanban"></div></div>
+    </section>
+
+    <!-- 3. INBOX -->
+    <section class="screen" id="s-inbox" aria-label="Входящие">
+      <div class="card inbox">
+        <div class="ib-list">
+          <div class="hd">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><h2 class="h-display" style="font-size:17px;margin:0">Входящие</h2><span class="badge">7</span><span style="flex:1"></span><button class="btn sm ghost" aria-label="Фильтр"><svg class="ico s18"><use href="#i-filter"/></svg></button></div>
+            <div class="seg" id="chanSeg" style="width:100%;display:flex"><button style="flex:1" data-ch="all" aria-pressed="true">Все</button><button style="flex:1" data-ch="ig" aria-pressed="false">Instagram</button><button style="flex:1" data-ch="wa" aria-pressed="false">WhatsApp</button></div>
+          </div>
+          <div class="items" id="dlgList"></div>
+        </div>
+        <div class="ib-chat">
+          <div class="hd">
+            <div class="av c5">АС<span class="ch ig"><svg><use href="#i-ig"/></svg></span></div>
+            <div class="grow"><b>Айгерим Садыкова</b><span>Instagram Direct · @aigerim.sdk · лид создан автоматически</span></div>
+            <span class="chip info hd-stage">Новая заявка</span>
+            <button class="btn sm primary hd-cta"><svg class="ico s16"><use href="#i-cal"/></svg><span class="cta-t">На пробный</span></button>
+            <button class="btn sm ghost" aria-label="Ещё"><svg class="ico s18"><use href="#i-more"/></svg></button>
+          </div>
+          <div class="msgs">
+            <span class="day">Сегодня</span>
+            <div class="b in"><div class="story"><span class="thumb">IELTS<br>7.0+</span><span>Ответ на вашу историю<br>«Набор в IELTS-группу, старт 2 ноября»</span></div>Здравствуйте! А сколько стоит подготовка к IELTS? И есть вечерние группы на Янги шахаре?<time>14:02</time></div>
+            <div class="sys"><svg class="ico s18"><use href="#i-zap"/></svg><div><b>Создан лид автоматически</b><br>Источник: Instagram (ответ на историю) · Филиал: Янги шахар · Ответственный: Мадина Тулегенова по очереди распределения. <a href="#crm">Открыть в воронке</a></div></div>
+            <div class="b in"><div class="voice"><span class="pl"><svg class="ico s16"><use href="#i-play"/></svg></span><span class="wave" id="wave1"></span><span class="num" style="font-size:12px">0:21</span></div><time>14:03</time></div>
+            <div class="b out"><span class="by">Мадина · Продажи</span>Здравствуйте, Айгерим! IELTS-группа на Янги шахаре — Пн/Ср/Пт 19:00–20:30, 42 000 ₸ в месяц (12 уроков). Сначала предлагаем бесплатный тест уровня и пробный урок.<time>14:49 · прочитано</time></div>
+            <div class="b out"><span class="by">Мадина · Продажи</span>Пройдите тест по ссылке — займёт 15 минут: oneenglish.kz/test<time>14:49</time></div>
+            <div class="b in">Супер, пройду сегодня. А пробный можно в понедельник?<time>14:51</time></div>
+          </div>
+          <div class="composer">
+            <div class="tpls">
+              <button><svg class="ico s16"><use href="#i-zap"/></svg>Цены IELTS</button>
+              <button><svg class="ico s16"><use href="#i-zap"/></svg>Запись на пробный</button>
+              <button><svg class="ico s16"><use href="#i-zap"/></svg>Адрес Янги шахар</button>
+              <button><svg class="ico s16"><use href="#i-qr"/></svg>Ссылка на тест</button>
+              <button><svg class="ico s16"><use href="#i-zap"/></svg>Kaspi-оплата</button>
+            </div>
+            <div class="cin">
+              <button class="iconbtn" aria-label="Вложение"><svg class="ico"><use href="#i-clip"/></svg></button>
+              <textarea placeholder="Ответить в Instagram…" rows="1"></textarea>
+              <button class="iconbtn" aria-label="Голосовое"><svg class="ico"><use href="#i-mic"/></svg></button>
+              <button class="send" aria-label="Отправить"><svg class="ico"><use href="#i-send"/></svg></button>
+            </div>
+            <div class="window"><svg class="ico s16"><use href="#i-clock"/></svg>Окно ответа Instagram: ещё 23 ч 58 мин · клиент ждёт 2 мин</div>
+          </div>
+        </div>
+        <aside class="ib-lead">
+          <div style="display:flex;gap:12px;align-items:center"><div class="av c5" style="width:44px;height:44px;font-size:15px">АС</div><div><b style="font-size:15px">Айгерим Садыкова</b><div class="muted" style="font-size:12.5px">Лид №2841 · 24.10, 14:02</div></div></div>
+          <div style="display:grid;gap:8px;margin-top:14px">
+            <button class="btn primary full"><svg class="ico s18"><use href="#i-cal"/></svg>Записать на пробный</button>
+            <button class="btn full"><svg class="ico s18"><use href="#i-task"/></svg>Создать задачу</button>
+          </div>
+          <h4>Этап воронки</h4>
+          <div class="stepper">
+            <div class="step cur"><i></i>Новая заявка</div>
+            <div class="step"><i></i>Связались</div>
+            <div class="step"><i></i>Записан на пробный</div>
+            <div class="step"><i></i>Пришёл на пробный</div>
+            <div class="step"><i></i>Оплатил</div>
+          </div>
+          <h4>Данные</h4>
+          <dl class="kv">
+            <dt>Источник</dt><dd style="display:flex;gap:6px;align-items:center"><span class="srcico ig" style="width:18px;height:18px"><svg style="width:12px;height:12px"><use href="#i-ig"/></svg></span>Instagram</dd>
+            <dt>Телефон</dt><dd><a href="#" style="color:var(--info);text-decoration:none">+ Добавить</a></dd>
+            <dt>Интерес</dt><dd>IELTS, вечер</dd>
+            <dt>Уровень</dt><dd><span class="chip warn">Тест не пройден</span></dd>
+            <dt>Ответственный</dt><dd>Мадина Тулегенова</dd>
+            <dt>Филиал</dt><dd class="js-branch">Янги шахар</dd>
+          </dl>
+          <h4>История</h4>
+          <ul class="tl">
+            <li><svg class="ico s16"><use href="#i-send"/></svg><div>Отправлена ссылка на QR-тест<span>14:49 · Мадина Т.</span></div></li>
+            <li><svg class="ico s16"><use href="#i-user"/></svg><div>Назначен ответственный<span>14:02 · автоматически</span></div></li>
+            <li><svg class="ico s16"><use href="#i-zap"/></svg><div>Лид создан из Instagram Direct<span>14:02 · проверка дублей: нет</span></div></li>
+          </ul>
+        </aside>
+      </div>
+    </section>
+
+    <!-- 4. CHATS -->
+    <section class="screen" id="s-chats" aria-label="Чаты">
+      <div class="card inbox chats">
+        <div class="ib-list">
+          <div class="hd"><h2 class="h-display" style="font-size:17px;margin:0 0 10px">Чаты</h2><label class="search" style="height:36px;max-width:none"><svg class="ico s16"><use href="#i-search"/></svg><input placeholder="Поиск по чатам"></label></div>
+          <div class="items">
+            <div class="grp-h">Группы</div>
+            <div class="dlg on"><div class="av c4">PI</div><div class="grow"><div class="l1"><b>PI-3 · Pre-Intermediate</b><time>15:12</time></div><div class="l2"><p>Дильноза: Teacher, а эссе сдавать в чат?</p><span class="badge">3</span></div></div></div>
+            <div class="dlg"><div class="av c5">IE</div><div class="grow"><div class="l1"><b>IE-1 · IELTS Evening</b><time>13:40</time></div><div class="l2"><p>Вы: Mock test в среду, не забудьте…</p></div></div></div>
+            <div class="dlg"><div class="av c6">FF</div><div class="grow"><div class="l1"><b>FF3-1 · Family &amp; Friends 3</b><time>вчера</time></div><div class="l2"><p>Асель: Song for Halloween</p></div></div></div>
+            <div class="grp-h">Личные</div>
+            <div class="dlg"><div class="av c2">ДА</div><div class="grow"><div class="l1"><b>Дильноза Абдуллаева</b><span class="role s">Ученик</span></div><div class="l2"><p>Можно перенести тест на пятницу?</p><span class="badge">1</span></div></div></div>
+            <div class="dlg"><div class="av c8">РА</div><div class="grow"><div class="l1"><b>Рустам Абдуллаев</b><span class="role p">Родитель</span></div><div class="l2"><p>Спасибо, оплату внесём в понедельник</p></div></div></div>
+            <div class="dlg"><div class="av c3">МТ</div><div class="grow"><div class="l1"><b>Мадина Тулегенова</b><span class="role m">Менеджер</span></div><div class="l2"><p>К вам в PI-3 сегодня пробный — Айгерим</p></div></div></div>
+            <div class="dlg"><div class="av c6">АН</div><div class="grow"><div class="l1"><b>Асель Нурланова</b><span class="role t">Учитель</span></div><div class="l2"><p>Подменишь меня в четверг в 16:00?</p></div></div></div>
+          </div>
+        </div>
+        <div class="ib-chat">
+          <div class="hd">
+            <div class="av c4">PI</div>
+            <div class="grow"><b>PI-3 · Pre-Intermediate</b><span>Учитель Жасур Каримов · 11 учеников · Пн/Ср/Пт 16:00</span></div>
+            <button class="btn sm"><svg class="ico s16"><use href="#i-users"/></svg>Участники</button>
+          </div>
+          <div class="pinned"><svg class="ico s18"><use href="#i-pin"/></svg><div><b>Закреплено · Домашнее задание до пн, 26.10</b>Workbook p. 42–43, ex. 1–5. Essay «My perfect weekend» — 120–150 слов, сдать фото или файлом в этот чат.</div></div>
+          <div class="msgs">
+            <span class="day">Сегодня</span>
+            <div class="gm"><div class="av sm c7">ЖК</div><div class="b in"><span class="by" style="display:flex;gap:6px;align-items:center">Жасур Каримов <span class="role t">Учитель</span></span>Good afternoon! Домашку закрепил выше. За эссе без ошибок — +20 коинов!<time>12:05</time></div></div>
+            <div class="gm"><div class="av sm c3">ТА</div><div class="b in"><span class="by" style="display:flex;gap:6px;align-items:center">Тимур Ахмедов <span class="role s">Ученик</span></span><div class="photo"></div>Сделал упражнения 1–3, проверьте пожалуйста<time>14:31</time></div></div>
+            <div class="gm"><div class="av sm c1">МС</div><div class="b in"><span class="by" style="display:flex;gap:6px;align-items:center">Мадина Сейткали <span class="role s">Ученик</span></span><div class="file"><span class="fi">PDF</span><div><b style="font-size:13px">essay_weekend_seitkali.pdf</b><div class="muted" style="font-size:12px">184 КБ</div></div></div><time>14:58</time></div></div>
+            <div class="gm"><div class="av sm c2">ДА</div><div class="b in"><span class="by" style="display:flex;gap:6px;align-items:center">Дильноза Абдуллаева <span class="role s">Ученик</span></span>Teacher, а эссе сдавать в чат или в раздел ДЗ?<time>15:12</time></div></div>
+            <div class="gm me"><div class="b out"><div class="voice"><span class="pl"><svg class="ico s16"><use href="#i-play"/></svg></span><span class="wave" id="wave2"></span><span class="num" style="font-size:12px">0:34</span></div><time>15:14 · прочитали 8</time></div></div>
+          </div>
+          <div class="composer">
+            <div class="cin">
+              <button class="iconbtn" aria-label="Вложение"><svg class="ico"><use href="#i-clip"/></svg></button>
+              <textarea placeholder="Сообщение группе PI-3…" rows="1"></textarea>
+              <button class="iconbtn" aria-label="Закрепить как ДЗ" title="Закрепить как ДЗ"><svg class="ico"><use href="#i-pin"/></svg></button>
+              <button class="iconbtn" aria-label="Голосовое"><svg class="ico"><use href="#i-mic"/></svg></button>
+              <button class="send" aria-label="Отправить"><svg class="ico"><use href="#i-send"/></svg></button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5. SCHEDULE -->
+    <section class="screen" id="s-schedule" aria-label="Расписание">
+      <div class="ph">
+        <div><h1>Расписание</h1><p><span class="js-branch">Янги шахар</span> · неделя 19–24 октября 2026</p></div>
+        <span class="sp"></span>
+        <div class="seg"><button aria-pressed="true">По кабинетам</button><button aria-pressed="false">По учителям</button><button aria-pressed="false">По группам</button></div>
+        <button class="btn primary"><svg class="ico s18"><use href="#i-plus"/></svg>Урок</button>
+      </div>
+      <div class="toolbar" style="justify-content:space-between">
+        <div class="rooms" id="rooms"></div>
+        <div class="legend" id="legend"></div>
+      </div>
+      <div class="card sched-wrap scroll-x"><div class="sched" id="sched"></div></div>
+    </section>
+
+    <!-- 6. STUDENT -->
+    <section class="screen" id="s-student" aria-label="Карточка ученика">
+      <div class="ph" style="margin-bottom:12px"><div class="muted" style="font-size:13px"><a href="#student" style="color:inherit;text-decoration:none">Ученики</a> / PI-3 / Дильноза Абдуллаева</div></div>
+      <div class="card" style="margin-bottom:16px">
+        <div class="stu-head">
+          <div class="av lg c2">ДА</div>
+          <div style="flex:1;min-width:220px">
+            <h2>Дильноза Абдуллаева</h2>
+            <div class="muted" style="margin-top:2px">16 лет · +7 705 318 42 07 · с марта 2025</div>
+            <div class="facts"><span class="chip ok">Активна</span><span class="chip"><span class="lv" style="--c:var(--lv-pre)">Pre-Intermediate</span></span><span class="chip">Группа PI-3</span><span class="chip">Жасур Каримов</span><span class="chip js-branch">Янги шахар</span></div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn"><svg class="ico s18"><use href="#i-chat"/></svg>Написать</button><button class="btn"><svg class="ico s18"><use href="#i-arrow"/></svg>Перевести</button><button class="btn primary"><svg class="ico s18"><use href="#i-wallet"/></svg>Принять оплату</button></div>
+        </div>
+        <div class="tabs" style="margin:0;padding:0 12px"><button class="on">Обзор</button><button>Посещаемость</button><button>Оценки и ДЗ</button><button>Тесты</button><button>Оплаты</button><button>Книги</button><button>Коины</button><button>История</button></div>
+      </div>
+      <div class="alert"><svg class="ico s24"><use href="#i-alert"/></svg><div class="grow"><b>Осталось 3 урока из 12</b><span>Хватит до среды, 28.10. При 2 уроках родителю автоматически уйдёт напоминание в WhatsApp.</span></div><button class="btn sm">Напомнить сейчас</button><button class="btn sm primary">Продлить · 36 000 ₸</button></div>
+      <div class="grid stu-grid">
+        <div class="card"><div class="card-h"><h3>Баланс уроков</h3></div><div class="card-b">
+          <div class="balance">
+            <svg class="ring" viewBox="0 0 96 96"><circle cx="48" cy="48" r="40" fill="none" stroke="var(--grid)" stroke-width="10"/><circle cx="48" cy="48" r="40" fill="none" stroke="var(--warn)" stroke-width="10" stroke-linecap="round" stroke-dasharray="62.8 251.3" transform="rotate(-90 48 48)"/><text x="48" y="50" text-anchor="middle" font-size="22" fill="var(--ink)">3</text><text x="48" y="66" text-anchor="middle" font-size="9" fill="var(--muted)" style="font-family:'Golos Text';font-weight:500">из 12</text></svg>
+            <dl class="bal-l"><dt>Оплачено</dt><dd>12 уроков</dd><dt>Проведено</dt><dd>9</dd><dt>Осталось</dt><dd style="color:var(--warn)">3</dd><dt>Цена урока</dt><dd>3 000 ₸</dd><dt>Ден. остаток</dt><dd>1 000 ₸</dd></dl>
+          </div>
+        </div></div>
+        <div class="card"><div class="card-h"><h3>Посещаемость</h3><span class="sp"></span><b class="num">88%</b></div><div class="card-b">
+          <div class="att-dots" id="attDots"></div>
+          <div class="mini-leg"><span><i style="background:var(--ok)"></i>Был · 21</span><span><i style="background:var(--warn)"></i>Опоздал · 2</span><span><i style="background:var(--red)"></i>Пропуск · 1</span></div>
+        </div></div>
+        <div class="card"><div class="card-h"><h3>Коины</h3><span class="sp"></span><a href="#coins" class="btn sm ghost">Магазин</a></div><div class="card-b">
+          <div class="coins"><span class="coin">OE</span><div><div class="h-display num" style="font-size:22px">340</div><div class="muted" style="font-size:12.5px">3-е место в группе · 14-е в филиале</div></div></div>
+          <ul class="tl" style="margin-top:10px"><li><svg class="ico s16"><use href="#i-plus"/></svg><div>+20 · Эссе без ошибок<span>21.10 · Жасур К.</span></div></li><li><svg class="ico s16"><use href="#i-star"/></svg><div>+50 · Месяц без пропусков<span>01.10 · автоматически</span></div></li></ul>
+        </div></div>
+        <div class="card"><div class="card-h"><h3>Оценки и ДЗ</h3></div><div class="card-b" style="padding-top:6px">
+          <div class="list-row"><span class="grade" style="color:var(--ok)">5</span><div class="grow"><b>Unit 6 · Past Continuous</b><span>23.10 · «Отличная работа в парах»</span></div><span class="chip ok">ДЗ сдано</span></div>
+          <div class="list-row"><span class="grade">4</span><div class="grow"><b>Unit 6 · Vocabulary: travel</b><span>21.10</span></div><span class="chip ok">ДЗ сдано</span></div>
+          <div class="list-row"><span class="grade" style="color:var(--warn)">3</span><div class="grow"><b>Unit 5 · Progress check</b><span>19.10 · «Повторить irregular verbs»</span></div><span class="chip warn">ДЗ позже</span></div>
+        </div></div>
+        <div class="card"><div class="card-h"><h3>Родители</h3></div><div class="card-b" style="padding-top:6px">
+          <div class="list-row"><div class="av c8">РА</div><div class="grow"><b>Рустам Абдуллаев · отец</b><span>+7 701 552 19 84</span></div><span class="srcico wa" title="WhatsApp-уведомления включены"><svg><use href="#i-wa"/></svg></span></div>
+          <div class="list-row"><div class="av c5">ША</div><div class="grow"><b>Шахноза Абдуллаева · мать</b><span>+7 747 210 63 15</span></div><span class="srcico wa"><svg><use href="#i-wa"/></svg></span></div>
+          <div class="muted" style="font-size:12.5px;margin-top:6px">Уведомления: пропуски, оплаты, остаток уроков · язык — русский</div>
+        </div></div>
+        <div class="card"><div class="card-h"><h3>Оплаты</h3><span class="sp"></span><span class="muted" style="font-size:12px">Источник: Instagram · Мадина Т.</span></div><div class="card-b" style="padding-top:4px">
+          <table><thead><tr><th>Дата</th><th class="r">Сумма</th><th>Способ</th></tr></thead><tbody>
+            <tr><td class="num">02.10.26</td><td class="r num">36 000 ₸<div class="muted" style="font-size:12px">12 уроков</div></td><td><span class="method"><i class="kaspi">K</i>Kaspi</span></td></tr>
+            <tr><td class="num">01.09.26</td><td class="r num">36 000 ₸<div class="muted" style="font-size:12px">12 уроков</div></td><td><span class="method"><i style="background:var(--ok)">₸</i>Наличные</span></td></tr>
+            <tr><td class="num">28.08.26</td><td class="r num">6 500 ₸<div class="muted" style="font-size:12px">Книга Solutions</div></td><td><span class="method"><i class="kaspi">K</i>Kaspi</span></td></tr>
+          </tbody></table>
+        </div></div>
+      </div>
+    </section>
+
+    <!-- 7. ATTENDANCE -->
+    <section class="screen" id="s-attendance" aria-label="Посещаемость">
+      <div class="ph"><div><h1>Посещаемость</h1><p>Отметка доступна до конца дня. Позже — только через админа.</p></div></div>
+      <div class="card">
+        <div class="att-head">
+          <div class="av c4" style="border-radius:10px">PI</div>
+          <div class="grow"><b style="font-size:16px">PI-3 · Pre-Intermediate</b><div class="muted" style="font-size:13px">Сб, 24 октября · 16:00–17:30 · Каб. 2 «Оксфорд» · урок 10 из 12</div></div>
+          <span class="chip ok" id="liveChip"><svg class="ico s16"><use href="#i-clock"/></svg>Идёт урок · 34 мин</span>
+          <button class="btn sm" id="allPresent"><svg class="ico s16"><use href="#i-ok"/></svg>Все пришли</button>
+        </div>
+        <div id="attList"></div>
+        <div class="att-foot">
+          <div class="wa-note"><span class="srcico wa"><svg><use href="#i-wa"/></svg></span><div><b>При сохранении родителям уйдёт WhatsApp-уведомление</b><div class="muted" id="waSummary" style="font-size:12.5px"></div></div></div>
+          <div class="num" style="font-size:13px;text-align:right"><b id="presentCnt">—</b><div class="muted">Ставка за урок: <b id="rate" style="color:var(--ink)">—</b></div></div>
+          <button class="btn primary" id="saveAtt"><svg class="ico s18"><use href="#i-ok"/></svg>Сохранить</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 8a. FINANCE -->
+    <section class="screen" id="s-finance" aria-label="Финансы">
+      <div class="ph"><div><h1>Финансы</h1><p>Октябрь 2026 · по 24-е число · вся сеть</p></div><span class="sp"></span><button class="btn"><svg class="ico s18"><use href="#i-plus"/></svg>Расход</button><button class="btn primary"><svg class="ico s18"><use href="#i-wallet"/></svg>Принять оплату</button></div>
+      <div class="grid fin-k">
+        <div class="card kpi"><div class="k">Выручка</div><div class="v num">14,86<small> млн ₸</small></div><span class="delta up"><svg class="ico s16"><use href="#i-up"/></svg>+6% к сентябрю на ту же дату</span></div>
+        <div class="card kpi"><div class="k">Расходы</div><div class="v num">9,12<small> млн ₸</small></div><span class="muted" style="font-size:12px">ФОТ 5,4 млн · аренда 1,6 млн</span></div>
+        <div class="card kpi"><div class="k">Чистая прибыль</div><div class="v num">5,74<small> млн ₸</small></div><span class="muted" style="font-size:12px">Маржа 38,6%</span></div>
+        <div class="card kpi"><div class="k">Средний чек</div><div class="v num">35 900<small> ₸</small></div><span class="muted" style="font-size:12px">414 оплат</span></div>
+      </div>
+      <div class="grid fin-a">
+        <div class="card"><div class="card-h"><h3>P&amp;L по филиалам</h3></div><div class="card-b scroll-x" style="padding-top:6px">
+          <table style="min-width:440px"><thead><tr><th>Филиал</th><th class="r">Выручка</th><th class="r">Расходы</th><th class="r">Прибыль</th><th class="r">Маржа</th></tr></thead><tbody class="num">
+            <tr><td><b>Янги шахар</b></td><td class="r">8 940 000</td><td class="r">5 210 000</td><td class="r">3 730 000</td><td class="r">41,7%</td></tr>
+            <tr><td><b>Север</b></td><td class="r">5 920 000</td><td class="r">3 470 000</td><td class="r">2 450 000</td><td class="r">41,4%</td></tr>
+            <tr><td class="muted">Общие расходы сети</td><td class="r muted">—</td><td class="r">440 000</td><td class="r" style="color:var(--red)">−440 000</td><td class="r muted">—</td></tr>
+            <tr><td><b>Итого, ₸</b></td><td class="r"><b>14 860 000</b></td><td class="r"><b>9 120 000</b></td><td class="r"><b>5 740 000</b></td><td class="r"><b>38,6%</b></td></tr>
+          </tbody></table>
+        </div></div>
+        <div class="card"><div class="card-h"><h3>Последние оплаты</h3><span class="sp"></span><span class="chip red">Должники · 27</span></div><div class="card-b" style="padding-top:6px">
+          <div class="list-row"><div class="av c2">ДА</div><div class="grow"><b>Дильноза Абдуллаева</b><span>PI-3 · 12 уроков · Гульнара (офис)</span></div><div style="text-align:right"><b class="num">36 000 ₸</b><div><span class="method"><i class="kaspi">K</i>Kaspi</span></div></div></div>
+          <div class="list-row"><div class="av c3">БЕ</div><div class="grow"><b>Бекзат Ермеков</b><span>EL-5 · первая оплата после пробного</span></div><div style="text-align:right"><b class="num">33 500 ₸</b><div><span class="method"><i style="background:var(--info)">▭</i>Карта</span></div></div></div>
+          <div class="list-row"><div class="av c6">АТ</div><div class="grow"><b>Алия Турсунова</b><span>FF3-1 · семейная скидка 10%</span></div><div style="text-align:right"><b class="num">30 150 ₸</b><div><span class="method"><i style="background:var(--ok)">₸</i>Наличные</span></div></div></div>
+          <div class="list-row"><div class="av c4">ЖМ</div><div class="grow"><b>Жасур Мирзаев</b><span>Книга Solutions Pre-Int</span></div><div style="text-align:right"><b class="num">6 500 ₸</b><div><span class="method"><i class="kaspi">K</i>Kaspi</span></div></div></div>
+        </div></div>
+      </div>
+    </section>
+
+    <!-- 8b. COINS -->
+    <section class="screen" id="s-coins" aria-label="Коины и магазин">
+      <div class="ph"><div><h1>Коины и магазин</h1><p id="coinSub">Каталог, заказы к выдаче и рейтинг <span class="js-branch">Янги шахар</span></p></div><span class="sp"></span><button class="btn primary" id="coinCta"><svg class="ico s18"><use href="#i-coin"/></svg>Начислить коины</button></div>
+      <div class="grid fin-a">
+        <div class="card"><div class="card-h"><h3>Магазин</h3><span class="sp"></span><span class="muted" style="font-size:12px" id="limitNote">Лимит учителя: 320 из 500 коинов в октябре</span></div><div class="card-b"><div class="shop" id="shop"></div></div></div>
+        <div class="grid" style="align-content:start">
+          <div class="card"><div class="card-h"><h3>Заказы к выдаче</h3><span class="chip warn">4</span></div><div class="card-b" style="padding-top:6px">
+            <div class="list-row"><div class="av c2 sm">ДА</div><div class="grow"><b>Термокружка One English</b><span>Дильноза А. · PI-3</span></div><span class="chip warn">Готов к выдаче</span></div>
+            <div class="list-row"><div class="av c3 sm">ТА</div><div class="grow"><b>Стикерпак «London»</b><span>Тимур А. · PI-3</span></div><span class="chip info">Оформлен</span></div>
+            <div class="list-row"><div class="av c1 sm">МС</div><div class="grow"><b>Худи One English, M</b><span>Мадина С. · PI-3</span></div><span class="chip ok">Выдан</span></div>
+          </div></div>
+          <div class="card"><div class="card-h"><h3>Рейтинг филиала</h3><span class="sp"></span><span class="muted" style="font-size:12px">октябрь</span></div><div class="card-b" style="padding-top:6px">
+            <div class="rank"><span class="pos g">1</span><div class="av sm c5">АК</div><div class="grow" style="flex:1">Амина Касымова<div class="muted" style="font-size:12px">IE-1</div></div><b class="num">612</b></div>
+            <div class="rank"><span class="pos g">2</span><div class="av sm c3">ТА</div><div class="grow" style="flex:1">Тимур Ахмедов<div class="muted" style="font-size:12px">PI-3</div></div><b class="num">498</b></div>
+            <div class="rank"><span class="pos g">3</span><div class="av sm c6">АТ</div><div class="grow" style="flex:1">Алия Турсунова<div class="muted" style="font-size:12px">FF3-1</div></div><b class="num">455</b></div>
+            <div class="rank"><span class="pos">4</span><div class="av sm c2">ДА</div><div class="grow" style="flex:1">Дильноза Абдуллаева<div class="muted" style="font-size:12px">PI-3</div></div><b class="num">340</b></div>
+          </div></div>
+        </div>
+      </div>
+    </section>
+
+
+    <!-- 9. ROLES -->
+    <section class="screen" id="s-roles" aria-label="Роли и доступы">
+      <div class="ph"><div><h1>Роли и доступы</h1><p>Права по модулям и действиям, область данных и правила переписки. Каждое изменение пишется в журнал.</p></div><span class="sp"></span><button class="btn"><svg class="ico s18"><use href="#i-log"/></svg>История изменений</button><button class="btn primary" id="saveRole"><svg class="ico s18"><use href="#i-ok"/></svg>Сохранить</button></div>
+      <div class="grid roles-l">
+        <div class="card rlist" id="roleList"></div>
+        <div class="grid" style="min-width:0">
+          <div class="card">
+            <div class="card-h" style="flex-wrap:wrap"><h3 id="rTitle">Продажи</h3><span class="chip" id="rUsers">7 сотрудников</span><span class="sp"></span><span class="muted" style="font-size:12.5px" id="rNote"></span></div>
+            <div class="card-b scroll-x" style="padding-top:8px">
+              <table class="perm" style="min-width:720px"><thead><tr><th>Модуль</th><th class="c">Просмотр</th><th class="c">Создание</th><th class="c">Изменение</th><th class="c">Архив</th><th class="c">Экспорт</th><th>Доступ к данным</th></tr></thead><tbody id="permBody"></tbody></table>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-h" style="flex-wrap:wrap"><h3>Кто с кем может переписываться</h3><span class="sp"></span><span class="mini-leg"><span><i style="background:var(--ok)"></i>Да</span><span><i style="background:var(--info)"></i>Только в групповом чате</span><span><i style="background:var(--line)"></i>Нет</span></span></div>
+            <div class="card-b">
+              <p class="muted" style="margin:0 0 10px;font-size:13px">Строка — кто начинает чат, столбец — кому. Нажмите на ячейку, чтобы сменить правило.</p>
+              <div class="scroll-x"><table class="mx" style="min-width:720px"><thead><tr><th>Пишет ↓ / Кому →</th><th class="c">Учитель</th><th class="c">Ученик</th><th class="c">Родитель</th><th class="c">Офис-менеджер</th><th class="c">Продажи</th><th class="c">Админ</th></tr></thead><tbody id="mxBody"></tbody></table></div>
+              <div style="margin-top:8px">
+                <div class="opt"><svg class="ico"><use href="#i-clock"/></svg><div class="grow"><b>Время доступности чатов для детей</b><p>Вне этого времени ученики до 18 лет не могут писать; сообщения учителей доставляются утром.</p><div class="ex"><input class="tin" value="08:00" aria-label="С"> — <input class="tin" value="21:00" aria-label="До"><span class="chip">Пн–Сб</span><span class="chip">Вс — выкл.</span></div></div><button class="sw" role="switch" aria-checked="true" aria-label="Время доступности"></button></div>
+                <div class="opt"><svg class="ico"><use href="#i-msgoff"/></svg><div class="grow"><b>Дети не могут отправлять телефоны и ссылки</b><p>Номера, @никнеймы и ссылки скрываются до отправки, учитель получает уведомление. Пример: «пиши мне +7 7••• ••• •• ••».</p></div><button class="sw" role="switch" aria-checked="true" aria-label="Запрет телефонов"></button></div>
+                <div class="opt"><svg class="ico"><use href="#i-alert"/></svg><div class="grow"><b>Модерация</b><p>Фильтр нецензурной лексики, кнопка «Пожаловаться» у каждого сообщения, жалобы уходят админу филиала в течение минуты.</p><div class="ex"><span class="chip ok">Автофильтр</span><span class="chip ok">Жалобы</span><span class="chip">Премодерация фото учеников — выкл.</span></div></div><button class="sw" role="switch" aria-checked="true" aria-label="Модерация"></button></div>
+                <div class="opt"><svg class="ico"><use href="#i-eye"/></svg><div class="grow"><b>Админ видит переписку только для просмотра</b><p>Без возможности писать от чужого имени и удалять. Каждое открытие чужого чата записывается в журнал: кто, какой чат, когда, IP.</p></div><button class="sw" role="switch" aria-checked="true" aria-label="Только просмотр" disabled title="Обязательно, нельзя отключить"></button></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 10. SECURITY -->
+    <section class="screen" id="s-security" aria-label="Безопасность">
+      <div class="ph"><div><h1>Безопасность</h1><p class="admin-only">Политики для всей сети One English. Изменения применяются сразу и пишутся в журнал.</p><p class="self-only">Ваш вход, устройства и сессии.</p></div><span class="sp"></span><a href="#audit" class="btn admin-only"><svg class="ico s18"><use href="#i-log"/></svg>Журнал действий</a></div>
+      <div class="card score admin-only"><span class="shield"><svg class="ico"><use href="#i-shield"/></svg></span><div class="grow"><h3>Защита: 8 из 10 мер включены</h3><div class="muted" style="font-size:13px">Рекомендуем: ограничить вход в «Финансы» сетями филиалов и проверить восстановление из копии (было 41 день назад).</div><div class="meter"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i></div></div></div>
+      <div class="grid sec-grid">
+        <div class="grid">
+          <div class="card"><div class="card-h"><svg class="ico"><use href="#i-key"/></svg><h3>Двухфакторная аутентификация</h3><span class="sp"></span><span class="chip ok">Обязательна</span></div><div class="card-b">
+            <div class="opt admin-only" style="padding-top:0"><div class="grow"><b>Обязательна для всех сотрудников</b><p>Без второго фактора сотрудник не войдёт. Ученики и родители — вход по коду в WhatsApp.</p></div><button class="sw" role="switch" aria-checked="true" aria-label="2FA обязательна"></button></div>
+            <div class="opt"><div class="grow"><b>Способы</b><div class="ex"><span class="chip ok"><svg class="ico s16"><use href="#i-mobile"/></svg>Приложение TOTP</span><span class="chip ok"><svg class="ico s16"><use href="#i-wa"/></svg>Код в WhatsApp</span><span class="chip">SMS — резерв</span><span class="chip">10 резервных кодов</span></div></div></div>
+            <div class="opt admin-only" style="padding-bottom:0"><div class="grow"><b>34 из 37 сотрудников настроили</b><p>Не настроили: Тимур Ахметов, Мадина Ибрагимова, Гульнара Сарсенова — вход заблокирован до настройки.</p><div class="bar-track"><i style="width:92%;background:var(--ok)"></i></div></div><button class="btn sm">Напомнить</button></div>
+          </div></div>
+          <div class="card"><div class="card-h"><svg class="ico"><use href="#i-laptop"/></svg><h3>Активные сессии</h3><span class="sp"></span><button class="btn sm" id="killAll">Завершить все, кроме текущей</button></div><div class="card-b" id="sessList" style="padding-top:6px"></div></div>
+          <div class="card admin-only"><div class="card-h"><svg class="ico"><use href="#i-lock"/></svg><h3>Пароли и автоблокировка</h3></div><div class="card-b" style="padding-top:4px">
+            <div class="opt"><div class="grow"><b>Политика паролей</b><div class="ex"><span class="chip">Мин. 10 символов</span><span class="chip">Буквы + цифры</span><span class="chip">Не из утёкших баз</span><span class="chip">Смена раз в 180 дней</span></div></div></div>
+            <div class="opt"><div class="grow"><b>Блокировка после неудачных входов</b><p>После <input class="tin" style="width:52px" value="5" aria-label="Попыток"> попыток — блокировка на <input class="tin" style="width:52px" value="15" aria-label="Минут"> мин, уведомление админу.</p></div><button class="sw" role="switch" aria-checked="true" aria-label="Автоблокировка"></button></div>
+            <div class="opt" style="padding-bottom:0"><span class="srcico call" style="background:var(--red)"><svg><use href="#i-lock"/></svg></span><div class="grow"><b>Заблокирован: Тимур Ахметов</b><p>Сегодня 14:22 · 5 неверных паролей · IP 37.150.12.4 (Алматы) — не сеть филиала</p></div><button class="btn sm">Разблокировать</button></div>
+          </div></div>
+          <div class="card admin-only"><div class="card-h"><svg class="ico"><use href="#i-net"/></svg><h3>Вход по IP для финансов</h3><span class="chip">Опционально</span><span class="sp"></span><button class="sw" role="switch" aria-checked="false" aria-label="Ограничение по IP"></button></div><div class="card-b">
+            <p class="muted" style="margin:0 0 8px;font-size:13px">«Финансы», «Зарплата и KPI» и экспорт открываются только из сетей филиалов. Остальные модули — откуда угодно.</p>
+            <div class="list-row"><svg class="ico s18 muted"><use href="#i-door"/></svg><div class="grow"><b>Янги шахар</b><span class="code">95.56.214.0/28</span></div></div>
+            <div class="list-row"><svg class="ico s18 muted"><use href="#i-door"/></svg><div class="grow"><b>Север</b><span class="code">2.134.88.16/29</span></div></div>
+          </div></div>
+        </div>
+        <div class="grid">
+          <div class="card admin-only"><div class="card-h"><svg class="ico"><use href="#i-eye"/></svg><h3>Маскирование телефонов клиентов</h3></div><div class="card-b" style="padding-top:4px">
+            <div class="opt"><div class="grow"><b>Скрывать номера для ролей</b><div class="ex"><span class="chip ok">Продажи</span><span class="chip ok">Учитель</span><span class="chip ok">SMM</span><span class="chip">Офис-менеджер — видит</span></div></div><button class="sw" role="switch" aria-checked="true" aria-label="Маскирование"></button></div>
+            <div class="opt" style="padding-bottom:0"><div class="grow"><b>Так видит продажник</b><p>Айгерим Садыкова · Instagram</p><div class="ex"><span class="mask" id="maskPhone">+7 701 *** ** 78</span><button class="btn sm" id="showPhone"><svg class="ico s16"><use href="#i-eye"/></svg>Показать</button></div><p id="maskNote" style="display:none;color:var(--warn)">Просмотр записан в журнал: Мадина Т., 24.10 15:41, IP 95.56.214.7. Лимит — 30 номеров в день.</p></div></div>
+          </div></div>
+          <div class="card admin-only"><div class="card-h"><svg class="ico"><use href="#i-dl"/></svg><h3>Экспорт данных</h3></div><div class="card-b" style="padding-top:4px">
+            <div class="list-row"><div class="grow"><b>Продажи</b><span>Выгрузка лидов и базы запрещена</span></div><span class="chip red">Запрещён</span></div>
+            <div class="list-row"><div class="grow"><b>Учитель, SMM</b><span>Только свои отчёты, без телефонов</span></div><span class="chip red">Запрещён</span></div>
+            <div class="list-row"><div class="grow"><b>Офис-менеджер</b><span>Через запрос с подтверждением админа</span></div><span class="chip warn">По запросу</span></div>
+            <div class="list-row"><div class="grow"><b>Админ филиала, Владелец</b><span>Файл с водяным знаком: ФИО, дата, IP</span></div><span class="chip ok">Разрешён</span></div>
+          </div></div>
+          <div class="card admin-only"><div class="card-h"><svg class="ico"><use href="#i-db"/></svg><h3>Резервные копии</h3><span class="sp"></span><span class="chip ok"><svg class="ico s16"><use href="#i-ok"/></svg>В норме</span></div><div class="card-b">
+            <dl class="kv" style="grid-template-columns:150px minmax(0,1fr)"><dt>Последняя копия</dt><dd>Сегодня, 03:00 · 2,4 ГБ</dd><dt>Расписание</dt><dd>Ежедневно + журнал транзакций каждые 15 мин</dd><dt>Шифрование</dt><dd>AES-256, ключи отдельно от копий</dd><dt>Хранение</dt><dd>30 дней, копия во втором дата-центре (РК)</dd><dt>Проверка восстановления</dt><dd style="color:var(--warn)">13.09.2026 — 41 день назад</dd></dl>
+            <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><button class="btn sm">Проверить восстановление</button><button class="btn sm ghost">Отчёт о копиях</button></div>
+          </div></div>
+          <div class="card admin-only"><div class="card-h"><svg class="ico"><use href="#i-video"/></svg><h3>Согласие на запись видео и аудио</h3></div><div class="card-b" style="padding-top:4px">
+            <div class="opt"><div class="grow"><b>Запись уроков — только с согласия</b><p>Родитель подтверждает в приложении или по коду в WhatsApp. Пока в группе есть хоть один без согласия, запись в этой группе выключена.</p></div><button class="sw" role="switch" aria-checked="true" aria-label="Согласие на запись"></button></div>
+            <div class="opt"><div class="grow"><b>Согласия: 318 из 412 (77%)</b><div class="bar-track"><i style="width:77%"></i></div><div class="ex"><span class="chip ok">IE-1 — все</span><span class="chip ok">PI-3 — все</span><span class="chip warn">FF3-1 — 6 из 8</span><span class="chip warn">EL-5 — 7 из 9</span></div></div></div>
+            <div class="opt" style="padding-bottom:0"><div class="grow"><b>Голосовые в чатах</b><p>Хранятся 12 месяцев, затем удаляются автоматически. Скачивание — только участникам чата.</p></div><button class="sw" role="switch" aria-checked="true" aria-label="Срок хранения"></button></div>
+          </div></div>
+          <div class="card admin-only"><div class="card-h"><svg class="ico"><use href="#i-log"/></svg><h3>Журнал действий</h3><span class="sp"></span><a href="#audit" class="btn sm ghost">Открыть<svg class="ico s16"><use href="#i-arrow"/></svg></a></div><div class="card-b" style="padding-top:6px" id="auditMini"></div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 11. AUDIT -->
+    <section class="screen" id="s-audit" aria-label="Журнал действий">
+      <div class="ph"><div><h1>Журнал действий</h1><p>Ни одна запись не удаляется. Журнал доступен только для чтения — изменить его нельзя никому.</p></div><span class="sp"></span><button class="btn"><svg class="ico s18"><use href="#i-dl"/></svg>Экспорт CSV</button></div>
+      <div class="toolbar">
+        <span class="select">Период: 24.10.2026<svg class="ico s16"><use href="#i-down"/></svg></span>
+        <span class="select">Сотрудник: все<svg class="ico s16"><use href="#i-down"/></svg></span>
+        <span class="select">Модуль: все<svg class="ico s16"><use href="#i-down"/></svg></span>
+        <span class="select">Действие: все<svg class="ico s16"><use href="#i-down"/></svg></span>
+        <span class="select"><svg class="ico s16"><use href="#i-net"/></svg>IP вне филиалов</span>
+        <button class="select" id="riskOnly" style="color:var(--red);border-color:color-mix(in srgb,var(--red) 40%,var(--line))"><svg class="ico s16"><use href="#i-alert"/></svg>Только риски</button>
+      </div>
+      <div class="card scroll-x"><table class="audit" style="min-width:960px"><thead><tr><th>Время</th><th>Кто</th><th>Действие</th><th>Объект</th><th>Было → Стало</th><th>IP · устройство</th></tr></thead><tbody id="auditBody"></tbody></table></div>
+    </section>
+    <section class="screen" id="s-stub" aria-label="Раздел">
+      <div class="card stub"><svg class="ico" id="stubIco"><use href="#i-task"/></svg><h2 class="h-display" style="font-size:18px;color:var(--ink);margin:0 0 6px" id="stubTitle">Раздел</h2><p style="margin:0">Этот модуль есть в ТЗ, но не входит в первую итерацию прототипа.</p></div>
+    </section>
+  </div>
+</div>
+
+<nav class="bnav" id="bnav"></nav>
+<div class="toast" id="toast"><span class="srcico wa"><svg><use href="#i-wa"/></svg></span><span id="toastTxt"></span></div>
+
+<script>
+(function(){
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const svg=(id,c='ico')=>`<svg class="${c}"><use href="#i-${id}"/></svg>`;
+
+/* ---------- roles & nav ---------- */
+const ITEMS={
+  dashboard:{t:'Дашборд',i:'dash'}, crm:{t:'CRM',i:'crm',c:'12'}, inbox:{t:'Входящие',i:'inbox',c:'7'},
+  chats:{t:'Чаты',i:'chat',c:'4',soft:1}, schedule:{t:'Расписание',i:'cal'}, student:{t:'Ученики',i:'users'},
+  attendance:{t:'Посещаемость',i:'check'}, finance:{t:'Финансы',i:'wallet'}, coins:{t:'Коины',i:'coin'},
+  tasks:{t:'Задачи',i:'task',c:'3',soft:1}, books:{t:'Книги',i:'book'}, '|Настройки':{}, roles:{t:'Роли и доступы',i:'key'}, security:{t:'Безопасность',i:'shield'}, audit:{t:'Журнал действий',i:'log'}
+};
+const ROLES={
+  owner:{name:'Ерлан Жумабеков',av:'ЕЖ',cls:'c7',role:'Владелец · вся сеть',nav:['dashboard','crm','inbox','chats','schedule','student','attendance','finance','coins','tasks','books','|Настройки','roles','security','audit'],home:'dashboard',bottom:['dashboard','crm','inbox','schedule']},
+  sales:{name:'Мадина Тулегенова',av:'МТ',cls:'c3',role:'Отдел продаж',nav:['crm','inbox','schedule','student','tasks','security'],home:'crm',bottom:['crm','inbox','schedule','tasks']},
+  teacher:{name:'Жасур Каримов',av:'ЖК',cls:'c4',role:'Учитель · PI-3, EL-2',nav:['schedule','attendance','chats','student','coins','tasks','security'],home:'attendance',bottom:['schedule','attendance','chats','coins']}
+};
+let role='owner';
+function renderNav(){
+  const R=ROLES[role];
+  $('#nav').innerHTML=R.nav.map(k=>{if(k[0]==='|')return `<div class="sep">${k.slice(1)}</div>`;const it=ITEMS[k];return `<a href="#${k}" data-k="${k}"><svg class="ico"><use href="#i-${it.i}"/></svg>${it.t}${it.c?`<span class="cnt${it.soft?' soft':''}">${it.c}</span>`:''}</a>`}).join('');
+  $('#bnav').innerHTML=R.bottom.map(k=>{const it=ITEMS[k];return `<a href="#${k}" data-k="${k}"><svg class="ico s24"><use href="#i-${it.i}"/></svg>${it.t}${it.c&&!it.soft?`<span class="cnt">${it.c}</span>`:''}</a>`}).join('')+`<button id="moreBtn">${svg('menu','ico s24')}Ещё</button>`;
+  $('#moreBtn').onclick=openSide;
+  $('#meName').textContent=R.name;$('#meRole').textContent=R.role;$('#meAv').textContent=R.av;$('#meAv').className='av '+R.cls;
+  const t=role==='teacher';
+  document.body.dataset.role=role;$('#meMenuHd').textContent=R.name+' · '+R.role.split(' · ')[0];
+  $('#coinCta').style.display=(role==='sales')?'none':'';
+  $('#limitNote').style.display=t?'':'none';
+}
+function route(){
+  let k=(location.hash||'').slice(1);
+  const R=ROLES[role];
+  if(!ITEMS[k]||k[0]==='|') k=R.home;
+  if(!R.nav.includes(k)) k=R.home;
+  $$('.screen').forEach(s=>s.classList.remove('on'));
+  const el=$('#s-'+k);
+  if(el) el.classList.add('on'); else {$('#s-stub').classList.add('on');$('#stubTitle').textContent=ITEMS[k].t;$('#stubIco').innerHTML=`<use href="#i-${ITEMS[k].i}"/>`;}
+  $$('#nav a,#bnav a').forEach(a=>a.classList.toggle('on',a.dataset.k===k));
+  closeSide();
+  if(k==='dashboard') drawRev();
+  window.scrollTo(0,0);
+}
+$$('#roleSeg button').forEach(b=>b.onclick=()=>{
+  $$('#roleSeg button').forEach(x=>x.setAttribute('aria-pressed',x===b));
+  role=b.dataset.role;renderNav();
+  const h=(location.hash||'').slice(1);
+  if(!ROLES[role].nav.includes(h)) location.hash=ROLES[role].home; else route();
+});
+window.addEventListener('hashchange',route);
+
+/* theme */
+$$('#themeSeg button').forEach(b=>b.onclick=()=>{
+  $$('#themeSeg button').forEach(x=>x.setAttribute('aria-pressed',x===b));
+  const t=b.dataset.t; if(t==='auto') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme',t);
+  if($('#s-dashboard').classList.contains('on')) drawRev();
+});
+/* branch */
+$$('#branchSeg button').forEach(b=>b.onclick=()=>{
+  $$('#branchSeg button').forEach(x=>x.setAttribute('aria-pressed',x===b));
+  $$('.js-branch').forEach(e=>e.textContent=b.dataset.b);
+});
+/* side drawer */
+function openSide(){$('#side').classList.add('open');$('#scrim').classList.add('open')}
+function closeSide(){$('#side').classList.remove('open');$('#scrim').classList.remove('open')}
+$('#burger').onclick=openSide;$('#scrim').onclick=closeSide;
+/* notif */
+$('#bell').onclick=e=>{e.stopPropagation();$('#notif').classList.toggle('open')};
+document.addEventListener('click',e=>{if(!e.target.closest('#notif'))$('#notif').classList.remove('open')});
+/* generic segs */
+$$('.ph .seg').forEach(s=>s.querySelectorAll('button').forEach(b=>b.onclick=()=>s.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',x===b))));
+$$('.tabs').forEach(t=>t.querySelectorAll('button').forEach(b=>b.onclick=()=>t.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b))));
+
+/* ---------- dashboard ---------- */
+const REV=[['Май',12.4],['Июн',9.8],['Июл',8.9],['Авг',11.2],['Сен',15.3],['Окт',14.86]];
+function drawRev(){
+  const box=$('#revChart'); const W=box.clientWidth||600, H=240, L=34, B=26, T=10, R=8;
+  const max=20, ih=H-B-T, iw=W-L-R, bw=Math.min(44,iw/REV.length*0.5), step=iw/REV.length;
+  const y=v=>T+ih-(v/max)*ih;
+  let s=`<svg width="${W}" height="${H}" role="img" aria-label="Выручка по месяцам">`;
+  for(let v=0;v<=max;v+=4){s+=`<line x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--grid)"/><text x="${L-8}" y="${y(v)+4}" text-anchor="end">${v}</text>`}
+  REV.forEach(([m,v],i)=>{const x=L+step*i+(step-bw)/2, top=y(v), h=y(0)-top, last=i===REV.length-1, r=4;
+    s+=`<path d="M${x},${y(0)} V${top+r} q0,-${r} ${r},-${r} h${bw-2*r} q${r},0 ${r},${r} V${y(0)} Z" fill="var(${last?'--chart-bar-soft':'--chart-bar'})"/>`;
+    s+=`<rect x="${L+step*i}" y="${T}" width="${step}" height="${ih}" fill="transparent" data-i="${i}"/>`;
+    s+=`<text x="${x+bw/2}" y="${H-6}" text-anchor="middle">${m}</text>`;
+    if(last||i===4) s+=`<text x="${x+bw/2}" y="${top-6}" text-anchor="middle" style="fill:var(--ink);font-weight:600">${String(v).replace('.',',')}</text>`;
+  });
+  s+=`<line x1="${L}" x2="${W-R}" y1="${y(16)}" y2="${y(16)}" stroke="var(--red)" stroke-width="1.5" stroke-dasharray="5 4"/>`;
+  s+='</svg><div class="tip" id="revTip"></div>';
+  box.innerHTML=s;
+  const tip=$('#revTip');
+  box.querySelectorAll('rect[data-i]').forEach(r=>{
+    r.onmouseenter=()=>{const i=+r.dataset.i,[m,v]=REV[i];tip.innerHTML=`<b>${m} 2026</b> · ${v.toLocaleString('ru-RU')} млн ₸${i===5?' (по 24-е)':''}`;tip.style.left=(L+step*i+step/2)+'px';tip.style.top=y(v)+'px';tip.style.opacity=1};
+    r.onmouseleave=()=>tip.style.opacity=0;
+  });
+}
+window.addEventListener('resize',()=>{if($('#s-dashboard').classList.contains('on'))drawRev()});
+const SRC=[['ig','Instagram',27],['wa','WhatsApp',16],['qr','QR-тест',9],['ref','Рекомендация',7],['web','Сайт',5]];
+const icoOf={ig:'ig',wa:'wa',qr:'qr',ref:'ref',web:'globe',call:'phone'};
+$('#srcBars').innerHTML=SRC.map(([k,n,v])=>`<div class="src-row"><span class="nm"><span class="srcico ${k}"><svg><use href="#i-${icoOf[k]}"/></svg></span>${n}</span><span class="tr"><i style="width:${v/27*100}%"></i></span><span class="vv">${v}<span>${Math.round(v/64*100)}%</span></span></div>`).join('')+
+`<div class="muted" style="font-size:12.5px;margin-top:10px;display:flex;gap:6px;align-items:center">${svg('trend','ico s16')}Лучшая конверсия в оплату — рекомендации (43%), худшая — сайт (8%)</div>`;
+
+/* ---------- CRM ---------- */
+const STAGES=[['new','Новая заявка','var(--info)'],['contact','Связались','var(--navy-600)'],['trial','Записан на пробный','var(--warn)'],['came','Пришёл на пробный','#7B52C7'],['paid','Оплатил','var(--ok)'],['lost','Отказ','var(--muted)']];
+const LEADS=[
+ ['new','Айгерим Садыкова','ig','IELTS, вечер','—','МТ','c3',47],
+ ['new','Нурсултан Беков','wa','Взрослый, с нуля','—',null,null,72],
+ ['new','Бекзат Ермеков','qr','QR-тест: 54/100','Elementary','ЕС','c2',36],
+ ['new','Сабина Оспанова','ig','Ребёнок 9 лет','Kids','МТ','c3',12],
+ ['contact','Камила Юсупова','web','Перезвонить после 18:00','Pre-Int','МТ','c3',2880],
+ ['contact','Ерасыл Жаксылыков','wa','Спрашивал про Север','Intermediate','ЕС','c2',8],
+ ['contact','Динара Сапарова','call','Холодный звонок','Beginner','ЕС','c2',null],
+ ['trial','Айдана Мусаева','ig','Пробный: пн 26.10, 18:00 · EL-5','Elementary','МТ','c3',null],
+ ['trial','Олжас Калиев','ref','Пробный: вт 27.10, 19:00 · IE-1 · от Амины К.','IELTS','ЕС','c2',null],
+ ['came','Шерзод Усманов','wa','Был 23.10 в PI-3 · ждёт офис','Pre-Int','МТ','c3',null],
+ ['came','Аружан Тлеубаева','qr','Был 22.10 в FF3-1','Kids','ЕС','c2',null],
+ ['paid','Бекзат Нуртаев','ig','33 500 ₸ · EL-5 · Гульнара','Elementary','МТ','c3',null],
+ ['paid','Мадина Сейткали','ref','42 000 ₸ · IE-1','IELTS','ЕС','c2',null],
+ ['lost','Ильяс Абенов','ig','Причина: дорого','—','МТ','c3',null],
+ ['lost','Жанель Кудайбергенова','wa','Причина: неудобное время','Pre-Int','ЕС','c2',null],
+];
+const lvC={'Beginner':'--lv-beg','Elementary':'--lv-ele','Pre-Int':'--lv-pre','Intermediate':'--lv-int','Upper-Int':'--lv-up','IELTS':'--lv-ielts','Kids':'--lv-kids'};
+function fmtWait(m){if(m==null)return'';if(m<60)return m+' мин';if(m<1440)return Math.floor(m/60)+' ч '+(m%60)+' мин';return Math.floor(m/1440)+' дн'}
+function leadCard(l,i){const [st,n,src,meta,lv,resp,rc,wait]=l;const bad=wait!=null&&wait>30;
+  return `<div class="lead${bad?' hot':''}" draggable="true" data-i="${i}">
+   <div class="r1"><span class="srcico ${src}" title="${src}"><svg><use href="#i-${icoOf[src]}"/></svg></span><b>${n}</b>${resp?`<span class="av sm ${rc}" title="Ответственный">${resp}</span>`:`<span class="chip red" style="font-size:11px">не назначен</span>`}</div>
+   <div class="meta">${meta}</div>
+   <div class="r3">${lv!=='—'?`<span class="lv" style="--c:var(${lvC[lv]})">${lv}</span>`:'<span class="muted" style="font-size:12px">уровень не определён</span>'}<span class="sp"></span>${wait!=null?`<span class="wait${bad?' bad':''}">${svg('clock','ico s16')}${fmtWait(wait)}${bad?' без ответа':''}</span>`:''}</div></div>`}
+function renderKanban(){
+  $('#kanban').innerHTML=STAGES.map(([k,t,c])=>{const items=LEADS.map((l,i)=>[l,i]).filter(([l])=>l[0]===k);
+   return `<div class="col" data-st="${k}"><div class="col-h"><span class="st" style="background:${c}"></span><b>${t}</b><span class="c">${items.length}</span><span class="sp"></span><button class="btn sm ghost" style="padding:0 4px;height:24px" aria-label="Добавить">${svg('plus','ico s16')}</button></div>${items.map(([l,i])=>leadCard(l,i)).join('')}</div>`}).join('');
+  $$('.lead').forEach(c=>{c.ondragstart=e=>e.dataTransfer.setData('text',c.dataset.i);c.ondblclick=()=>location.hash='inbox'});
+  $$('.col').forEach(col=>{col.ondragover=e=>{e.preventDefault();col.classList.add('drop')};col.ondragleave=()=>col.classList.remove('drop');
+    col.ondrop=e=>{e.preventDefault();const i=+e.dataTransfer.getData('text');LEADS[i][0]=col.dataset.st;if(col.dataset.st==='lost')LEADS[i][2]=LEADS[i][2],LEADS[i][3]='Причина: укажите (обязательно)';LEADS[i][7]=null;renderKanban()}});
+}
+renderKanban();
+
+/* ---------- Inbox list ---------- */
+const DLG=[
+ ['ig','АС','c5','Айгерим Садыкова','Супер, пройду сегодня. А пробный можно…','14:51',2,'Новый лид',1],
+ ['wa','НБ','c2','Нурсултан Беков','Здравствуйте, хочу записаться с нуля','13:39',1,'Новый лид'],
+ ['ig','СО','c6','Сабина Оспанова','Для дочки 9 лет есть группы?','14:40',1,'Новый лид'],
+ ['wa','ЕЖ','c3','Ерасыл Жаксылыков','А на Севере в субботу есть?','14:20',2],
+ ['wa','ШУ','c4','Шерзод Усманов','Каспи номер скиньте пожалуйста','12:05',1],
+ ['ig','АМ','c1','Айдана Мусаева','Вы: Ждём вас в понедельник в 18:00!','11:47',0],
+ ['wa','РА','c8','Рустам Абдуллаев','Спасибо, внесём в понедельник','вчера',0],
+ ['ig','ИА','c7','Ильяс Абенов','Вы: Понимаем, будем рады видеть…','пт',0],
+];
+function renderDlg(ch){$('#dlgList').innerHTML=DLG.filter(d=>ch==='all'||d[0]===ch).map(d=>`<div class="dlg${d[8]?' on':''}"><div class="av ${d[2]}">${d[1]}<span class="ch ${d[0]}"><svg><use href="#i-${d[0]}"/></svg></span></div><div class="grow"><div class="l1"><b>${d[3]}</b><time>${d[5]}</time></div><div class="l2"><p>${d[4]}</p>${d[7]?`<span class="chip info" style="font-size:10.5px;padding:0 6px">${d[7]}</span>`:''}${d[6]?`<span class="badge">${d[6]}</span>`:''}</div></div></div>`).join('')}
+renderDlg('all');
+$$('#chanSeg button').forEach(b=>b.onclick=()=>{$$('#chanSeg button').forEach(x=>x.setAttribute('aria-pressed',x===b));renderDlg(b.dataset.ch)});
+['#wave1','#wave2'].forEach((w,j)=>{let h='';for(let i=0;i<32;i++){const v=6+Math.round(Math.abs(Math.sin(i*1.7+j)*16+Math.sin(i*.6)*4));h+=`<i style="height:${Math.min(24,v)}px"></i>`}$(w).innerHTML=h});
+
+/* ---------- Schedule ---------- */
+const LV=[['Beginner','--lv-beg'],['Elementary','--lv-ele'],['Pre-Int','--lv-pre'],['Intermediate','--lv-int'],['Upper-Int','--lv-up'],['IELTS','--lv-ielts'],['Kids F&F','--lv-kids']];
+$('#legend').innerHTML=LV.map(([n,c])=>`<span class="lv" style="--c:var(${c})">${n}</span>`).join('')+`<span class="lv" style="--c:var(--red)">Пробный</span>`;
+const ROOMS=[['Каб. 1 «Лондон»',72],['Каб. 2 «Оксфорд»',68],['Каб. 3 «Кембридж»',54],['Каб. 4 «Kids»',61]];
+const D=['Пн','Вт','Ср','Чт','Пт','Сб'], DD=['19','20','21','22','23','24'];
+// [day(0-5), start, end, group, lvIdx, teacher, n/cap, trial]
+const LESSONS={
+ 0:[[0,9,10.5,'UP-1','4','Д. Рахимова','8/10'],[2,9,10.5,'UP-1','4','Д. Рахимова','8/10'],[4,9,10.5,'UP-1','4','Д. Рахимова','7/10'],[0,17.5,19,'IE-1','5','Д. Рахимова','7/8'],[2,17.5,19,'IE-1','5','Д. Рахимова','7/8',1],[4,17.5,19,'IE-1','5','Д. Рахимова','8/8'],[1,19,20.5,'IN-2','3','Т. Ахметов','9/10'],[3,19,20.5,'IN-2','3','Т. Ахметов','10/10'],[5,11,12.5,'IE-W','5','Д. Рахимова','6/8'],[1,11,12.5,'BG-4','0','А. Нурланова','5/10'],[3,11,12.5,'BG-4','0','А. Нурланова','6/10']],
+ 1:[[0,16,17.5,'PI-3','2','Ж. Каримов','11/12'],[2,16,17.5,'PI-3','2','Ж. Каримов','11/12'],[4,16,17.5,'PI-3','2','Ж. Каримов','10/12'],[5,16,17.5,'PI-3','2','Ж. Каримов','10/12',1],[1,10,11.5,'EL-2','1','Ж. Каримов','8/12'],[3,10,11.5,'EL-2','1','Ж. Каримов','9/12'],[1,18,19.5,'PI-5','2','Т. Ахметов','9/12'],[3,18,19.5,'PI-5','2','Т. Ахметов','9/12',1],[0,19,20.5,'BG-6','0','М. Ибрагимова','7/12'],[2,19,20.5,'BG-6','0','М. Ибрагимова','7/12']],
+ 2:[[0,18,19.5,'EL-5','1','Т. Ахметов','9/12',1],[2,18,19.5,'EL-5','1','Т. Ахметов','9/12'],[4,18,19.5,'EL-5','1','Т. Ахметов','9/12'],[1,15,16.5,'IN-1','3','М. Ибрагимова','8/12'],[3,15,16.5,'IN-1','3','М. Ибрагимова','8/12'],[5,10,11.5,'EL-7','1','Ж. Каримов','6/12']],
+ 3:[[0,14,15,'FF3-1','6','А. Нурланова','8/10'],[2,14,15,'FF3-1','6','А. Нурланова','8/10'],[4,14,15,'FF3-1','6','А. Нурланова','8/10'],[1,15,16,'FF1-2','6','А. Нурланова','9/10',1],[3,15,16,'FF1-2','6','А. Нурланова','9/10'],[5,10,11,'FF2-1','6','А. Нурланова','10/10'],[5,11.5,12.5,'FF4-1','6','М. Ибрагимова','7/10'],[0,16,17,'FF3-2','6','А. Нурланова','6/10'],[2,16,17,'FF3-2','6','А. Нурланова','6/10']]
+};
+let room=1;
+const H0=9,H1=21,PX=56;
+function hh(v){const h=Math.floor(v),m=Math.round((v-h)*60);return h+':'+String(m).padStart(2,'0')}
+function renderSched(){
+  $('#rooms').innerHTML=ROOMS.map(([n,l],i)=>`<button class="${i===room?'on':''}" data-r="${i}">${svg('door','ico s16')}${n}<span class="ld">${l}%</span></button>`).join('');
+  $$('#rooms button').forEach(b=>b.onclick=()=>{room=+b.dataset.r;renderSched()});
+  let g=`<div class="dh" style="padding:0"></div>`+D.map((d,i)=>`<div class="dh${i===5?' today':''}">${d}<span>${DD[i]} окт${i===5?' · сегодня':''}</span></div>`).join('');
+  let tc='<div class="tc">';for(let h=H0;h<H1;h++)tc+=`<div class="hr">${h}:00</div>`;tc+='</div>';g+=tc;
+  for(let d=0;d<6;d++){let c=`<div class="day-col">`;for(let h=H0;h<H1;h++)c+='<div class="hr"></div>';
+    (LESSONS[room]||[]).filter(l=>l[0]===d).forEach(l=>{const [_,s,e,gr,li,t,n,tr]=l;const lv=LV[+li];
+      c+=`<div class="blk${tr?' has-trial':''}" style="--c:var(${lv[1]});top:${(s-H0)*PX+2}px;height:${(e-s)*PX-4}px" title="${gr} · ${lv[0]} · ${t}"><b>${gr}</b><span>${hh(s)}–${hh(e)} · ${t}</span><br><span>${lv[0]} · ${n}</span>${tr?`<span class="trial"><svg class="ico" style="width:11px;height:11px;stroke:#fff"><use href="#i-flag"/></svg>пробный</span>`:''}</div>`});
+    if(d===5)c+=`<div class="nowline" style="top:${(16+34/60-H0)*PX}px"></div>`;
+    c+='</div>';g+=c}
+  $('#sched').innerHTML=g;
+}
+renderSched();
+
+/* ---------- Student ---------- */
+const AT='pppplppppppppappplpppppp'.split('').concat([]);
+$('#attDots').innerHTML=AT.map((c,i)=>`<i class="${c}" title="Урок ${i+1}">${c==='p'?svg('ok',''):''}</i>`).join('');
+
+/* ---------- Attendance ---------- */
+const ST=[['Дильноза Абдуллаева','ДА','c2',3,'p'],['Тимур Ахмедов','ТА','c3',7,'p'],['Мадина Сейткали','МС','c1',10,'p'],['Жасур Мирзаев','ЖМ','c4',2,'a'],['Асель Касенова','АК','c5',5,'l'],['Нурсултан Омаров','НО','c6',8,'p'],['Камила Рашидова','КР','c8',1,'p'],['Бекзат Алиев','БА','c7',11,'a'],['Аружан Серикова','АС','c2',6,'p'],['Ерлан Темиров','ЕТ','c3',4,'e']];
+const TRIAL={n:'Айгерим Садыкова',av:'АС',c:'c5',by:'Мадина Т.',src:'Instagram',st:null};
+const LBL={p:['Пришёл','ok'],a:['Не пришёл','x'],l:['Опоздал','clock'],e:['Уваж.','file']};
+function markBtns(cur,idx){return `<div class="mark">${['p','a','l','e'].map(k=>`<button class="${k}" data-k="${k}" data-idx="${idx}" aria-pressed="${cur===k}">${svg(LBL[k][1],'ico s16')}<span class="t">${LBL[k][0]}</span></button>`).join('')}</div>`}
+function renderAtt(){
+  let h=ST.map((s,i)=>`<div class="att-row"><div class="who"><div class="av ${s[2]}">${s[1]}</div><div style="min-width:0"><b>${s[0]}</b><span class="${s[3]<=2?'':'muted'}" style="${s[3]<=2?'color:var(--warn);font-weight:500':''}">Осталось уроков: ${s[3]}${s[3]<=2?' · напомнить об оплате':''}</span></div></div><div class="bal"><span class="chip">${svg('coin','ico s16')}+5 за урок</span></div>${markBtns(s[4],i)}</div>`).join('');
+  h+=`<div class="att-row trial"><div class="who"><div class="av ${TRIAL.c}">${TRIAL.av}</div><div style="min-width:0"><b style="display:flex;gap:6px;align-items:center">${TRIAL.n}<span class="chip red" style="font-size:11px">${svg('flag','ico s16')}Пробный</span></b><span class="muted">Лид из ${TRIAL.src} · привела ${TRIAL.by}</span></div></div><div class="bal"></div>${markBtns(TRIAL.st,'t')}</div>`;
+  $('#attList').innerHTML=h;
+  $$('#attList .mark button').forEach(b=>b.onclick=()=>{const k=b.dataset.k,i=b.dataset.idx;if(i==='t')TRIAL.st=k;else ST[+i][4]=k;renderAtt()});
+  const pres=ST.filter(s=>s[4]==='p'||s[4]==='l').length;
+  const N=pres+(TRIAL.st==='p'||TRIAL.st==='l'?1:0);
+  $('#presentCnt').textContent=`Присутствуют ${pres} из ${ST.length}`+(TRIAL.st==='p'||TRIAL.st==='l'?' + пробный':'');
+  $('#rate').textContent=(N>5?2500+100*(N-5):2500).toLocaleString('ru-RU')+' ₸';
+  const abs=ST.filter(s=>s[4]==='a').map(s=>s[0].split(' ')[0]);
+  const late=ST.filter(s=>s[4]==='l').map(s=>s[0].split(' ')[0]);
+  let w=[];if(abs.length)w.push('«не пришёл» — '+abs.join(', '));if(late.length)w.push('«опоздал» — '+late.join(', '));
+  let txt=(w.length?w.join('; '):'отсутствующих нет — сообщения не отправятся');
+  if(TRIAL.st==='p'||TRIAL.st==='l')txt+='. Лид Айгерим → «Пришёл на пробный», Мадине +2 000 ₸ KPI';
+  $('#waSummary').textContent=txt;
+}
+renderAtt();
+$('#allPresent').onclick=()=>{ST.forEach(s=>s[4]='p');renderAtt()};
+$('#saveAtt').onclick=()=>{const n=ST.filter(s=>s[4]==='a'||s[4]==='l').length;$('#toastTxt').textContent=`Посещаемость сохранена · ${n} WhatsApp-сообщ. родителям в очереди`;$('#toast').classList.add('show');setTimeout(()=>$('#toast').classList.remove('show'),2600)};
+
+/* ---------- Shop ---------- */
+const SHOP=[['Термокружка One English','cup',450,12,'linear-gradient(135deg,#01225F,#1A3F8A)'],['Худи One English','shirt',1800,5,'linear-gradient(135deg,#BB1027,#7E0A1A)'],['Наушники','head',2500,2,'linear-gradient(135deg,#0B2E73,#0E8FA8)'],['Блокнот A5','note',150,40,'linear-gradient(135deg,#C9631A,#B08900)'],['Стикерпак «London»','star',80,64,'linear-gradient(135deg,#7B52C7,#C2417F)'],['Шопер','bag',600,9,'linear-gradient(135deg,#2E9A6E,#0E8FA8)']];
+$('#shop').innerHTML=SHOP.map(p=>`<div class="prod"><div class="pic" style="background:${p[4]}">${svg(p[1],'ico')}</div><div class="pi"><b>${p[0]}</b><div class="pr"><span class="coin sm">OE</span>${p[2].toLocaleString('ru-RU')}</div><div class="st">${p[3]<=3?`<span style="color:var(--warn)">Осталось ${p[3]}</span>`:'В наличии: '+p[3]}</div></div></div>`).join('');
+
+/* ---------- avatar menu ---------- */
+$('#meBtn').onclick=e=>{e.stopPropagation();$('#meMenu').classList.toggle('open');$('#notif').classList.remove('open')};
+document.addEventListener('click',e=>{if(!e.target.closest('#meMenu'))$('#meMenu').classList.remove('open')});
+/* switches */
+document.addEventListener('click',e=>{const b=e.target.closest('.sw');if(b&&!b.disabled)b.setAttribute('aria-checked',b.getAttribute('aria-checked')!=='true')});
+
+/* ---------- Roles ---------- */
+const MODS=[['schedule','Расписание'],['students','Ученики и группы'],['att','Посещаемость','задним числом — только админ'],['crm','CRM и лиды'],['inbox','Входящие Instagram / WhatsApp'],['sale','Продажа курса и оплаты'],['fin','Финансы и P&L'],['pay','Зарплата и KPI'],['books','Книги и склад'],['tasks','Задачи'],['chats','Чаты'],['coins','Коины и магазин'],['audit','Журнал действий']];
+const SC=['Все филиалы','Свой филиал','Только свои записи','Нет доступа'];
+// perms: module -> [view,create,edit,archive,export, scopeIdx]; L = locked cells
+const ALL=[1,1,1,1,1,0];
+const RD={
+ owner:{n:'Владелец',u:'2 сотрудника',ico:'shield',sys:1,p:Object.fromEntries(MODS.map(m=>[m[0],m[0]==='audit'?[1,0,0,0,1,0]:ALL.slice()])),note:'Системная роль: права нельзя сузить'},
+ badmin:{n:'Админ филиала',u:'2 сотрудника',ico:'door',p:{schedule:[1,1,1,1,1,1],students:[1,1,1,1,1,1],att:[1,1,1,0,1,1],crm:[1,1,1,1,1,1],inbox:[1,0,0,0,0,1],sale:[1,1,1,1,1,1],fin:[1,1,1,0,1,1],pay:[1,1,1,0,1,1],books:[1,1,1,1,1,1],tasks:[1,1,1,1,1,1],chats:[1,0,0,0,0,1],coins:[1,1,1,1,0,1],audit:[1,0,0,0,0,1]}},
+ office:{n:'Офис-менеджер',u:'4 сотрудника',ico:'wallet',p:{schedule:[1,0,0,0,0,1],students:[1,1,1,0,0,1],att:[1,0,0,0,0,1],crm:[1,1,1,0,0,1],inbox:[1,1,0,0,0,1],sale:[1,1,0,0,0,1],fin:[0,0,0,0,0,3],pay:[1,0,0,0,0,2],books:[1,1,1,0,0,1],tasks:[1,1,1,0,0,2],chats:[1,1,0,0,0,2],coins:[1,1,1,0,0,1],audit:[0,0,0,0,0,3]}},
+ sales:{n:'Продажи',u:'7 сотрудников',ico:'crm',p:{schedule:[1,0,0,0,0,1],students:[1,0,0,0,0,2],att:[0,0,0,0,0,3],crm:[1,1,1,0,0,2],inbox:[1,1,0,0,0,2],sale:[0,0,0,0,0,3],fin:[0,0,0,0,0,3],pay:[1,0,0,0,0,2],books:[0,0,0,0,0,3],tasks:[1,1,1,0,0,2],chats:[1,1,0,0,0,2],coins:[0,0,0,0,0,3],audit:[0,0,0,0,0,3]},L:{sale:1,crm:4},note:'Продажу курса оформляет офис-менеджер — по ТЗ'},
+ teacher:{n:'Учитель',u:'14 сотрудников',ico:'book',p:{schedule:[1,0,0,0,0,2],students:[1,0,0,0,0,2],att:[1,1,1,0,0,2],crm:[0,0,0,0,0,3],inbox:[0,0,0,0,0,3],sale:[0,0,0,0,0,3],fin:[0,0,0,0,0,3],pay:[1,0,0,0,0,2],books:[0,0,0,0,0,3],tasks:[1,1,1,0,0,2],chats:[1,1,1,0,0,2],coins:[1,1,0,0,0,2],audit:[0,0,0,0,0,3]},note:'Коины — в пределах лимита 500 в месяц'},
+ smm:{n:'SMM',u:'1 сотрудник',ico:'ig',p:{schedule:[1,0,0,0,0,0],students:[0,0,0,0,0,3],att:[0,0,0,0,0,3],crm:[1,0,0,0,0,0],inbox:[1,1,0,0,0,0],sale:[0,0,0,0,0,3],fin:[0,0,0,0,0,3],pay:[1,0,0,0,0,2],books:[0,0,0,0,0,3],tasks:[1,1,1,0,0,2],chats:[0,0,0,0,0,3],coins:[0,0,0,0,0,3],audit:[0,0,0,0,0,3]}},
+ student:{n:'Ученик',u:'412 аккаунтов',ico:'user',sys:1,p:{schedule:[1,0,0,0,0,2],students:[1,0,0,0,0,2],att:[1,0,0,0,0,2],crm:[0,0,0,0,0,3],inbox:[0,0,0,0,0,3],sale:[0,0,0,0,0,3],fin:[0,0,0,0,0,3],pay:[0,0,0,0,0,3],books:[1,0,0,0,0,2],tasks:[0,0,0,0,0,3],chats:[1,1,0,0,0,2],coins:[1,1,0,0,0,2],audit:[0,0,0,0,0,3]},note:'Системная роль'},
+ parent:{n:'Родитель',u:'389 аккаунтов',ico:'users',sys:1,p:{schedule:[1,0,0,0,0,2],students:[1,0,0,0,0,2],att:[1,0,0,0,0,2],crm:[0,0,0,0,0,3],inbox:[0,0,0,0,0,3],sale:[1,1,0,0,0,2],fin:[0,0,0,0,0,3],pay:[0,0,0,0,0,3],books:[1,0,0,0,0,2],tasks:[0,0,0,0,0,3],chats:[1,1,0,0,0,2],coins:[1,0,0,0,0,2],audit:[0,0,0,0,0,3]},note:'Системная роль · «свои» = свои дети'}
+};
+let curRole='sales';
+function renderRoles(){
+  $('#roleList').innerHTML=Object.entries(RD).map(([k,r])=>`<button class="ritem${k===curRole?' on':''}" data-r="${k}"><span class="ri">${svg(r.ico,'ico s18')}</span><span class="grow"><b>${r.n}</b><span>${r.u}</span></span>${r.sys?`<span class="lock" title="Системная роль">${svg('lock','ico s16')}</span>`:''}</button>`).join('')+`<button class="ritem" style="color:var(--red)"><span class="ri" style="background:var(--red-100);color:var(--red)">${svg('plus','ico s18')}</span><span class="grow"><b>Создать роль</b><span>с нуля или копией</span></span></button>`;
+  $$('#roleList .ritem[data-r]').forEach(b=>b.onclick=()=>{curRole=b.dataset.r;renderRoles()});
+  const onEl=$('#roleList .ritem.on');if(onEl){const L=$('#roleList');requestAnimationFrame(()=>{if(L.scrollWidth>L.clientWidth)L.scrollLeft=onEl.offsetLeft-L.offsetLeft-8})}
+  const r=RD[curRole];$('#rTitle').textContent=r.n;$('#rUsers').textContent=r.u;$('#rNote').textContent=r.note||'';
+  const lockAll=curRole==='owner';
+  $('#permBody').innerHTML=MODS.map(([k,n,h])=>{const v=r.p[k];const L=r.L&&r.L[k];
+    return `<tr><td>${n}${h?`<span>${h}</span>`:''}</td>${[0,1,2,3,4].map(i=>{const locked=lockAll||(L===1)||(L===i);return `<td class="c"><button class="cb" data-m="${k}" data-i="${i}" aria-pressed="${!!v[i]}" ${locked?'disabled title="Ограничено правилами системы"':''} aria-label="${n}">${svg('ok','')}</button></td>`}).join('')}<td><select class="scope" data-m="${k}" ${lockAll?'disabled':''}>${SC.map((s,i)=>`<option ${i===v[5]?'selected':''}>${s}</option>`).join('')}</select></td></tr>`}).join('');
+  $$('#permBody .cb').forEach(b=>b.onclick=()=>{const v=r.p[b.dataset.m];v[+b.dataset.i]=v[+b.dataset.i]?0:1;b.setAttribute('aria-pressed',!!v[+b.dataset.i])});
+}
+renderRoles();
+const MXR=['Ученик','Родитель','Учитель','Офис-менеджер','Продажи'];
+const MXV={yes:'Да',group:'В группе',no:'Нет'};
+const MX=[['yes','group','no','yes','no','no'],['yes','no','no','yes','yes','yes'],['yes','yes','yes','yes','yes','yes'],['yes','yes','yes','yes','yes','yes'],['yes','no','yes','yes','yes','yes']];
+function renderMx(){$('#mxBody').innerHTML=MX.map((row,i)=>`<tr><td><b style="font-weight:600">${MXR[i]}</b></td>${row.map((v,j)=>{const fixed=(i===0&&j===2)||(i===1&&j===1);return `<td class="c"><button class="mxv" data-v="${v}" data-i="${i}" data-j="${j}" ${fixed?'disabled title="Запрещено политикой безопасности детей"':''}>${fixed?svg('lock','ico s16'):''}${MXV[v]}</button></td>`}).join('')}</tr>`).join('');
+  $$('#mxBody .mxv').forEach(b=>b.onclick=()=>{const o=['yes','group','no'];const i=+b.dataset.i,j=+b.dataset.j;MX[i][j]=o[(o.indexOf(MX[i][j])+1)%3];renderMx()})}
+renderMx();
+$('#saveRole').onclick=()=>{$('#toastTxt').textContent='Роль «'+RD[curRole].n+'» сохранена · изменение записано в журнал';$('#toast').classList.add('show');setTimeout(()=>$('#toast').classList.remove('show'),2400)};
+
+/* ---------- Security ---------- */
+let SESS=[['laptop','Chrome · Windows 11','Шымкент · 95.56.214.7 · Янги шахар','сейчас',1],['mobile','One English · iPhone 14','Шымкент · мобильная сеть Beeline','12 мин назад'],['laptop','Safari · macOS','Шымкент · 2.134.88.19 · Север','вчера, 18:40'],['mobile','Chrome · Android','Алматы · 37.150.12.4 · новое устройство','3 дня назад',0,1]];
+function renderSess(){$('#sessList').innerHTML=SESS.map((s,i)=>`<div class="sess"><span class="dv">${svg(s[0],'ico s18')}</span><div class="grow"><b>${s[1]}${s[4]?' <span class="chip ok" style="font-size:11px">Текущая</span>':''}${s[5]?' <span class="chip warn" style="font-size:11px">Необычный вход</span>':''}</b><span>${s[2]} · ${s[3]}</span></div>${s[4]?'':`<button class="btn sm" data-i="${i}">Завершить</button>`}</div>`).join('');
+  $$('#sessList button').forEach(b=>b.onclick=()=>{SESS.splice(+b.dataset.i,1);renderSess()})}
+renderSess();
+$('#killAll').onclick=()=>{SESS=SESS.filter(s=>s[4]);renderSess()};
+$('#showPhone').onclick=()=>{$('#maskPhone').textContent='+7 701 552 19 78';$('#maskNote').style.display='block';$('#showPhone').disabled=true};
+
+const AUD=[
+ ['15:41','МТ','c3','Мадина Тулегенова','Продажи','Просмотр телефона','Лид №2841 · Айгерим С.','<span class="mask">*** ** 78</span> → показан','95.56.214.7 · Chrome',0],
+ ['15:20','ЕЖ','c7','Ерлан Жумабеков','Владелец','Изменение прав','Роль «Продажи» · Экспорт CRM','<s>разрешён</s> → <b>запрещён</b>','95.56.214.7 · Chrome',0],
+ ['14:58','ДР','c5','Дильноза Рахимова','Админ филиала','Отметка задним числом','Посещаемость IE-1 · 21.10 · Амина К.','<s>Не пришёл</s> → <b>Уважит.</b>','2.134.88.19 · Safari',0],
+ ['14:22','ТА','c2','Тимур Ахметов','Учитель','Вход заблокирован','5 неверных паролей','—','37.150.12.4 · Android · Алматы',1],
+ ['13:47','МТ','c3','Мадина Тулегенова','Продажи','Попытка экспорта','Лиды · 412 записей','<b>отклонено политикой</b>','95.56.214.7 · Chrome',1],
+ ['13:10','ГС','c8','Гульнара Сарсенова','Офис-менеджер','Оплата изменена','Бекзат Ермеков · EL-5','<s>30 000 ₸</s> → <b>33 500 ₸</b>','95.56.214.3 · Chrome',0],
+ ['12:31','ЕЖ','c7','Ерлан Жумабеков','Владелец','Просмотр чата','PI-3 · групповой чат (только чтение)','—','95.56.214.7 · Chrome',0],
+ ['11:05','ДР','c5','Дильноза Рахимова','Админ филиала','Списание коинов','Тимур Ахмедов · «ошибочное начисление»','<s>548</s> → <b>498</b>','2.134.88.19 · Safari',0],
+ ['10:12','ЕЖ','c7','Ерлан Жумабеков','Владелец','Сессия завершена','Chrome · Android · Алматы','активна → <b>завершена</b>','95.56.214.7 · Chrome',1],
+ ['09:02','МТ','c3','Мадина Тулегенова','Продажи','Этап лида','Айдана Мусаева','<s>Связались</s> → <b>Записан на пробный</b>','iPhone · приложение',0]
+];
+let riskOnly=false;
+function audRow(a){return `<tr${a[9]?' style="background:color-mix(in srgb,var(--red) 5%,transparent)"':''}><td class="num">${a[0]}</td><td><span class="who2"><span class="av sm ${a[2]}">${a[1]}</span><span>${a[3]}<div class="muted" style="font-size:11.5px">${a[4]}</div></span></span></td><td>${a[9]?'<span class="chip red" style="font-size:11px;margin-right:4px">Риск</span>':''}${a[5]}</td><td>${a[6]}</td><td><span class="diff">${a[7]}</span></td><td><span class="code">${a[8]}</span></td></tr>`}
+function renderAud(){$('#auditBody').innerHTML=AUD.filter(a=>!riskOnly||a[9]).map(audRow).join('');
+  $('#auditMini').innerHTML=AUD.slice(0,4).map(a=>`<div class="list-row"><span class="av sm ${a[2]}">${a[1]}</span><div class="grow"><b>${a[5]}</b><span>${a[3]} · ${a[0]} · ${a[6]}</span></div>${a[9]?'<span class="chip red">Риск</span>':''}</div>`).join('')}
+renderAud();
+$('#riskOnly').onclick=()=>{riskOnly=!riskOnly;$('#riskOnly').style.background=riskOnly?'var(--red-100)':'';renderAud()};
+
+renderNav();
+if(!location.hash) history.replaceState(null,'','#dashboard');
+route();
+})();
+</script>

@@ -1,0 +1,1136 @@
+<title>One English Mobile</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=Unbounded:wght@500;600;700&family=Playfair+Display:wght@800&display=swap">
+<style>
+/* Layout: витрина экранов. Рамки телефонов сеткой по разделам, переключатели роли и платформы сверху. */
+:root{
+  --navy:#01225F; --navy-700:#0B2E73; --navy-600:#1A3F8A; --navy-100:#E6ECF7; --navy-50:#F3F6FB;
+  --red:#BB1027; --red-600:#9E0D21; --red-100:#FBE7EA;
+  --paper:#FAF6F3; --surface:#FFFFFF; --line:#E3E6EE; --ink:#0F1A33; --muted:#5B6782;
+  --ok:#1E8E5A; --warn:#C98A06; --info:#1A6FD1;
+  --ig:#D6286E; --wa:#1FAF54; --kaspi:#F14635;
+  /* производные */
+  --primary:#01225F; --on-primary:#FFFFFF; --brand-ink:#01225F; --tint:#1A3F8A; --logo-e:#01225F;
+  --hero:#01225F; --hero-2:#0B2E73; --on-hero:#FFFFFF; --on-hero-2:#B9C6E2;
+  --chip:#F3F6FB; --fill:rgba(15,26,51,.06); --outline:#8A93A8; --m3-nav:#F2EEEA;
+  --ok-100:#E3F3EA; --warn-100:#FBF1DA; --info-100:#E4EEFA;
+  --coin:#D99A12; --coin-100:#FCF1D6;
+  --bezel:#0D1424; --bezel-edge:#3A4560; --scrim:rgba(10,22,48,.42); --white:#FFFFFF;
+  --shadow:0 1px 2px rgba(15,26,51,.05),0 6px 20px rgba(15,26,51,.06);
+  --f-display:'Unbounded','Golos Text',system-ui,sans-serif;
+  --f-text:'Golos Text',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --f-logo:'Playfair Display','DM Serif Display',Georgia,serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --paper:#0A1630; --surface:#111F3D; --line:#22325A; --ink:#EAF0FB; --muted:#9AA8C7; --navy-100:#18295180; --navy-50:#0F1C38;
+  --red:#E0354B; --red-100:#3A1622; --ok:#3DBE80; --warn:#E3A92B; --info:#5B9BEA;
+  --primary:#2F5BB5; --brand-ink:#EAF0FB; --tint:#8FB0F0; --logo-e:#5B83D6;
+  --hero:#16306A; --hero-2:#1D3B80; --on-hero-2:#AFC0E4;
+  --chip:#16264A; --fill:rgba(234,240,251,.08); --outline:#6B7A9E; --m3-nav:#0F1C38;
+  --ok-100:#12392B; --warn-100:#3A2E10; --info-100:#132D52; --coin:#E8B23A; --coin-100:#3A2E10;
+  --bezel:#04070E; --bezel-edge:#2C3B63; --scrim:rgba(0,0,0,.55);
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.25); color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --paper:#0A1630; --surface:#111F3D; --line:#22325A; --ink:#EAF0FB; --muted:#9AA8C7; --navy-100:#18295180; --navy-50:#0F1C38;
+  --red:#E0354B; --red-100:#3A1622; --ok:#3DBE80; --warn:#E3A92B; --info:#5B9BEA;
+  --primary:#2F5BB5; --brand-ink:#EAF0FB; --tint:#8FB0F0; --logo-e:#5B83D6;
+  --hero:#16306A; --hero-2:#1D3B80; --on-hero-2:#AFC0E4;
+  --chip:#16264A; --fill:rgba(234,240,251,.08); --outline:#6B7A9E; --m3-nav:#0F1C38;
+  --ok-100:#12392B; --warn-100:#3A2E10; --info-100:#132D52; --coin:#E8B23A; --coin-100:#3A2E10;
+  --bezel:#04070E; --bezel-edge:#2C3B63; --scrim:rgba(0,0,0,.55);
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.25); color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--paper);color:var(--ink);font-family:var(--f-text);font-size:15px;line-height:1.45;margin:0}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--tint);outline-offset:2px}
+.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round;flex:none;--duo:0}
+.ic .d{fill:currentColor;stroke:none;opacity:var(--duo)}
+.ic .f{fill:currentColor;stroke:none}
+.ic.s20{width:20px;height:20px}.ic.s18{width:18px;height:18px}.ic.s16{width:16px;height:16px}
+
+/* ---------- страница ---------- */
+.page{max-width:1400px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:28px 64px}
+.ph{display:flex;flex-wrap:wrap;gap:20px 32px;align-items:flex-end;justify-content:space-between;padding-bottom:24px;border-bottom:1px solid var(--line)}
+.ph-l{display:flex;flex-direction:column;gap:14px;min-width:0}
+.ph h1{font-family:var(--f-display);font-weight:600;font-size:clamp(24px,3.2vw,36px);line-height:1.15;margin:0;color:var(--brand-ink);text-wrap:balance}
+.ph p{margin:0;color:var(--muted);max-width:62ch}
+.ctrls{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.pseg{display:inline-flex;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:3px}
+.pseg button{padding:8px 16px;border-radius:999px;font-weight:600;font-size:14px;color:var(--muted)}
+.pseg button[aria-pressed="true"]{background:var(--primary);color:var(--on-primary)}
+.themebtn{display:inline-flex;align-items:center;gap:8px;padding:9px 14px;border:1px solid var(--line);border-radius:999px;background:var(--surface);font-size:14px;font-weight:600;color:var(--muted)}
+.logo{display:flex;align-items:center;gap:10px}
+.logo svg.mark{width:44px;height:36px}
+.logo .wm{display:flex;flex-direction:column;line-height:.95}
+.logo .wm b{font-family:var(--f-logo);font-weight:800;font-size:19px;letter-spacing:.01em}
+.logo .wm b span:first-child{color:var(--brand-ink)} .logo .wm b span:last-child{color:var(--red)}
+.logo .wm small{font-size:7.5px;letter-spacing:.32em;color:var(--muted);margin-top:4px}
+.grp{padding-top:44px}
+.grp>header{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:baseline;margin-bottom:20px}
+.grp>header h2{font-family:var(--f-display);font-weight:600;font-size:20px;margin:0;color:var(--brand-ink)}
+.grp>header p{margin:0;color:var(--muted);font-size:14px;max-width:70ch}
+.shots{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(410px,100%),1fr));gap:40px 28px;justify-items:center;align-items:start}
+.shot{margin:0;width:100%;max-width:410px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.shot figcaption{display:flex;gap:12px;align-items:flex-start}
+.shot figcaption .num{font-family:var(--f-display);font-weight:600;font-size:13px;min-width:30px;height:30px;padding:0 6px;border-radius:9px;display:grid;place-items:center;background:var(--navy-100);color:var(--tint);flex:none}
+.shot figcaption b{display:block;font-weight:600}
+.shot figcaption p{margin:2px 0 0;font-size:13.5px;color:var(--muted)}
+.dev-wrap{width:100%;max-width:410px;overflow:hidden}
+.ios-only,.and-only{}
+[data-platform="ios"] .and-only,[data-platform="android"] .ios-only{display:none!important}
+
+/* ---------- устройство ---------- */
+.device{width:410px;height:864px;padding:10px;background:var(--bezel);border-radius:58px;box-shadow:0 0 0 1px var(--bezel-edge),var(--shadow);transform-origin:0 0}
+[data-platform="android"] .device{border-radius:46px}
+.screen{width:390px;height:844px;border-radius:48px;overflow:hidden;position:relative;background:var(--paper);display:flex;flex-direction:column;font-size:15px;line-height:1.4;color:var(--ink);
+  --r-card:20px;--r-btn:14px;--btn-h:52px}
+[data-platform="android"] .screen{border-radius:36px;--r-card:16px;--r-btn:999px;--btn-h:52px}
+.sb{height:54px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:6px 30px 0 36px;position:relative;z-index:3}
+.sb-time{font-weight:600;font-size:16px;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+.sb-icons{display:flex;gap:6px;align-items:center}
+.sb-icons svg{height:12px;width:auto;fill:currentColor}
+.island{position:absolute;left:50%;top:11px;width:122px;height:35px;margin-left:-61px;background:var(--bezel);border-radius:20px}
+[data-platform="android"] .sb{height:40px;padding:4px 24px 0 26px}
+[data-platform="android"] .sb-time{font-weight:500;font-size:14px}
+.punch{position:absolute;left:50%;top:12px;width:16px;height:16px;margin-left:-8px;border-radius:50%;background:var(--bezel)}
+.sb.on-dark{color:var(--white)}
+.app{flex:1;min-height:0;overflow:hidden;padding:0 16px;display:flex;flex-direction:column;gap:12px;position:relative}
+.app.np{padding:0}
+.app>*{flex-shrink:0}
+.homebar{position:absolute;left:50%;bottom:8px;width:134px;height:5px;margin-left:-67px;border-radius:3px;background:var(--ink);opacity:.85;z-index:6}
+[data-platform="android"] .homebar{width:108px;height:4px;margin-left:-54px;bottom:9px;opacity:.55}
+
+/* таб-бар iOS / navigation bar M3 */
+.tabbar{flex:none;display:grid;grid-template-columns:repeat(5,1fr);background:var(--surface);border-top:1px solid var(--line);height:84px;padding:7px 4px 34px}
+.tab{display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--muted);text-decoration:none;font-size:10.5px;font-weight:500}
+.tab-ic{position:relative;display:grid;place-items:center}
+.tab[aria-current] {color:var(--tint)}
+.tab[aria-current] .ic{--duo:.18}
+.nb{position:absolute;top:-4px;left:15px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--red);color:var(--white);font-size:11px;font-weight:600;display:grid;place-items:center;font-style:normal;box-shadow:0 0 0 2px var(--surface)}
+.nb.dot{min-width:10px;width:10px;height:10px;padding:0;top:-1px;left:17px}
+[data-platform="android"] .tabbar{height:104px;padding:12px 4px 24px;border-top:0;background:var(--m3-nav)}
+[data-platform="android"] .tab{font-size:12px;gap:4px;color:var(--muted)}
+[data-platform="android"] .tab-ic{width:64px;height:32px;border-radius:16px}
+[data-platform="android"] .tab[aria-current]{color:var(--ink);font-weight:600}
+[data-platform="android"] .tab[aria-current] .tab-ic{background:var(--navy-100)}
+[data-platform="android"] .tab[aria-current] .ic{--duo:.22}
+[data-platform="android"] .nb{left:34px;top:0;box-shadow:none}
+[data-platform="android"] .nb.dot{left:38px;top:3px}
+
+/* заголовки экранов */
+.top{display:grid;grid-template-areas:"acts" "title";flex:none;padding-top:0}
+.top h1{grid-area:title;margin:0;font-family:var(--f-display);font-weight:600;font-size:28px;letter-spacing:-.01em;line-height:1.15;color:var(--brand-ink);padding:2px 0 4px}
+.top .acts{grid-area:acts;justify-self:end;height:40px}
+.acts{display:flex;gap:4px;align-items:center}
+.ibtn{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;color:var(--tint);position:relative}
+[data-platform="android"] .ibtn{color:var(--ink)}
+[data-platform="android"] .top{display:flex;align-items:center;justify-content:space-between;height:64px}
+[data-platform="android"] .top h1{font-size:21px;font-weight:500;padding:0}
+[data-platform="android"] .top .acts{height:auto}
+.nbar{flex:none;height:46px;display:flex;align-items:center;justify-content:space-between;position:relative;padding:0 8px;gap:6px}
+.back{display:flex;align-items:center;gap:0;color:var(--tint);font-size:17px;text-decoration:none;min-width:0;z-index:1}
+.back .ic{width:28px;height:28px}
+.nb-title{position:absolute;left:0;right:0;text-align:center;pointer-events:none;display:flex;flex-direction:column;align-items:center;line-height:1.2}
+.nb-title b{font-size:16px;font-weight:600}
+.nb-title small{font-size:12px;color:var(--muted)}
+[data-platform="android"] .nbar{height:64px;justify-content:flex-start;padding:0 4px 0 4px}
+[data-platform="android"] .back{width:48px;height:48px;justify-content:center;color:var(--ink)}
+[data-platform="android"] .back .ic{width:24px;height:24px}
+[data-platform="android"] .nb-title{position:static;text-align:left;align-items:flex-start;flex:1;min-width:0}
+[data-platform="android"] .nb-title b{font-size:19px;font-weight:500}
+.nbar .acts{margin-left:auto;z-index:1}
+
+/* базовые компоненты */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-card);padding:16px}
+[data-platform="android"] .card{border-color:transparent;box-shadow:0 1px 2px rgba(15,26,51,.06)}
+.row{display:flex;gap:12px;align-items:center;min-width:0}
+.grow{flex:1;min-width:0}
+.ttl{font-family:var(--f-display);font-weight:600}
+.h2{font-family:var(--f-display);font-weight:600;font-size:15px;color:var(--brand-ink);margin:0}
+.sm{font-size:13px}.xs{font-size:12px}.mut{color:var(--muted)}
+.num{font-variant-numeric:tabular-nums}
+.big{font-family:var(--f-display);font-weight:600;font-size:30px;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.sec-h{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px}
+.link{color:var(--tint);font-weight:600;font-size:14px;text-decoration:none}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border-radius:999px;background:var(--chip);font-size:13px;font-weight:500;white-space:nowrap}
+[data-platform="android"] .chip{border-radius:8px;background:transparent;border:1px solid var(--line)}
+[data-platform="android"] .chip.sel{background:var(--navy-100);border-color:transparent}
+.chip.sel{background:var(--primary);color:var(--on-primary)}
+[data-platform="android"] .chip.sel{color:var(--ink)}
+.pill{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
+.p-ok{background:var(--ok-100);color:var(--ok)}.p-warn{background:var(--warn-100);color:var(--warn)}.p-info{background:var(--info-100);color:var(--info)}.p-red{background:var(--red-100);color:var(--red)}.p-mut{background:var(--fill);color:var(--muted)}
+.btn{height:var(--btn-h);border-radius:var(--r-btn);background:var(--primary);color:var(--on-primary);font-weight:600;font-size:16px;display:flex;align-items:center;justify-content:center;gap:8px;width:100%;flex:none}
+.btn.red{background:var(--red);color:var(--white)}
+.btn.tonal{background:var(--navy-100);color:var(--brand-ink)}
+.btn.sm{height:36px;font-size:14px;width:auto;padding:0 14px}
+.av{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font-weight:600;font-size:15px;flex:none;position:relative}
+.av.s36{width:36px;height:36px;font-size:13px}.av.s56{width:56px;height:56px;font-size:19px}
+.c1{background:var(--navy-100);color:var(--tint)}.c2{background:var(--ok-100);color:var(--ok)}.c3{background:var(--warn-100);color:var(--warn)}.c4{background:var(--info-100);color:var(--info)}.c5{background:var(--red-100);color:var(--red)}
+.online::after{content:"";position:absolute;right:0;bottom:0;width:12px;height:12px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 2px var(--paper)}
+.unread{min-width:22px;height:22px;padding:0 7px;border-radius:11px;background:var(--red);color:var(--white);font-size:12px;font-weight:600;display:grid;place-items:center}
+.bar{height:8px;border-radius:4px;background:var(--fill);overflow:hidden}
+.bar i{display:block;height:100%;border-radius:4px;background:var(--primary)}
+.segs{display:grid;grid-template-columns:repeat(12,1fr);gap:3px}
+.segs i{height:8px;border-radius:3px;background:var(--fill)}
+.segs i.on{background:var(--primary)}
+.list{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-card);overflow:hidden}
+.list .li{display:flex;gap:12px;align-items:center;padding:12px 14px;border-bottom:1px solid var(--line);min-width:0}
+.list .li:last-child{border-bottom:0}
+[data-platform="android"] .list{border-color:transparent}
+.cb{width:24px;height:24px;border-radius:7px;border:2px solid var(--outline);flex:none;display:grid;place-items:center;color:var(--on-primary)}
+.cb.on{background:var(--ok);border-color:var(--ok);color:var(--white)}
+[data-platform="android"] .cb{border-radius:4px;width:20px;height:20px;margin:2px}
+.coin{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--coin);color:var(--white);flex:none}
+.coin svg{width:14px;height:14px;stroke-width:2.2}
+
+/* сегменты: iOS segmented control / M3 segmented buttons */
+.seg{display:flex;background:var(--fill);border-radius:10px;padding:2px;flex:none}
+.seg button{flex:1;height:32px;border-radius:8px;font-size:13px;font-weight:600;color:var(--ink);display:flex;align-items:center;justify-content:center;gap:4px;white-space:nowrap}
+.seg button.on{background:var(--surface);box-shadow:0 1px 3px rgba(15,26,51,.14)}
+.seg .ic{width:18px;height:18px}
+.seg button:not(.on) .ic{display:none}
+[data-platform="android"] .seg{background:none;border:1px solid var(--outline);border-radius:999px;padding:0;overflow:hidden}
+[data-platform="android"] .seg button{height:40px;border-radius:0;border-left:1px solid var(--outline);font-weight:500}
+[data-platform="android"] .seg button:first-child{border-left:0}
+[data-platform="android"] .seg button.on{background:var(--navy-100);box-shadow:none}
+/* свитчи */
+.sw{width:51px;height:31px;border-radius:16px;background:var(--fill);position:relative;flex:none;transition:background .2s}
+.sw i{position:absolute;top:2px;left:2px;width:27px;height:27px;border-radius:50%;background:var(--white);box-shadow:0 2px 4px rgba(0,0,0,.2);transition:transform .2s}
+.sw.on{background:var(--ok)}
+.sw.on i{transform:translateX(20px)}
+[data-platform="android"] .sw{width:52px;height:32px;background:var(--surface);box-shadow:inset 0 0 0 2px var(--outline)}
+[data-platform="android"] .sw i{top:8px;left:8px;width:16px;height:16px;background:var(--outline);box-shadow:none}
+[data-platform="android"] .sw.on{background:var(--primary);box-shadow:none}
+[data-platform="android"] .sw.on i{top:4px;left:4px;width:24px;height:24px;background:var(--on-primary);transform:translateX(20px)}
+/* поле ввода */
+.tf{display:flex;flex-direction:column;gap:6px;position:relative}
+.tf-l{font-size:13px;color:var(--muted);font-weight:500}
+.tf-in{height:56px;border-radius:14px;background:var(--surface);border:1px solid var(--line);display:flex;align-items:center;gap:10px;padding:0 16px;font-size:20px;font-weight:500;font-variant-numeric:tabular-nums;letter-spacing:.02em}
+.tf-in .pre{padding-right:10px;border-right:1px solid var(--line);color:var(--muted)}
+.caret{width:2px;height:24px;background:var(--tint);margin-left:-8px}
+[data-platform="android"] .tf-l{position:absolute;top:-9px;left:12px;background:var(--paper);padding:0 4px;font-size:12px;color:var(--tint);z-index:1}
+[data-platform="android"] .tf-in{border-radius:4px;border:2px solid var(--primary);background:transparent}
+/* радио */
+.radio{width:20px;height:20px;border-radius:50%;border:2px solid var(--outline);flex:none;display:grid;place-items:center}
+.radio.on{border-color:var(--primary)}
+.radio.on::after{content:"";width:10px;height:10px;border-radius:50%;background:var(--primary)}
+/* FAB */
+.fab{position:absolute;right:16px;bottom:16px;height:56px;padding:0 20px 0 16px;border-radius:16px;background:var(--navy-100);color:var(--brand-ink);display:flex;align-items:center;gap:10px;font-weight:600;font-size:15px;box-shadow:0 3px 8px rgba(15,26,51,.18);backdrop-filter:blur(8px)}
+.fab{background:linear-gradient(var(--navy-100),var(--navy-100)),var(--surface)}
+.fab-in{position:absolute;inset:0;border-radius:16px;background:var(--navy-100)}
+.fab>*{position:relative}
+
+/* ---------- экраны ---------- */
+/* сплэш */
+.splash{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding-bottom:60px;position:relative}
+.splash .logo svg.mark{width:96px;height:78px}
+.splash .logo{flex-direction:column;gap:16px}
+.splash .wm{align-items:center}
+.splash .wm b{font-size:32px}
+.splash .wm small{font-size:10px;margin-top:8px}
+.dots{display:flex;gap:6px}.dots i{width:7px;height:7px;border-radius:50%;background:var(--line)}.dots i:first-child{background:var(--red)}
+.splash-foot{position:absolute;bottom:56px;left:0;right:0;text-align:center;font-size:13px;color:var(--muted)}
+/* вход */
+.auth{flex:1;display:flex;flex-direction:column;gap:20px;padding:12px 24px 0}
+.auth h2{font-family:var(--f-display);font-weight:600;font-size:24px;line-height:1.2;margin:0;color:var(--brand-ink);text-wrap:balance}
+.chan{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.chan>div{border:1.5px solid var(--line);border-radius:var(--r-card);padding:12px;display:flex;flex-direction:column;gap:6px;background:var(--surface)}
+.chan>div.on{border-color:var(--primary);box-shadow:0 0 0 1px var(--primary)}
+.chan .top2{display:flex;justify-content:space-between;align-items:center}
+.code{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.code span{height:64px;border-radius:14px;background:var(--surface);border:1px solid var(--line);display:grid;place-items:center;font-family:var(--f-display);font-size:26px;font-weight:600}
+.code span.cur{border:2px solid var(--primary)}
+[data-platform="android"] .code span{border-radius:8px}
+.keypad{margin-top:auto;display:grid;grid-template-columns:repeat(3,1fr);gap:7px;padding:8px 6px 40px;background:var(--fill);margin-inline:-24px}
+.keypad span{height:46px;border-radius:8px;background:var(--surface);display:grid;place-items:center;font-size:22px;font-weight:500;box-shadow:0 1px 0 rgba(15,26,51,.18)}
+.keypad span.e{background:none;box-shadow:none}
+[data-platform="android"] .keypad span{border-radius:999px;height:48px;box-shadow:none}
+/* главная ученика */
+.hello{display:flex;align-items:center;gap:12px;padding-top:6px}
+.hello b{font-family:var(--f-display);font-weight:600;font-size:21px;color:var(--brand-ink);display:block;line-height:1.2}
+.hero{background:linear-gradient(150deg,var(--hero),var(--hero-2));color:var(--on-hero);border-radius:calc(var(--r-card) + 4px);padding:16px;display:flex;flex-direction:column;gap:12px;position:relative;overflow:hidden}
+.hero .eb{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--on-hero-2);font-weight:600}
+.hero .time{font-family:var(--f-display);font-weight:600;font-size:40px;line-height:1;letter-spacing:-.02em}
+.hero .time small{font-size:18px;color:var(--on-hero-2);font-weight:500;letter-spacing:0}
+.hero .meta{display:flex;flex-wrap:wrap;gap:6px}
+.hero .meta span{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.12);padding:5px 10px;border-radius:999px;font-size:13px;font-weight:500}
+.hero .when{white-space:nowrap;background:var(--red);color:var(--white);font-size:12px;font-weight:600;padding:4px 10px;border-radius:999px}
+.hero .deco{position:absolute;right:-18px;bottom:-26px;width:130px;height:130px;opacity:.1}
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.tile{display:flex;flex-direction:column;gap:8px}
+.tile .lbl{font-size:13px;color:var(--muted);font-weight:500;display:flex;align-items:center;gap:6px}
+/* расписание */
+.week{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.week div{display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 0;border-radius:14px;font-size:12px;color:var(--muted)}
+.week div b{font-size:17px;color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
+.week div i{width:5px;height:5px;border-radius:50%;background:var(--tint)}
+.week div i.no{background:transparent}
+.week div.today{background:var(--primary);color:var(--on-hero-2)}
+.week div.today b{color:var(--on-primary)}.week div.today i{background:var(--on-primary)}
+.day{display:grid;grid-template-columns:48px 1fr;gap:10px;align-items:start}
+.day .dl{font-size:12px;color:var(--muted);padding-top:12px;line-height:1.2}
+.day .dl b{display:block;font-size:17px;color:var(--ink);font-family:var(--f-display);font-weight:600}
+.les{display:flex;flex-direction:column;gap:6px;padding:12px 14px;border-radius:var(--r-card);background:var(--surface);border:1px solid var(--line);position:relative}
+[data-platform="android"] .les{border-color:transparent;box-shadow:0 1px 2px rgba(15,26,51,.06)}
+.les.now{border-color:var(--primary);box-shadow:0 0 0 1px var(--primary)}
+.les .t{font-weight:600;font-variant-numeric:tabular-nums}
+.les .m{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:13px;color:var(--muted)}
+.les .m span{display:inline-flex;align-items:center;gap:4px}
+.stars{display:flex;gap:2px;color:var(--warn)}.stars .ic{width:18px;height:18px}
+.stars .ic.f1 .d{opacity:1}
+.banner{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:14px;background:var(--info-100);color:var(--info);font-size:13px;font-weight:500}
+.banner.ok{background:var(--ok-100);color:var(--ok)}
+.banner span{color:var(--ink);font-weight:400}
+/* ДЗ */
+.hw .li{align-items:flex-start}
+.hw .ti{font-weight:600}
+.att{display:flex;gap:10px;align-items:center;padding:10px 12px;border-radius:14px;background:var(--surface);border:1px solid var(--line)}
+.ph-img{border-radius:12px;background:linear-gradient(135deg,var(--navy-100),var(--chip));position:relative;overflow:hidden;color:var(--tint);flex:none}
+.wave{display:flex;align-items:center;gap:2px;height:28px;flex:1;min-width:0}
+.wave i{flex:1;max-width:3px;min-width:2px;border-radius:2px;background:currentColor;opacity:.55}
+.wave i.p{opacity:1}
+.playb{width:36px;height:36px;border-radius:50%;background:var(--primary);color:var(--on-primary);display:grid;place-items:center;flex:none}
+.playb .ic{width:18px;height:18px}
+.addrow{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.addrow div{display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 4px;border-radius:14px;border:1.5px dashed var(--outline);font-size:13px;font-weight:500;color:var(--tint)}
+[data-platform="android"] .addrow div{border-style:solid;border-width:1px;border-radius:12px}
+/* чаты */
+.search{display:flex;align-items:center;gap:8px;height:38px;border-radius:12px;background:var(--fill);padding:0 10px;color:var(--muted);font-size:15px;flex:none}
+[data-platform="android"] .search{height:52px;border-radius:26px;background:var(--m3-nav);padding:0 16px}
+.ch{display:flex;gap:12px;align-items:center;padding:10px 0;min-width:0}
+.ch+.ch{border-top:1px solid var(--line)}
+[data-platform="android"] .ch+.ch{border-top:0}
+.ch .nm{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ch .lm{font-size:14px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ch .side{display:flex;flex-direction:column;align-items:flex-end;gap:6px;font-size:12px;color:var(--muted);flex:none}
+.role{font-size:11px;font-weight:600;padding:1px 6px;border-radius:6px;background:var(--navy-100);color:var(--tint);margin-left:4px;vertical-align:1px}
+.role.mgr{background:var(--warn-100);color:var(--warn)}
+.pinned{display:flex;gap:10px;align-items:center;padding:10px 16px;background:var(--surface);border-bottom:1px solid var(--line);flex:none;min-width:0}
+.pinned .bdr{width:3px;align-self:stretch;border-radius:2px;background:var(--red)}
+.msgs{flex:1;min-height:0;display:flex;flex-direction:column;gap:8px;padding:12px 12px;overflow:hidden;justify-content:flex-end}
+.daysep{align-self:center;font-size:12px;font-weight:600;color:var(--muted);background:var(--fill);padding:3px 10px;border-radius:999px}
+.m{display:flex;gap:8px;align-items:flex-end;max-width:86%}
+.m .bub{background:var(--surface);border:1px solid var(--line);border-radius:18px 18px 18px 6px;padding:8px 12px;font-size:15px;min-width:0}
+.m .who{font-size:12px;font-weight:600;color:var(--tint);display:block;margin-bottom:2px}
+.m .tm{font-size:11px;color:var(--muted);margin-left:8px;float:right;margin-top:6px}
+.m.out{align-self:flex-end;flex-direction:row-reverse}
+.m.out .bub{background:var(--primary);color:var(--on-primary);border-color:transparent;border-radius:18px 18px 6px 18px}
+.m.out .tm{color:var(--on-hero-2)}
+.typing{font-size:13px;color:var(--muted);padding-left:44px}
+.composer{flex:none;display:flex;align-items:center;gap:6px;padding:8px 10px 38px;background:var(--surface);border-top:1px solid var(--line)}
+.composer .inp{flex:1;height:38px;border-radius:19px;border:1px solid var(--line);padding:0 14px;display:flex;align-items:center;color:var(--muted);font-size:15px;background:var(--paper)}
+[data-platform="android"] .composer{padding-bottom:30px;border-top:0;background:var(--paper)}
+[data-platform="android"] .composer .inp{height:48px;border-radius:24px;border:0;background:var(--m3-nav)}
+.micb{width:40px;height:40px;border-radius:50%;background:var(--primary);color:var(--on-primary);display:grid;place-items:center;flex:none}
+/* коины */
+.balance{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.balance .big{font-size:40px}
+.coin.lg{width:40px;height:40px}.coin.lg svg{width:26px;height:26px}
+.earn{display:flex;gap:6px;flex-wrap:nowrap;overflow:hidden;margin-inline:-16px;padding-inline:16px;flex:none}
+.prods{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.prod{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-card);overflow:hidden;display:flex;flex-direction:column}
+[data-platform="android"] .prod{border-color:transparent;box-shadow:0 1px 2px rgba(15,26,51,.06)}
+.prod .pi{height:96px;background:var(--chip);display:grid;place-items:center}
+.prod .pi svg{width:70px;height:70px}
+.prod .pb{padding:10px 12px 12px;display:flex;flex-direction:column;gap:6px}
+.prod .pn{font-weight:600;font-size:14px;line-height:1.25}
+.price{display:flex;align-items:center;gap:6px;font-family:var(--f-display);font-weight:600;font-size:15px;font-variant-numeric:tabular-nums}
+.price .coin{width:18px;height:18px}.price .coin svg{width:12px;height:12px}
+/* рейтинг */
+.podium{display:grid;grid-template-columns:1fr 1.1fr 1fr;align-items:end;gap:8px;text-align:center}
+.podium .p{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:13px}
+.podium .st{width:100%;border-radius:12px 12px 4px 4px;background:var(--navy-100);display:grid;place-items:center;font-family:var(--f-display);font-weight:600;color:var(--tint);font-size:18px}
+.podium .me .st{background:var(--primary);color:var(--on-primary)}
+.rk{display:flex;align-items:center;gap:12px;padding:9px 14px;border-bottom:1px solid var(--line)}
+.rk:last-child{border-bottom:0}
+.rk .n{width:20px;font-weight:600;color:var(--muted);font-variant-numeric:tabular-nums}
+.badges{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.badge{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:11.5px;text-align:center;line-height:1.2;font-weight:500}
+.badge .bi{width:56px;height:56px;border-radius:18px;display:grid;place-items:center}
+.badge .bi .ic{width:28px;height:28px;--duo:.2}
+.badge.lock{color:var(--muted)}.badge.lock .bi{background:var(--fill)}
+/* прогресс */
+.path{display:flex;flex-direction:column}
+.lv{display:grid;grid-template-columns:28px 1fr auto;gap:12px;align-items:center;min-height:36px;position:relative}
+.lv .dot{width:20px;height:20px;border-radius:50%;border:2px solid var(--line);background:var(--surface);margin-left:4px;z-index:1;display:grid;place-items:center;color:var(--white)}
+.lv .dot .ic{width:12px;height:12px;stroke-width:3}
+.lv::before{content:"";position:absolute;left:13px;top:0;bottom:0;width:2px;background:var(--line)}
+.lv:first-child::before{top:50%}.lv:last-child::before{bottom:50%}
+.lv.done .dot{background:var(--ok);border-color:var(--ok)}
+.lv.done::before{background:var(--ok)}
+.lv.cur .dot{width:28px;height:28px;margin-left:0;border:3px solid var(--primary);background:var(--surface)}
+.lv.cur .dot::after{content:"";width:10px;height:10px;border-radius:50%;background:var(--primary)}
+.lv .lt{font-weight:500}
+.lv.cur .lt{font-family:var(--f-display);font-weight:600;color:var(--brand-ink)}
+.lv:not(.done):not(.cur) .lt{color:var(--muted)}
+.grades{display:flex;align-items:flex-end;gap:8px;height:96px;padding-top:6px}
+.grades div{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:11px;color:var(--muted);justify-content:flex-end;height:100%}
+.grades div i{width:100%;max-width:26px;border-radius:6px 6px 3px 3px;background:var(--navy-100);display:grid;place-items:start center;font-style:normal;font-size:12px;font-weight:700;color:var(--tint);padding-top:3px}
+.grades div i.hi{background:var(--primary);color:var(--on-primary)}
+/* профиль */
+.prof{display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;padding-top:4px}
+.trio{display:grid;grid-template-columns:repeat(3,1fr);text-align:center}
+.trio div{display:flex;flex-direction:column;gap:2px;padding:4px 0}
+.trio div+div{border-left:1px solid var(--line)}
+.trio b{font-family:var(--f-display);font-weight:600;font-size:22px;font-variant-numeric:tabular-nums}
+.li .lic{width:32px;height:32px;border-radius:9px;display:grid;place-items:center;flex:none}
+.li .lic .ic{width:20px;height:20px}
+.chev{color:var(--muted)}
+/* родитель */
+.kids{display:flex;gap:8px;flex:none}
+.kid{flex:1;display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:var(--r-card);background:var(--surface);border:1px solid var(--line);min-width:0}
+.kid.on{border-color:var(--primary);box-shadow:0 0 0 1px var(--primary)}
+.kid .av{width:36px;height:36px;font-size:13px}
+.kid b{font-size:14px;display:block}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px 2px;text-align:center;font-size:12px}
+.cal .h{color:var(--muted);font-weight:600;font-size:11px}
+.cal span{height:30px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-variant-numeric:tabular-nums;color:var(--muted);border-radius:8px}
+.cal span.l{color:var(--ink);font-weight:600}
+.cal span.l::after{content:"";width:5px;height:5px;border-radius:50%;background:var(--ok)}
+.cal span.late::after{background:var(--warn)}
+.cal span.miss::after{background:var(--red)}
+.cal span.t{background:var(--navy-100)}
+.cal span.fut::after{background:var(--line)}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+.legend i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px}
+.notif{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border-bottom:1px solid var(--line)}
+.notif:last-child{border-bottom:0}
+.notif .ni{width:36px;height:36px;border-radius:11px;display:grid;place-items:center;flex:none}
+.notif .ni .ic{width:20px;height:20px}
+.notif b{font-weight:600}
+.wa-tag{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--muted);margin-top:4px}
+.wa-tag .ic{width:14px;height:14px;color:var(--wa);stroke-width:2}
+.unr{width:8px;height:8px;border-radius:50%;background:var(--red);flex:none;margin-top:6px}
+.debt{border:1px solid var(--red-100);background:var(--surface)}
+.kaspi{width:28px;height:28px;border-radius:8px;background:var(--kaspi);display:grid;place-items:center;flex:none}
+.kaspi svg{width:18px;height:18px}
+.cardi{width:28px;height:28px;border-radius:8px;background:var(--primary);color:var(--on-primary);display:grid;place-items:center;flex:none}
+.cardi .ic{width:18px;height:18px}
+/* sheet */
+.scrim{position:absolute;inset:0;background:var(--scrim);z-index:4}
+.asheet{position:absolute;left:8px;right:8px;bottom:34px;z-index:5;display:flex;flex-direction:column;gap:8px}
+.asheet .grp1,.asheet .grp2{background:var(--surface);border-radius:14px;overflow:hidden}
+.asheet .hd{padding:14px 16px;text-align:center;font-size:13px;color:var(--muted);border-bottom:1px solid var(--line)}
+.asheet .hd b{display:block;color:var(--ink);font-size:14px;margin-bottom:2px}
+.asheet .op{height:58px;display:flex;align-items:center;justify-content:center;gap:10px;font-size:19px;color:var(--tint);border-bottom:1px solid var(--line)}
+.asheet .op:last-child{border-bottom:0}
+.asheet .grp2 .op{font-weight:600}
+.bsheet{position:absolute;left:0;right:0;bottom:0;z-index:5;background:var(--surface);border-radius:28px 28px 0 0;padding:10px 20px 40px;display:flex;flex-direction:column;gap:14px}
+.bsheet .hdl{width:32px;height:4px;border-radius:2px;background:var(--outline);align-self:center;opacity:.6}
+.opt{display:flex;align-items:center;gap:12px;padding:14px;border-radius:16px;border:1px solid var(--line)}
+.opt.on{border-color:var(--primary);background:var(--navy-50)}
+/* безопасность */
+.notice{flex:none;display:flex;align-items:center;justify-content:center;gap:6px;padding:6px 10px;background:var(--fill);color:var(--muted);font-size:11px;font-weight:500;white-space:nowrap}
+.notice .ic{width:14px;height:14px;stroke-width:2}
+.pin{display:flex;gap:20px;justify-content:center}
+.pin i{width:16px;height:16px;border-radius:50%;border:2px solid var(--primary)}
+.pin i.on{background:var(--primary)}
+.pinpad{display:grid;grid-template-columns:repeat(3,76px);gap:16px 28px;justify-content:center;margin-top:auto;padding-bottom:44px}
+.pinpad span{width:76px;height:76px;border-radius:50%;background:var(--fill);display:grid;place-items:center;font-family:var(--f-display);font-size:28px;font-weight:500;color:var(--ink)}
+.pinpad span.e{background:none;color:var(--tint)}
+.pinpad span.e .ic{width:32px;height:32px}
+[data-platform="android"] .pinpad span{background:var(--m3-nav)}
+[data-platform="android"] .pinpad span.e{background:none}
+.secc{flex:1;display:flex;flex-direction:column;align-items:center;text-align:center;gap:14px;padding:12px 28px 0}
+.secc h2{font-family:var(--f-display);font-weight:600;font-size:22px;line-height:1.25;margin:0;color:var(--brand-ink);text-wrap:balance}
+.secc p{margin:0;color:var(--muted)}
+.bigic{width:88px;height:88px;border-radius:28px;background:var(--navy-100);color:var(--tint);display:grid;place-items:center}
+.bigic .ic{width:44px;height:44px;stroke-width:1.75;--duo:.2}
+.ialert{position:absolute;left:50%;top:50%;width:270px;margin:-90px 0 0 -135px;z-index:5;background:var(--surface);border-radius:14px;text-align:center;overflow:hidden}
+.ialert .b{padding:18px 16px 14px;font-size:13px;color:var(--ink)}
+.ialert .b b{display:block;font-size:16px;margin-bottom:4px;line-height:1.25}
+.ialert .btns{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid var(--line)}
+.ialert .btns span{height:44px;display:grid;place-items:center;font-size:16px;color:var(--tint)}
+.ialert .btns span+span{border-left:1px solid var(--line);font-weight:600}
+.bprompt{position:absolute;left:12px;right:12px;bottom:28px;z-index:5;background:var(--surface);border-radius:28px;padding:22px 22px 14px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center}
+.bprompt .fp{width:64px;height:64px;border-radius:50%;background:var(--navy-100);color:var(--tint);display:grid;place-items:center;margin:8px 0}
+.bprompt .fp .ic{width:36px;height:36px}
+.bprompt .acts2{align-self:stretch;display:flex;justify-content:space-between;color:var(--tint);font-weight:600;font-size:14px;padding:8px 4px 0}
+.dev-row .lic{background:var(--fill);color:var(--ink)}
+.warnbox{flex:none;margin:0 10px 8px;padding:12px;border-radius:16px;background:var(--warn-100);display:flex;gap:10px;align-items:flex-start}
+.warnbox .ic{color:var(--warn)}
+.warnbox b{display:block;font-size:14px}
+.warnbox p{margin:2px 0 8px;font-size:13px;color:var(--ink)}
+.hl{background:var(--red-100);color:var(--red);border-radius:4px;padding:0 2px;text-decoration:underline wavy;text-underline-offset:3px}
+.sendb{width:40px;height:40px;border-radius:50%;background:var(--fill);color:var(--muted);display:grid;place-items:center;flex:none}
+.ctx{position:absolute;z-index:5;left:52px;right:60px;display:flex;flex-direction:column;gap:8px}
+.ctx .menu{background:var(--surface);border-radius:14px;overflow:hidden;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+.ctx .menu div{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;font-size:16px;border-bottom:1px solid var(--line)}
+.ctx .menu div:last-child{border-bottom:0}
+.ctx .menu .rep{color:var(--red)}
+[data-platform="android"] .ctx .menu{border-radius:4px}
+[data-platform="android"] .ctx .menu div{border-bottom:0;justify-content:flex-end;flex-direction:row-reverse;gap:14px;font-size:15px}
+.switcher{position:absolute;inset:0;background:linear-gradient(160deg,var(--hero),var(--bezel));z-index:0}
+.appcard{position:absolute;top:120px;width:280px;height:560px;border-radius:34px;background:var(--paper);overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.4)}
+[data-platform="android"] .appcard{border-radius:24px;top:110px}
+.appcard .blurc{position:absolute;inset:0;padding:40px 16px;display:flex;flex-direction:column;gap:12px;filter:blur(9px)}
+.appcard .blurc div{border-radius:16px;background:var(--surface)}
+.appcard .shield{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:color-mix(in srgb,var(--paper) 55%,transparent)}
+.applbl{position:absolute;top:76px;display:flex;align-items:center;gap:8px;color:var(--white);font-weight:600;font-size:14px}
+.applbl .aic{width:30px;height:30px;border-radius:8px;background:var(--surface);display:grid;place-items:center}
+.recbtns{position:absolute;bottom:60px;left:0;right:0;display:flex;justify-content:center;gap:12px}
+.recbtns span{padding:8px 16px;border-radius:999px;background:rgba(255,255,255,.14);color:var(--white);font-size:13px;font-weight:600}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-home" viewBox="0 0 24 24"><path class="d" d="M3.5 10.5 12 4l8.5 6.5V19a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 19z"/><path d="M3.5 10.5 12 4l8.5 6.5V19a1.5 1.5 0 0 1-1.5 1.5h-4v-6h-6v6H5A1.5 1.5 0 0 1 3.5 19z"/></symbol>
+  <symbol id="i-cal" viewBox="0 0 24 24"><rect class="d" x="3.5" y="5" width="17" height="4.5" rx="2"/><rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 9.5h17M8 3v4M16 3v4M8 13.5h2M14 13.5h2M8 17h2"/></symbol>
+  <symbol id="i-task" viewBox="0 0 24 24"><rect class="d" x="5" y="4.5" width="14" height="16.5" rx="2"/><rect x="5" y="4.5" width="14" height="16.5" rx="2"/><path d="M9 3h6v3H9zM8.5 13l2.5 2.5 4.5-5"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24"><path class="d" d="M20 14.5a2.5 2.5 0 0 1-2.5 2.5H9.5L5 20.5V17h-.5a.5.5 0 0 1-.5-.5v-10A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5z"/><path d="M20 14.5a2.5 2.5 0 0 1-2.5 2.5H9.5L5 20.5V17h-.5a.5.5 0 0 1-.5-.5v-10A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5zM8.5 9h7M8.5 12.5h4"/></symbol>
+  <symbol id="i-coin" viewBox="0 0 24 24"><circle class="d" cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="8.5"/><path d="M10.5 9.5 12.5 8v8M10.5 16h4"/></symbol>
+  <symbol id="i-c1" viewBox="0 0 24 24"><path d="M10 8.5 13 6v12M10 18h6"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24"><circle class="d" cx="12" cy="8.5" r="3.5"/><circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.8-3.6 3.6-5.5 7-5.5s6.2 1.9 7 5.5"/></symbol>
+  <symbol id="i-wallet" viewBox="0 0 24 24"><rect class="d" x="3.5" y="6" width="17" height="4" rx="1"/><rect x="3.5" y="6" width="17" height="13" rx="2.5"/><path d="M3.5 10h17M15 14.5h2"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24"><path class="d" d="M6 10a6 6 0 0 1 12 0c0 4 1.5 5.5 2 6.5H4c.5-1 2-2.5 2-6.5z"/><path d="M6 10a6 6 0 0 1 12 0c0 4 1.5 5.5 2 6.5H4c.5-1 2-2.5 2-6.5zM10 19.5a2 2 0 0 0 4 0"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
+  <symbol id="i-door" viewBox="0 0 24 24"><path d="M6.5 20.5v-15a1.5 1.5 0 0 1 1.5-1.5h8a1.5 1.5 0 0 1 1.5 1.5v15M4 20.5h16M14.5 11.5v1.5"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s-6.5-5.5-6.5-11a6.5 6.5 0 0 1 13 0c0 5.5-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.5"/></symbol>
+  <symbol id="i-clip" viewBox="0 0 24 24"><path d="M19 11.5 12.2 18.3a4.5 4.5 0 0 1-6.4-6.4l7-7a3 3 0 0 1 4.3 4.3l-7 7a1.5 1.5 0 0 1-2.1-2.1l6.4-6.4"/></symbol>
+  <symbol id="i-camera" viewBox="0 0 24 24"><path d="M4 8.5A1.5 1.5 0 0 1 5.5 7H8l1.5-2.5h5L16 7h2.5A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5z"/><circle cx="12" cy="12.5" r="3.5"/></symbol>
+  <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3.5" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v2.5"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><path d="M20 4 3.5 10.5l7 2.5 2.5 7zM20 4l-9.5 9"/></symbol>
+  <symbol id="i-pushpin" viewBox="0 0 24 24"><path d="M9 4h6l-1 5 3 3v1.5H7V12l3-3zM12 13.5V20"/></symbol>
+  <symbol id="i-chev-r" viewBox="0 0 24 24"><path d="m9.5 6 6 6-6 6"/></symbol>
+  <symbol id="i-chev-l" viewBox="0 0 24 24"><path d="m14.5 5.5-6.5 6.5 6.5 6.5"/></symbol>
+  <symbol id="i-arrow-l" viewBox="0 0 24 24"><path d="M19.5 12h-15M10.5 6l-6 6 6 6"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-trophy" viewBox="0 0 24 24"><path class="d" d="M8 4.5h8v5a4 4 0 0 1-8 0z"/><path d="M8 4.5h8v5a4 4 0 0 1-8 0zM8 6.5H5V8a3 3 0 0 0 3 3M16 6.5h3V8a3 3 0 0 1-3 3M12 13.5V17M8.5 20.5h7M9.5 17h5v3.5h-5z"/></symbol>
+  <symbol id="i-bag" viewBox="0 0 24 24"><path class="d" d="M5 8h14l-1 12.5H6z"/><path d="M5 8h14l-1 12.5H6zM9 10V7a3 3 0 0 1 6 0v3"/></symbol>
+  <symbol id="i-medal" viewBox="0 0 24 24"><circle class="d" cx="12" cy="14.5" r="5.5"/><circle cx="12" cy="14.5" r="5.5"/><path d="m8 3.5 2.5 5.5M16 3.5 13.5 9M11 13l1.5-1v5"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><path class="d" d="m12 3.8 2.5 5.2 5.6.7-4.1 3.9 1 5.6L12 16.5 7 19.2l1-5.6-4.1-3.9 5.6-.7z"/><path d="m12 3.8 2.5 5.2 5.6.7-4.1 3.9 1 5.6L12 16.5 7 19.2l1-5.6-4.1-3.9 5.6-.7z"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24"><path class="d" d="M10.5 8.5h3v8h-3z"/><path d="M4 20h16M7 16.5v-4M12 16.5v-8M17 16.5V6"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path class="d" d="M4 5.5A1.5 1.5 0 0 1 5.5 4H11v16H5.5A1.5 1.5 0 0 1 4 18.5z"/><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H11v16H5.5A1.5 1.5 0 0 1 4 18.5zM20 5.5A1.5 1.5 0 0 0 18.5 4H13v16h5.5a1.5 1.5 0 0 0 1.5-1.5z"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M6 3.5h8l4.5 4.5v12a.5.5 0 0 1-.5.5H6a.5.5 0 0 1-.5-.5V4a.5.5 0 0 1 .5-.5zM14 3.5V8h4.5M9 13h6M9 16.5h4"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path class="f" d="M8 5.5v13l10.5-6.5z"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-logout" viewBox="0 0 24 24"><path d="M14 4.5h4a1.5 1.5 0 0 1 1.5 1.5v12a1.5 1.5 0 0 1-1.5 1.5h-4M10 8l-4 4 4 4M6 12h9"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.5 2.5 3.5 5.5 3.5 8.5s-1 6-3.5 8.5c-2.5-2.5-3.5-5.5-3.5-8.5s1-6 3.5-8.5"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><circle class="d" cx="9" cy="9" r="3"/><circle cx="9" cy="9" r="3"/><path d="M3.5 19c.6-3 2.8-4.5 5.5-4.5s4.9 1.5 5.5 4.5M15.5 6.2a3 3 0 0 1 0 5.6M17 14.7c1.8.5 3 1.9 3.5 4.3"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5v5M12 16h.01"/></symbol>
+  <symbol id="i-fire" viewBox="0 0 24 24"><path class="d" d="M12 20.5a6 6 0 0 0 6-6c0-3.5-2.5-5.5-3.5-8.5-1.5 1.5-2 3-2 4.5-1-1-1.5-2.5-1.5-4-2.5 2-5 4.5-5 8a6 6 0 0 0 6 6z"/><path d="M12 20.5a6 6 0 0 0 6-6c0-3.5-2.5-5.5-3.5-8.5-1.5 1.5-2 3-2 4.5-1-1-1.5-2.5-1.5-4-2.5 2-5 4.5-5 8a6 6 0 0 0 6 6z"/></symbol>
+  <symbol id="i-receipt" viewBox="0 0 24 24"><path d="M6 3.5h12v17l-2-1.5-2 1.5-2-1.5-2 1.5-2-1.5-2 1.5zM9 8h6M9 11.5h6M9 15h3"/></symbol>
+  <symbol id="i-grad" viewBox="0 0 24 24"><path class="d" d="M2.5 9.5 12 5l9.5 4.5L12 14z"/><path d="M2.5 9.5 12 5l9.5 4.5L12 14zM6.5 11.5v4c1.5 1.5 3.5 2.2 5.5 2.2s4-.7 5.5-2.2v-4M21.5 9.5v5"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5.5" y="10.5" width="13" height="10" rx="2"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></symbol>
+  <symbol id="i-gift" viewBox="0 0 24 24"><rect x="4" y="8.5" width="16" height="4" rx="1"/><path d="M5.5 12.5v7.5h13v-7.5M12 8.5V20M12 8.5c-1-3-5-3.5-5-1.2 0 1.2 2 1.2 5 1.2zm0 0c1-3 5-3.5 5-1.2 0 1.2-2 1.2-5 1.2"/></symbol>
+  <symbol id="i-pencil" viewBox="0 0 24 24"><path d="m4.5 19.5 1-4.5L15.5 5a2.1 2.1 0 0 1 3 3l-10 10zM13.5 7l3 3"/></symbol>
+  <symbol id="i-compose" viewBox="0 0 24 24"><path d="M11 4.5H6A1.5 1.5 0 0 0 4.5 6v12A1.5 1.5 0 0 0 6 19.5h12a1.5 1.5 0 0 0 1.5-1.5v-5M17.5 3.8a1.6 1.6 0 0 1 2.3 2.3L12 13.8l-3 .8.8-3z"/></symbol>
+  <symbol id="i-phone" viewBox="0 0 24 24"><rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 17.5h2"/></symbol>
+  <symbol id="i-image" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="2"/><circle cx="9" cy="10" r="1.75"/><path d="m4 17 5-4.5 3.5 3 3-2.5 4.5 4"/></symbol>
+  <symbol id="i-dots" viewBox="0 0 24 24"><circle class="f" cx="12" cy="5.5" r="1.6"/><circle class="f" cx="12" cy="12" r="1.6"/><circle class="f" cx="12" cy="18.5" r="1.6"/></symbol>
+  <symbol id="i-wa" viewBox="0 0 24 24"><path d="M12 3.5a8.5 8.5 0 0 0-7.3 12.8L3.5 20.5l4.3-1.1A8.5 8.5 0 1 0 12 3.5z"/><path d="M9 8.5c0 3.3 3.2 6.5 6.5 6.5l.9-1.7-2-1-1 .8a4.5 4.5 0 0 1-2.5-2.5l.8-1-1-2z"/></symbol>
+  <symbol id="i-card" viewBox="0 0 24 24"><rect x="3.5" y="5.5" width="17" height="13" rx="2"/><path d="M3.5 9.5h17M7 14.5h3"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3.5v2M12 18.5v2M3.5 12h2M18.5 12h2M6 6l1.4 1.4M16.6 16.6 18 18M6 18l1.4-1.4M16.6 7.4 18 6"/></symbol>
+  <symbol id="i-headset" viewBox="0 0 24 24"><path d="M4.5 14v-2a7.5 7.5 0 0 1 15 0v2M4.5 14a1.5 1.5 0 0 1 1.5-1.5h1v6H6A1.5 1.5 0 0 1 4.5 17zM19.5 14a1.5 1.5 0 0 0-1.5-1.5h-1v6h1a1.5 1.5 0 0 0 1.5-1.5zM17.5 18.5c0 1.5-2 2-4.5 2"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path class="d" d="M12 3.5 5 6v5.5c0 4.5 3 7.7 7 9 4-1.3 7-4.5 7-9V6z"/><path d="M12 3.5 5 6v5.5c0 4.5 3 7.7 7 9 4-1.3 7-4.5 7-9V6zM9 12l2 2 4-4"/></symbol>
+  <symbol id="i-faceid" viewBox="0 0 24 24"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2M9 9.5v1M15 9.5v1M12 9.5v3.5h-1M9.5 16c1.5 1 3.5 1 5 0"/></symbol>
+  <symbol id="i-finger" viewBox="0 0 24 24"><path d="M6.5 6.5A7.5 7.5 0 0 1 19.5 12v1M4.5 15v-3a7.5 7.5 0 0 1 .7-3.2M8 18.5c.6-1.5 1-3.2 1-5V12a3 3 0 0 1 6 0v1.5c0 2.5-.5 4.7-1.5 6.5M12 12v1.5c0 2.8-.6 5-1.8 7M17.8 16.5c-.2 1.3-.5 2.4-.9 3.5"/></symbol>
+  <symbol id="i-flag" viewBox="0 0 24 24"><path d="M5.5 20.5v-16M5.5 4.5h12l-2.5 4 2.5 4h-12"/></symbol>
+  <symbol id="i-reply" viewBox="0 0 24 24"><path d="M9.5 7 4.5 12l5 5M4.5 12H14a5.5 5.5 0 0 1 5.5 5.5v1"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5V6a1.5 1.5 0 0 0-1.5-1.5H6A1.5 1.5 0 0 0 4.5 6v8A1.5 1.5 0 0 0 6 15.5h2.5"/></symbol>
+  <symbol id="i-monitor" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="12" rx="2"/><path d="M8.5 20h7M12 16.5V20"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="m11 12 8.5-8.5M16.5 6.5l2.5 2.5M14 9l2 2"/></symbol>
+  <symbol id="i-logo" viewBox="0 0 60 48"><path fill="var(--red)" d="M3 9.5 14 3h7.5v36H26v6.5H5V39h6.5V15L3 17.5z"/><g fill="var(--logo-e)"><rect x="28" y="3" width="29" height="11" rx="1"/><rect x="28" y="18.5" width="24" height="11" rx="1"/><rect x="28" y="34" width="29" height="11.5" rx="1"/><rect x="28" y="3" width="8" height="42.5" rx="1"/></g><g fill="var(--paper)"><rect x="38" y="8" width="17" height="1.6"/><rect x="38" y="23.5" width="12" height="1.6"/><rect x="38" y="39.2" width="17" height="1.6"/></g></symbol>
+</svg>
+
+<div class="page" id="root" data-platform="ios" data-role="student">
+  <header class="ph">
+    <div class="ph-l">
+      <div class="logo"><svg class="mark" viewBox="0 0 60 48" aria-hidden="true"><use href="#i-logo"/></svg><div class="wm"><b><span>ONE</span> <span>ENGLISH</span></b><small>INNOVATION IN LEARNING</small></div></div>
+      <h1>Мобильное приложение для учеников и родителей</h1>
+      <p>Flutter, iOS и Android. Один вход по номеру телефона: роль определяется по номеру, у родителя в одном аккаунте все дети. Экраны пронумерованы по списку из задания.</p>
+    </div>
+    <div class="ctrls">
+      <div class="pseg" role="group" aria-label="Роль">
+        <button type="button" id="r-student" data-role-btn="student" aria-pressed="true">Ученик</button>
+        <button type="button" id="r-parent" data-role-btn="parent" aria-pressed="false">Родитель</button>
+      </div>
+      <div class="pseg" role="group" aria-label="Платформа">
+        <button type="button" id="p-ios" data-pf-btn="ios" aria-pressed="true">iOS</button>
+        <button type="button" id="p-android" data-pf-btn="android" aria-pressed="false">Android</button>
+      </div>
+      <button type="button" class="themebtn" id="themebtn"><svg class="ic s18"><use href="#i-globe"/></svg><span>Тема: системная</span></button>
+    </div>
+  </header>
+
+  <!-- ================= УЧЕНИК ================= -->
+  <section class="grp" data-for="student">
+    <header><h2>Вход</h2><p>Один номер телефона для ученика и родителя. Код приходит в WhatsApp по умолчанию: в Казахстане это надёжнее и бесплатно, SMS остаётся запасным каналом.</p></header>
+    <div class="shots">
+      <figure class="shot"><div class="dev-wrap"><div class="device"><div class="screen">
+        <div class="splash">
+          <div class="logo"><svg class="mark" viewBox="0 0 60 48" aria-hidden="true"><use href="#i-logo"/></svg><div class="wm"><b><span>ONE</span> <span>ENGLISH</span></b><small>INNOVATION IN LEARNING</small></div></div>
+          <div class="dots"><i></i><i></i><i></i></div>
+          <div class="splash-foot">Шымкент · с 2018 года</div>
+        </div>
+      </div></div></div><figcaption><span class="num">1a</span><div><b>Сплэш</b><p>Логотип на тёплом белом, без лишних слов. Держится, пока проверяем сессию.</p></div></figcaption></figure>
+
+      <figure class="shot"><div class="dev-wrap"><div class="device"><div class="screen">
+        <div class="auth">
+          <div class="logo"><svg class="mark" viewBox="0 0 60 48" style="width:40px;height:32px" aria-hidden="true"><use href="#i-logo"/></svg></div>
+          <h2>Войдите по номеру телефона</h2>
+          <p class="mut" style="margin:-8px 0 0">Ученик и родитель входят одинаково. Роль и детей определим по номеру из договора.</p>
+          <label class="tf" for="tf-phone"><span class="tf-l">Номер телефона</span><span class="tf-in" id="tf-phone"><span class="pre">+7</span><span>701 234 56 78</span><span class="caret"></span></span></label>
+          <div>
+            <div class="sm mut" style="margin-bottom:8px;font-weight:500">Куда прислать код</div>
+            <div class="chan">
+              <div class="on"><div class="top2"><svg class="ic" style="color:var(--wa)"><use href="#i-wa"/></svg><span class="radio on"></span></div><b>WhatsApp</b><span class="xs mut">Быстрее и бесплатно</span></div>
+              <div><div class="top2"><svg class="ic mut"><use href="#i-chat"/></svg><span class="radio"></span></div><b>SMS</b><span class="xs mut">Если нет WhatsApp</span></div>
+            </div>
+          </div>
+          <button class="btn" type="button">Получить код</button>
+          <p class="xs mut" style="text-align:center;margin:0">Номера нет в базе? Напишите нам в WhatsApp +7 700 100 20 18, менеджер запишет на пробный урок.</p>
+        </div>
+      </div></div></div><figcaption><span class="num">1b</span><div><b>Номер телефона</b><p>Маска +7 уже подставлена, клавиатура цифровая. Канал кода выбирается заранее.</p></div></figcaption></figure>
+
+      <figure class="shot"><div class="dev-wrap"><div class="device"><div class="screen">
+        <div class="nbar"><a class="back"><svg class="ic ios-only"><use href="#i-chev-l"/></svg><svg class="ic and-only"><use href="#i-arrow-l"/></svg><span class="ios-only">Номер</span></a></div>
+        <div class="auth" style="padding-top:4px">
+          <h2>Введите код</h2>
+          <p class="mut" style="margin:-8px 0 0">Отправили в WhatsApp на <b class="num" style="color:var(--ink)">+7 701 234 •• 78</b></p>
+          <div class="code"><span>3</span><span>8</span><span>1</span><span class="cur"></span></div>
+          <div class="row" style="justify-content:space-between"><span class="sm mut num">Новый код через 0:42</span><a class="link">Получить по SMS</a></div>
+          <div class="keypad"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span class="e"></span><span>0</span><span class="e"><svg class="ic"><use href="#i-arrow-l"/></svg></span></div>
+        </div>
+      </div></div></div><figcaption><span class="num">1c</span><div><b>Код подтверждения</b><p>4 цифры, автоподстановка из SMS. После последней цифры вход без кнопки.</p></div></figcaption></figure>
+    </div>
+  </section>
+
+  <section class="grp" data-for="student">
+    <header><h2>Главная и расписание</h2><p>Главная отвечает на три вопроса ученика: когда урок, что задано, сколько осталось. Профиль открывается по аватару.</p></header>
+    <div class="shots">
+      <figure class="shot"><div class="dev-wrap"><div class="device"><div class="screen" data-nav="student" data-active="0">
+        <div class="app">
+          <div class="hello">
+            <div class="grow"><span class="sm mut">Суббота, 24 октября</span><b>Привет, Айдана!</b></div>
+            <button class="ibtn" type="button" aria-label="Уведомления"><svg class="ic"><use href="#i-bell"/></svg><b class="nb dot" style="left:22px;top:8px"></b></button>
+            <div class="av s36 c1">АС</div>
+          </div>
+          <div class="hero">
+            <div class="row" style="justify-content:space-between"><span class="eb">Следующий урок</span><span class="when">через 2 ч 10 мин</span></div>
+            <div class="time num">15:00 <small>– 16:30</small></div>
+            <div style="font-weight:500">Pre-Intermediate · группа PI-3</div>
+            <div class="meta"><span><svg class="ic s16"><use href="#i-door"/></svg>Каб. 204</span><span><svg class="ic s16"><use href="#i-user"/></svg>Асель Нурлановна</span></div>
+            <svg class="deco" viewBox="0 0 60 48" aria-hidden="true"><use href="#i-logo"/></svg>
+          </div>
+          <div class="tiles">
+            <div class="card tile"><span class="lbl">Осталось уроков</span><div><span class="big">5</span> <span class="mut" style="font-weight:600">из 12</span></div><div class="segs"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div><span class="xs mut">проведено 7</span></div>
+            <div class="card tile"><span class="lbl">Коины</span><div class="row" style="gap:8px"><span class="coin"><svg class="ic"><use href="#i-c1"/></svg></span><span class="big">1 240</span></div><span class="pill p-ok" style="align-self:flex-start">+40 за неделю</span><span class="xs mut">3-е место в группе</span></div>
+          </div>
+          <div class="card" style="padding:14px 14px 6px">
+            <div class="sec-h"><h3 class="h2">ДЗ на сегодня</h3><a class="link">Все задания</a></div>
+            <div class="row" style="padding:8px 0;border-top:1px solid var(--line)"><span class="cb"></span><div class="grow"><div style="font-weight:600">Workbook p. 34, ex. 1–4</div><div class="xs mut">Past Continuous · до 15:00</div></div><span class="pill p-warn">Сегодня</span></div>
+            <div class="row" style="padding:8px 0;border-top:1px solid var(--line)"><span class="cb on"><svg class="ic s16" style="stroke-width:2.5"><use href="#i-check"/></svg></span><div class="grow"><div style="font-weight:600">Голосовое: мои выходные</div><div class="xs mut">1 минута · сдано в 12:40</div></div><span class="pill p-info">На проверке</span></div>
+          </div>
+          <div class="card">
+            <div class="row" style="justify-content:space-between;margin-bottom:8px"><div><span class="xs mut">Уровень</span><div class="ttl" style="color:var(--brand-ink)">Pre-Intermediate</div></div><span class="big" style="font-size:22px">62%</span></div>
+            <div class="bar"><i style="width:62%"></i></div>
+            <div class="xs mut" style="margin-top:8px">Unit 7 из 12 · Final test 12 декабря</div>
+          </div>
+        </div>
+      </div></div></div><figcaption><span class="num">2</span><div><b>Главная ученика</b><p>Карточка урока с обратным отсчётом, остаток уроков сегментами (видно, сколько ушло), коины и ДЗ с отметкой прямо в списке.</p></div></figcaption></figure>
+
+      <figure class="shot"><div class="dev-wrap"><div class="device"><div class="screen" data-nav="student" data-active="1">
+        <div class="app">
+          <div class="top"><h1>Расписание</h1><div class="acts"><button class="ibtn" type="button" aria-label="Месяц"><svg class="ic"><use href="#i-cal"/></svg></button></div></div>
+          <div class="row" style="justify-content:space-between"><b>19 – 25 октября</b><div class="acts"><button class="ibtn" type="button" style="width:32px;height:32px" aria-label="Назад"><svg class="ic s20"><use href="#i-chev-l"/></svg></button><button class="ibtn" type="button" style="width:32px;height:32px" aria-label="Вперёд"><svg class="ic s20"><use href="#i-chev-r"/></svg></button></div></div>
+          <div class="week"><div>Пн<b>19</b><i></i></div><div>Вт<b>20</b><i></i></div><div>Ср<b>21</b><i class="no"></i></div><div>Чт<b>22</b><i></i></div><div>Пт<b>23</b><i class="no"></i></div><div class="today">Сб<b>24</b><i></i></div><div>Вс<b>25</b><i class="no"></i></div></div>
+          <div class="banner"><svg class="ic s20"><use href="#i-alert"/></svg><div>Перенос <span>урок в четверг, 29 октября, начнётся в 17:00 вместо 15:00</span></div></div>
+          <div class="day"><div class="dl">Сб<b>24</b></div><div class="les now"><div class="row" style="justify-content:space-between"><span class="t">15:00 – 16:30</span><span class="pill p-info">Сегодня</span></div><b>Pre-Intermediate · PI-3</b><div class="m"><span><svg class="ic s16"><use href="#i-door"/></svg>Каб. 204</span><span><svg class="ic s16"><use href="#i-user"/></svg>Асель Нурлановна</span></div></div></div>
+          <div class="day"><div class="dl">Чт<b>22</b></div><div class="les"><div class="row" style="justify-content:space-between"><span class="t">15:00 – 16:30</span><span class="pill p-ok">Был · 5</span></div><b>Pre-Intermediate · PI-3</b><div class="row" style="justify-content:space-between"><span class="sm mut">Оцените урок</span><span class="stars"><svg class="ic f1"><use href="#i-star"/></svg><svg class="ic f1"><use href="#i-star"/></svg><svg class="ic f1"><use href="#i-star"/></svg><svg class="ic f1"><use href="#i-star"/></svg><svg class="ic"><use href="#i-star"/></svg></span></div></div></div>
+          <div class="day"><div class="dl">Вт<b>20</b></div><div class="les"><div class="row" style="justify-content:space-between"><span class="t">15:00 – 16:30</span><span class="pill p-ok">Был · 4</span></div><b>Pre-Intermediate · PI-3</b></div></div>
+          <div class="day"><div class="dl">Пн<b>19</b></div><div class="les"><div class="row" style="justify-content:space-between"><span class="t">18:00 – 19:00</span><span class="pill p-ok">Был</span></div><b>Speaking Club</b><div class="m"><span><svg class="ic s16"><use href="#i-door"/></svg>Каб. 101</span></div></div></div>
+        </div>
+      </div></div></div><figcaption><span class="num">3</span><div><b>Расписание на неделю</b><p>Лента недели с точками занятий, переносы отдельным баннером. Прошедший урок можно оценить звёздами, оценка учителя видна сразу.</p></div></figcaption></figure>
+    </div>
+  </section>
+
+  <section class="grp" data-for="student">
+    <header><h2>Домашние задания</h2><p>Статус задания всегда в форме цветной метки: срок, проверка, оценка. Сдача в два касания: фото тетради или голосовое.</p></header>
+    <div class="shots">
+      <figure class="shot"><div class="dev-wrap"><div class="device"><div class="screen" data-nav="student" data-active="2">
+        <div class="app">
+          <div class="top"><h1>Задания</h1><div class="acts"><button class="ibtn" type="button" aria-label="Поиск"><svg class="ic"><use href="#i-search"/></svg></button></div></div>
+          <div class="seg"><button type="button" class="on"><svg class="ic and-only"><use href="#i-check"/></svg>Активные · 2</button><button type="button">На проверке</button><button type="button">Проверено</button></div>
+          <div class="list hw">
+            <div class="li"><div class="lic c5" style="width:40px;height:40px;border-radius:12px;display:grid;place-items:center"><svg class="ic s20"><use href="#i-book"/></svg></div><div class="grow"><div class="ti">Workbook p. 34, ex. 1–4</div><div class="sm mut">Unit 7 · Past Continuous</div><div class="row" style="gap:6px;margin-top:6px"><span class="pill p-warn">Сегодня до 15:00</span><span class="pill p-mut">+15 коинов</span></div></div><svg class="ic chev s20"><use href="#i-chev-r"/></svg></div>
+            <div class="li"><div class="lic c1" style="width:40px;height:40px;border-radius:12px;display:grid;place-items:center"><svg class="ic s20"><use href="#i-pencil"/></svg></div><div class="grow"><div class="ti">Essay: My best trip</div><div class="sm mut">120–150 слов, фото или файл</div><div class="row" style="gap:6px;margin-top:6px"><span class="pill p-mut">Вт, 27 октября</span></div></div><svg class="ic chev s20"><use href="#i-chev-r"/></svg></div>
+          </div>
+          <div class="sec-h" style="margin:6px 0 -2px"><h3 class="h2">Недавние</h3></div>
+          <div class="list hw">
+            <div class="li"><div class="lic c4" style="width:40px;height:40px;border-radius:12px;display:grid;place-items:center"><svg class="ic s20"><use href="#i-mic"/></svg></div><div class="grow"><div class="ti">Голосовое: мои выходные</div><div class="sm mut">Сдано сегодня в 12:40</div><div class="row" style="gap:6px;margin-top:6px"><span class="pill p-info">На проверке</span></div></div></div>
+            <div class="li"><div class="lic c2" style="width:40px;height:40px;border-radius:12px;display:grid;place-items:center"><svg class="ic s20"><use href="#i-book"/></svg></div><div class="grow"><div class="ti">Student's Book p. 61, ex. 5</div><div class="sm mut">«Хорошо, следи за -ing формой»</div><div class="row" style="gap:6px;margin-top:6px"><span class="pill p-ok">Проверено · 5</span><span class="pill p-mut">+15 коинов</span></div></div></div>
+            <div class="li"><div class="lic c5" style="width:40px;height:40px;border-radius:12px;display:grid;place-items:center"><svg class="ic s20"><use href="#i-file"/></svg></div><div class="grow"><div class="ti">Vocabulary test Unit 6</div><div class="sm mut">Срок был 17 октября</div><div class="row" style="gap:6px;margin-top:6px"><span class="pill p-red">Не сдано</span></div></div></div>
+          </div>
+        </div>
+      </div></div></div><figcaption><span class="num">4a</span><div><b>Список заданий</b><p>Фильтр по статусу, срок и награда в коинах на каждой карточке. Просроченное помечено красным, его видит и родитель.</p></div></figcaption></figure>
+
+      <figure class="shot"><div class="dev-wrap"><div class="device"><div class="screen">
+        <div class="nbar"><a class="back"><svg class="ic ios-only"><use href="#i-chev-l"/></svg><svg class="ic and-only"><use href="#i-arrow-l"/></svg><span class="ios-only">Задания</span></a><div class="nb-title"><b>Задание</b></div><div class="acts"><button class="ibtn" type="button" aria-label="Ещё"><svg class="ic"><use href="#i-dots"/></svg></button></div></div>
+        <div class="app">
+          <div><span class="pill p-warn">Сегодня до 15:00</span><h2 class="ttl" style="font-size:21px;margin:8px 0 4px;color:var(--brand-ink);line-height:1.25">Workbook p. 34, ex. 1–4</h2><div class="sm mut">Асель Нурлановна · Unit 7, Past Continuous</div></div>
+          <div class="card" style="padding:14px"><p style="margin:0">Сделайте упражнения 1–4 письменно в тетради. В упр. 4 составьте 5 своих предложений: что вы делали вчера в 7 вечера.</p><div class="att" style="margin-top:12px;background:var(--paper)"><svg class="ic" style="color:var(--red)"><use href="#i-file"/></svg><div class="grow"><div class="sm" style="font-weight:600">Workbook_p34.pdf</div><div class="xs mut">1,2 МБ</div></div><svg class="ic s20 mut"><use href="#i-chev-r"/></svg></div></div>
+          <h3 class="h2" style="margin-top:4px">Мой ответ</h3>
+          <div class="row" style="gap:8px">
+            <div class="ph-img" style="width:96px;height:96px"><svg viewBox="0 0 96 96" width="96" height="96" aria-hidden="true"><g stroke="currentColor" stroke-width="1.5" opacity=".5"><path d="M14 26h68M14 38h60M14 50h66M14 62h50M14 74h58"/></g></svg></div>
+            <div class="ph-img" style="width:96px;height:96px"><svg viewBox="0 0 96 96" width="96" height="96" aria-hidden="true"><g stroke="currentColor" stroke-width="1.5" opacity=".5"><path d="M14 22h62M14 34h68M14 46h48M14 58h64M14 70h40"/></g></svg></div>
+            <div class="ph-img" style="width:96px;height:96px;display:grid;place-items:center;background:var(--fill)"><svg class="ic"><use href="#i-plus"/></svg></div>
+          </div>
+          <div class="att"><button class="playb" type="button" aria-label="Слушать"><svg class="ic"><use href="#i-play"/></svg></button><div class="wave" style="color:var(--tint)" data-wave="34" data-p="0"></div><span class="sm mut num">0:42</span><button class="ibtn" type="button" style="width:32px;height:32px;color:var(--muted)" aria-label="Удалить"><svg class="ic s20"><use href="#i-x"/></svg></button></div>
+          <div class="addrow"><div><svg class="ic"><use href="#i-camera"/></svg>Фото</div><div><svg class="ic"><use href="#i-mic"/></svg>Голосовое</div><div><svg class="ic"><use href="#i-clip"/></svg>Файл</div></div>
+          <div style="margin-top:auto;padding-bottom:40px;display:flex;flex-direction:column;gap:8px"><span class="xs mut" style="text-align:center">Сдашь вовремя, получишь +15 коинов</span><button class="btn" type="button">Сдать задание</button></div>
+        </div>
+      </div></div></div><figcaption><span class="num">4b</span><div><b>Экран задания</b><p>Материал учителя сверху, ответ ниже: 2 фото и голосовое уже прикреплены. Кнопка сдачи внизу под большим пальцем.</p></div></figcaption></figure>
+    </div>
+  </section>
+
+  <section class="grp" data-for="student">
+    <header><h2>Чаты</h2><p>Групповой чат создаётся сам для каждой группы. Закреплённое ДЗ всегда над лентой. Учитель и менеджер помечены ролью, чтобы ребёнок знал, кому пишет.</p></header>
+    <div class="shots">
+      <figure class="shot"><div class="dev-wrap"><div class="device"><div class="screen" data-nav="student" data-active="3">
+        <div class="app">
+          <div class="top"><h1>Чаты</h1><div class="acts"><button class="ibtn ios-only" type="button" aria-label="Новое сообщение"><svg class="ic"><use href="#i-compose"/></svg></button><button class="ibtn and-only" type="button" aria-label="Поиск"><svg class="ic"><use href="#i-search"/></svg></button></div></div>
+          <div class="search ios-only"><svg class="ic s18"><use href="#i-search"/></svg>Поиск</div>
+          <div>
+            <div class="ch"><div class="av c1"><svg class="ic s20"><use href="#i-users"/></svg></div><div class="grow"><div class="nm">PI-3 · Pre-Intermediate</div><div class="lm">Асель Н.: Закрепила ДЗ на субботу</div></div><div class="side"><span class="num">14:20</span><span class="unread">3</span></div></div>
+            <div class="ch"><div class="av c2 online">АН</div><div class="grow"><div class="nm">Асель Нурлановна<span class="role">учитель</span></div><div class="lm">Good job today! Голосовое получила</div></div><div class="side"><span class="num">12:58</span><span class="unread">1</span></div></div>
+            <div class="ch"><div class="av c3">М</div><div class="grow"><div class="nm">Мадина<span class="role mgr">менеджер</span></div><div class="lm">Вы: Спасибо, тогда в 17:00</div></div><div class="side"><span>Вчера</span><svg class="ic s16" style="color:var(--tint)"><use href="#i-check"/></svg></div></div>
+            <div class="ch"><div class="av c4"><svg class="ic s20"><use href="#i-users"/></svg></div><div class="grow"><div class="nm">Speaking Club · Пн 18:00</div><div class="lm">Тимур: See you on Monday!</div></div><div class="side"><span>Пн</span></div></div>
+          </div>
+          <div class="fab and-only"><svg class="ic"><use href="#i-pencil"/></svg>Новое сообщение</div>
+        </div>
+      </div></div></div><figcaption><span class="num">5a</span><div><b>Список чатов</b><p>Группа, учитель, менеджер филиала. Красный счётчик только на непрочитанном. На Android новый чат через FAB, на iOS кнопкой в шапке.</p></div></figcaption></figure>
+
+      <figure class="shot"><div class="dev-wrap"><div class="device"><div class="screen">
+        <div class="nbar" style="border-bottom:1px solid var(--line)"><a class="back"><svg class="ic ios-only"><use href="#i-chev-l"/></svg><svg class="ic and-only"><use href="#i-arrow-l"/></svg><span class="ios-only">Чаты</span></a><div class="nb-title"><b>PI-3 · Pre-Intermediate</b><small>Учитель и 11 учеников</small></div><div class="acts"><button class="ibtn" type="button" aria-label="Участники"><svg class="ic"><use href="#i-users"/></svg></button></div></div>
+<div class="notice"><svg class="ic"><use href="#i-shield"/></svg>Переписка сохраняется и доступна администрации школы</div>
+        <div class="pinned"><span class="bdr"></span><svg class="ic s20" style="color:var(--red)"><use href="#i-pushpin"/></svg><div class="grow" style="min-width:0"><div class="xs" style="color:var(--red);font-weight:600">Закреплено · ДЗ до Сб 15:00</div><div class="sm" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Workbook p. 34, ex. 1–4 и голосовое 1 мин</div></div><svg class="ic s20 mut"><use href="#i-chev-r"/></svg></div>
+        <div class="msgs">
+          <span class="daysep">Сегодня</span>
+          <div class="m"><div class="av s36 c2">АН</div><div class="bub"><span class="who">Асель Нурлановна · учитель</span>Good afternoon! ДЗ на субботу закрепила сверху. Не забудьте голосовое про выходные.<span class="tm num">13:05</span></div></div>
+          <div class="m"><div class="av s36 c4">ТБ</div><div class="bub"><span class="who" style="color:var(--info)">Тимур Б.</span>Упражнение 4 тоже письменно?<span class="tm num">13:18</span></div></div>
+          <div class="m"><div class="av s36 c2">АН</div><div class="bub" style="display:flex;align-items:center;gap:10px;width:230px"><button class="playb" type="button" aria-label="Слушать" style="width:32px;height:32px"><svg class="ic"><use href="#i-play"/></svg></button><div class="wave" style="color:var(--tint);height:24px" data-wave="24" data-p="0"></div><span class="xs mut num">0:24</span></div></div>
+          <div class="m"><div class="av s36 c3">ДР</div><div class="bub" style="padding:4px"><div class="ph-img" style="width:200px;height:120px;border-radius:14px"><svg viewBox="0 0 200 120" width="200" height="120" aria-hidden="true"><g stroke="currentColor" stroke-width="1.5" opacity=".5"><path d="M24 30h150M24 48h130M24 66h146M24 84h100"/></g></svg></div><div style="padding:6px 8px 4px" class="sm">Сделала, проверьте пожалуйста<span class="tm num">14:02</span></div></div></div>
+          <div class="m out"><div class="bub">Голосовое запишу после школы<span class="tm num">14:20 ✓✓</span></div></div>
+          <div class="typing">Асель Нурлановна печатает…</div>
+        </div>
+        <div class="composer"><button class="ibtn" type="button" aria-label="Прикрепить" style="color:var(--muted)"><svg class="ic"><use href="#i-clip"/></svg></button><div class="inp">Сообщение</div><button class="ibtn" type="button" aria-label="Фото" style="color:var(--muted)"><svg class="ic"><use href="#i-camera"/></svg></button><button class="micb" type="button" aria-label="Голосовое"><svg class="ic s20"><use href="#i-mic"/></svg></button></div>
+      </div></div></div><figcaption><span class="num">5b</span><div><b>Групповой чат</b><p>Закреп с красной меткой ведёт прямо на задание. Голосовые и фото внутри ленты. Микрофон главный: детям проще говорить, чем печатать.</p></div></figcaption></figure>
+    </div>
+  </section>
+
+  <section class="grp" data-for="student">
+    <header><h2>Коины и магазин</h2><p>Коины видны до цели: сколько не хватает на конкретный товар. Заказ проходит путь «оформлен → готов к выдаче → выдан» с филиалом выдачи.</p></header>
+    <div class="shots">
+      <figure class="shot"><div class="dev-wrap"><div class="device"><div class="screen" data-nav="student" data-active="4">
+        <div class="app">
+          <div class="top"><h1>Коины</h1><div class="acts"><button class="ibtn" type="button" aria-label="История"><svg class="ic"><use href="#i-receipt"/></svg></button></div></div>
+          <div class="card balance"><div><span class="sm mut">Мой баланс</span><div class="row" style="gap:10px;margin-top:4px"><span class="coin lg"><svg class="ic"><use href="#i-c1"/></svg></span><span class="big">1 240</span></div></div><span class="pill p-ok">+40 за неделю</span></div>
+          <div class="earn"><span class="chip">Урок +10</span><span class="chip">ДЗ вовремя +15</span><span class="chip">Месяц без пропусков +100</span><span class="chip">Друг +500</span></div>
+          <div class="seg"><button type="button" class="on"><svg class="ic and-only"><use href="#i-check"/></svg>Магазин</button><button type="button">Рейтинг</button><button type="button">Бейджи</button></div>
+          <div class="prods">
+            <div class="prod"><div class="pi"><svg viewBox="0 0 70 70" aria-hidden="true"><rect x="10" y="31" width="50" height="8" rx="4" fill="var(--logo-e)"/><path d="M60 31l7 4-7 4z" fill="var(--ink)" opacity=".7"/><rect x="18" y="29" width="16" height="3" rx="1.5" fill="var(--red)"/></svg></div><div class="pb"><span class="pn">Ручка One English</span><div class="price"><span class="coin"><svg class="ic"><use href="#i-c1"/></svg></span>150</div><button class="btn sm tonal" type="button" style="width:100%">Обменять</button></div></div>
+            <div class="prod"><div class="pi"><svg viewBox="0 0 70 70" aria-hidden="true"><path d="M24 10l-14 8 5 11 6-3v34h28V26l6 3 5-11-14-8c-2 4-6 6-11 6s-9-2-11-6z" fill="var(--logo-e)"/><text x="35" y="44" text-anchor="middle" font-family="Playfair Display, serif" font-weight="800" font-size="13" fill="var(--white)">1<tspan fill="var(--red)">E</tspan></text></svg></div><div class="pb"><span class="pn">Футболка One English</span><div class="price"><span class="coin"><svg class="ic"><use href="#i-c1"/></svg></span>900</div><button class="btn sm tonal" type="button" style="width:100%">Обменять</button></div></div>
+            <div class="prod"><div class="pi"><svg viewBox="0 0 70 70" aria-hidden="true"><rect x="17" y="10" width="36" height="50" rx="3" fill="var(--red)"/><rect x="17" y="10" width="6" height="50" fill="var(--ink)" opacity=".25"/><rect x="28" y="20" width="18" height="3" rx="1.5" fill="var(--white)"/><rect x="28" y="27" width="12" height="3" rx="1.5" fill="var(--white)" opacity=".7"/></svg></div><div class="pb"><span class="pn">Книга Oxford Readers</span><div class="price"><span class="coin"><svg class="ic"><use href="#i-c1"/></svg></span>1 500</div><span class="xs mut" style="height:36px;display:flex;align-items:center">Не хватает 260</span></div></div>
+            <div class="prod"><div class="pi"><svg viewBox="0 0 70 70" aria-hidden="true"><rect x="16" y="12" width="38" height="46" rx="4" fill="var(--surface)" stroke="var(--line)" stroke-width="2"/><path d="M24 24h22M24 32h22M24 40h14" stroke="var(--tint)" stroke-width="2" stroke-linecap="round"/></svg></div><div class="pb"><span class="pn">Блокнот A5</span><div class="price"><span class="coin"><svg class="ic"><use href="#i-c1"/></svg></span>300</div><button class="btn sm tonal" type="button" style="width:100%">Обменять</button></div></div>
+          </div>
+        </div>
+      </div></div></div><figcaption><span class="num">6a</span><div><b>Коины и магазин</b><p>Баланс, за что начисляют, каталог. Если коинов мало, вместо кнопки честное «не хватает 260».</p></div></figcaption></figure>
+
+      <figure class="shot"><div class="dev-wrap"><div class="device"><div class="screen" data-nav="student" data-active="4">
+        <div class="app">
+          <div class="top"><h1>Коины</h1><div class="acts"><button class="ibtn" type="button" aria-label="История"><svg class="ic"><use href="#i-receipt"/></svg></button></div></div>
+          <div class="seg"><button type="button">Магазин</button><button type="button" class="on"><svg class="ic and-only"><use href="#i-check"/></svg>Рейтинг</button><button type="button">Бейджи</button></div>
+          <div class="row" style="gap:6px"><span class="chip sel">Группа PI-3</span><span class="chip">Филиал</span><span class="chip">Вся школа</span></div>
+          <div class="podium">
+            <div class="p"><div class="av c4">ТБ</div><b>Тимур</b><span class="xs mut num">1 380</span><div class="st" style="height:58px">2</div></div>
+            <div class="p"><div class="av s56 c3">ДР</div><b>Дильноза</b><span class="xs mut num">1 610</span><div class="st" style="height:80px">1</div></div>
+            <div class="p me"><div class="av c1">АС</div><b>Вы</b><span class="xs mut num">1 240</span><div class="st" style="height:44px">3</div></div>
+          </div>
+          <div class="list"><div class="rk"><span class="n">4</span><div class="av s36 c2">БК</div><div class="grow">Бекзат К.</div><span class="num sm" style="font-weight:600">1 105</span></div><div class="rk"><span class="n">5</span><div class="av s36 c5">МА</div><div class="grow">Мадина А.</div><span class="num sm" style="font-weight:600">980</span></div></div>
+          <div class="sec-h" style="margin:4px 0 0"><h3 class="h2">Бейджи · 4 из 12</h3><a class="link">Все</a></div>
+          <div class="badges">
+            <div class="badge"><div class="bi c5"><svg class="ic"><use href="#i-fire"/></svg></div>Месяц без пропусков</div>
+            <div class="badge"><div class="bi c3"><svg class="ic"><use href="#i-star"/></svg></div>Отличник недели</div>
+            <div class="badge"><div class="bi c2"><svg class="ic"><use href="#i-book"/></svg></div>10 ДЗ подряд</div>
+            <div class="badge"><div class="bi c1"><svg class="ic"><use href="#i-trophy"/></svg></div>Final 100+</div>
+            <div class="badge lock"><div class="bi"><svg class="ic"><use href="#i-lock"/></svg></div>Привёл друга</div>
+            <div class="badge lock"><div class="bi"><svg class="ic"><use href="#i-lock"/></svg></div>Speaking-звезда</div>
+            <div class="badge lock"><div class="bi"><svg class="ic"><use href="#i-lock"/></svg></div>Год с нами</div>
+            <div class="badge lock"><div class="bi"><svg class="ic"><use href="#i-lock"/></svg></div>Новый уровень</div>
+          </div>
+        </div>
+      </div></div></div><figcaption><span class="num">6b</span><div><b>Рейтинг и бейджи</b><p>Подиум группы, своё место выделено. Закрытые бейджи видны с замком, чтобы было к чему стремиться.</p></div></figcaption></figure>
+    </div>
+  </section>
+
+  <section class="grp" data-for="student">
+    <header><h2>Прогресс и профиль</h2><p>Прогресс открывается с карточки уровня на главной, профиль по аватару. В профиле ученик всегда видит «оплачено, проведено, осталось».</p></header>
+    <div class="shots">
+      <figure class="shot"><div class="dev-wrap"><div class="device"><div class="screen">
+        <div class="nbar"><a class="back"><svg class="ic ios-only"><use href="#i-chev-l"/></svg><svg class="ic and-only"><use href="#i-arrow-l"/></svg><span class="ios-only">Главная</span></a><div class="nb-title"><b>Мой прогресс</b></div></div>
+        <div class="app">
+          <div class="card">
+            <h3 class="h2" style="margin-bottom:10px">Путь уровней</h3>
+            <div class="path">
+              <div class="lv done"><span class="dot"><svg class="ic"><use href="#i-check"/></svg></span><span class="lt">Beginner</span><span class="xs mut">2024</span></div>
+              <div class="lv done"><span class="dot"><svg class="ic"><use href="#i-check"/></svg></span><span class="lt">Elementary</span><span class="xs mut">Final 128/150</span></div>
+              <div class="lv cur"><span class="dot"></span><span class="lt">Pre-Intermediate</span><span class="pill p-info">62%</span></div>
+              <div class="lv"><span class="dot"></span><span class="lt">Intermediate</span><span></span></div>
+              <div class="lv"><span class="dot"></span><span class="lt">Upper-Intermediate</span><span></span></div>
+              <div class="lv"><span class="dot"></span><span class="lt">IELTS</span><span></span></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="sec-h"><h3 class="h2">Оценки за уроки</h3><span class="sm mut">средняя <b style="color:var(--ink)">4,6</b></span></div>
+            <div class="grades"><div><i style="height:80%">4</i>6.10</div><div><i class="hi" style="height:100%">5</i>8.10</div><div><i class="hi" style="height:100%">5</i>10.10</div><div><i style="height:60%">3</i>13.10</div><div><i class="hi" style="height:100%">5</i>17.10</div><div><i style="height:80%">4</i>20.10</div><div><i class="hi" style="height:100%">5</i>22.10</div></div>
+          </div>
+          <div class="list">
+            <div class="li"><div class="grow"><b>Final test · Elementary</b><div class="xs mut">12 июня 2026</div></div><span class="num" style="font-weight:600">128/150</span><span class="pill p-ok">Сдан</span></div>
+            <div class="li"><div class="grow"><b>Mid-test · Units 1–6</b><div class="xs mut">3 октября</div></div><span class="num" style="font-weight:600">41/50</span></div>
+          </div>
+          <div class="card" style="padding:12px 14px"><div class="row" style="align-items:flex-start"><div class="av s36 c2">АН</div><div class="grow sm"><b>Комментарий учителя</b><div class="mut">Хорошо говорит на Speaking. Подтянуть неправильные глаголы до Final test.</div></div></div></div>
+        </div>
+      </div></div></div><figcaption><span class="num">7</span><div><b>Прогресс</b><p>Путь от Beginner до IELTS: пройденное зелёным, текущий уровень с процентом. Оценки столбиками, тесты из 150 баллов списком.</p></div></figcaption></figure>
+
+      <figure class="shot"><div class="dev-wrap"><div class="device"><div class="screen">
+        <div class="nbar"><a class="back"><svg class="ic ios-only"><use href="#i-chev-l"/></svg><svg class="ic and-only"><use href="#i-arrow-l"/></svg><span class="ios-only">Главная</span></a><div class="nb-title"><b class="and-only">Профиль</b></div><div class="acts"><button class="ibtn" type="button" aria-label="Изменить"><svg class="ic"><use href="#i-pencil"/></svg></button></div></div>
+        <div class="app">
+          <div class="prof"><div class="av c1" style="width:80px;height:80px;font-size:26px">АС</div><b class="ttl" style="font-size:20px;color:var(--brand-ink)">Айдана Серикова</b><span class="sm mut">Pre-Intermediate · PI-3 · Янги шахар</span></div>
+          <div class="card" style="padding:12px 8px"><div class="trio"><div><b>12</b><span class="xs mut">оплачено</span></div><div><b>7</b><span class="xs mut">проведено</span></div><div><b style="color:var(--tint)">5</b><span class="xs mut">осталось</span></div></div></div>
+          <div class="list">
+            <div class="li"><span class="lic c1"><svg class="ic"><use href="#i-chart"/></svg></span><div class="grow">Прогресс и оценки</div><svg class="ic s20 chev"><use href="#i-chev-r"/></svg></div>
+            <div class="li"><span class="lic c2"><svg class="ic"><use href="#i-book"/></svg></span><div class="grow">Мои книги<div class="xs mut">Solutions Pre-Int: SB, WB</div></div><svg class="ic s20 chev"><use href="#i-chev-r"/></svg></div>
+            <div class="li"><span class="lic c3"><svg class="ic"><use href="#i-users"/></svg></span><div class="grow">Родитель<div class="xs mut num">Сауле Серикова · +7 701 234 56 78</div></div></div>
+          </div>
+          <div class="list">
+            <div class="li"><span class="lic c4"><svg class="ic"><use href="#i-bell"/></svg></span><div class="grow">Push-уведомления</div><span class="sw on"><i></i></span></div>
+            <div class="li"><span class="lic c4"><svg class="ic"><use href="#i-clock"/></svg></span><div class="grow">Напоминать о ДЗ вечером</div><span class="sw"><i></i></span></div>
+            <div class="li"><span class="lic c1"><svg class="ic"><use href="#i-globe"/></svg></span><div class="grow">Язык</div><span class="sm mut">Русский</span><svg class="ic s20 chev"><use href="#i-chev-r"/></svg></div>
+            <div class="li"><span class="lic c2"><svg class="ic"><use href="#i-shield"/></svg></span><div class="grow">Безопасность<div class="xs mut">PIN, биометрия, устройства</div></div><svg class="ic s20 chev"><use href="#i-chev-r"/></svg></div>
+            <div class="li"><span class="lic c1"><svg class="ic"><use href="#i-headset"/></svg></span><div class="grow">Написать менеджеру</div><svg class="ic s20 chev"><use href="#i-chev-r"/></svg></div>
+          </div>
+          <button class="btn tonal" type="button" style="background:transparent;color:var(--muted)"><svg class="ic s20"><use href="#i-logout"/></svg>Выйти</button>
+        </div>
+      </div></div></div><figcaption><span class="num">8</span><div><b>Профиль</b><p>Баланс уроков тремя числами, книги, привязанный родитель, переключатели уведомлений, русский и казахский язык.</p></div></figcaption></figure>
+    </div>
+  </section>
+
+  <!-- ================= РОДИТЕЛЬ ================= -->
+  <section class="grp" data-for="parent" hidden>
+    <header><h2>Главная родителя и уведомления</h2><p>Родитель приходит в приложение после уведомления. Поэтому последнее событие стоит первым, а переключатель детей держит контекст для всех вкладок.</p></header>
+    <div class="shots">
+      <figure class="shot"><div class="dev-wrap"><div class="device"><div class="screen" data-nav="parent" data-active="0">
+        <div class="app">
+          <div class="hello"><div class="grow"><span class="sm mut">Суббота, 24 октября</span><b>Здравствуйте, Сауле!</b></div><div class="av s36 c3">СС</div></div>
+          <div class="kids">
+            <div class="kid on"><div class="av c1">АС</div><div class="grow"><b>Айдана</b><span class="xs mut">PI-3 · 14 лет</span></div></div>
+            <div class="kid"><div class="av c4">ТС<b class="nb dot" style="left:28px;top:-1px"></b></div><div class="grow"><b>Тимур</b><span class="xs mut">F&amp;F 2 · 8 лет</span></div></div>
+          </div>
+          <div class="banner ok" style="padding:12px"><svg class="ic s20"><use href="#i-check"/></svg><div class="grow"><b style="color:var(--ink)">Айдана пришла на урок 15:00</b><div class="xs" style="color:var(--muted);font-weight:400">Сегодня, 15:02 · PI-3 · каб. 204</div></div></div>
+          <div class="tiles">
+            <div class="card tile"><span class="lbl">Осталось уроков</span><div><span class="big">5</span> <span class="mut" style="font-weight:600">из 12</span></div><div class="segs"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div></div>
+            <div class="card tile"><span class="lbl">Средняя оценка</span><div><span class="big">4,6</span></div><span class="xs mut">за октябрь · 7 уроков</span></div>
+          </div>
+          <div class="card">
+            <div class="sec-h"><h3 class="h2">Посещаемость · октябрь</h3><span class="sm" style="font-weight:600">10 из 11</span></div>
+            <div class="cal">
+              <span class="h">Пн</span><span class="h">Вт</span><span class="h">Ср</span><span class="h">Чт</span><span class="h">Пт</span><span class="h">Сб</span><span class="h">Вс</span>
+              <span></span><span></span><span></span><span class="l">1</span><span>2</span><span class="l">3</span><span>4</span>
+              <span>5</span><span class="l">6</span><span>7</span><span class="l late">8</span><span>9</span><span class="l">10</span><span>11</span>
+              <span>12</span><span class="l">13</span><span>14</span><span class="l miss">15</span><span>16</span><span class="l">17</span><span>18</span>
+              <span>19</span><span class="l">20</span><span>21</span><span class="l">22</span><span>23</span><span class="l t">24</span><span>25</span>
+              <span>26</span><span class="l fut">27</span><span>28</span><span class="l fut">29</span><span>30</span><span class="l fut">31</span><span></span>
+            </div>
+            <div class="legend" style="margin-top:10px"><span><i style="background:var(--ok)"></i>был</span><span><i style="background:var(--warn)"></i>опоздал</span><span><i style="background:var(--red)"></i>пропуск</span><span><i style="background:var(--line)"></i>впереди</span></div>
+          </div>
+        </div>
+      </div></div></div><figcaption><span class="num">9</span><div><b>Главная родителя</b><p>Два ребёнка карточками, у Тимура красная точка (есть долг). Последнее событие, баланс уроков и календарь посещаемости.</p></div></figcaption></figure>
+
+      <figure class="shot"><div class="dev-wrap"><div class="device"><div class="screen" data-nav="parent" data-active="3">
+        <div class="app">
+          <div class="top"><h1>Уведомления</h1><div class="acts"><button class="ibtn" type="button" aria-label="Настройки"><svg class="ic"><use href="#i-gear"/></svg></button></div></div>
+          <div class="list"><div class="li"><svg class="ic" style="color:var(--wa)"><use href="#i-wa"/></svg><div class="grow"><b class="sm">Дублировать в WhatsApp</b><div class="xs mut num">+7 701 234 56 78</div></div><span class="sw on"><i></i></span></div></div>
+          <div class="row" style="gap:6px;overflow:hidden"><span class="chip sel">Все</span><span class="chip">Посещаемость</span><span class="chip">Оплаты</span><span class="chip">Учёба</span></div>
+          <div class="xs mut" style="font-weight:600;text-transform:uppercase;letter-spacing:.06em;margin-bottom:-4px">Сегодня</div>
+          <div class="list">
+            <div class="notif"><span class="ni c2"><svg class="ic"><use href="#i-check"/></svg></span><div class="grow"><b>Айдана пришла на урок</b><div class="sm mut">15:00 · PI-3 · каб. 204</div><span class="wa-tag"><svg class="ic"><use href="#i-wa"/></svg>Доставлено в WhatsApp · 15:02</span></div><span class="unr"></span></div>
+            <div class="notif"><span class="ni c5"><svg class="ic"><use href="#i-wallet"/></svg></span><div class="grow"><b>У Тимура закончились уроки</b><div class="sm mut">К оплате 33 500 ₸ до 1 ноября</div><button class="btn sm red" type="button" style="margin-top:8px;height:32px">Оплатить</button></div><span class="unr"></span></div>
+            <div class="notif"><span class="ni c1"><svg class="ic"><use href="#i-task"/></svg></span><div class="grow"><b>Новое ДЗ для Айданы</b><div class="sm mut">Workbook p. 34, ex. 1–4 · до 15:00</div><span class="wa-tag" style="color:var(--muted)">Только push</span></div></div>
+          </div>
+          <div class="xs mut" style="font-weight:600;text-transform:uppercase;letter-spacing:.06em;margin-bottom:-4px">Вчера</div>
+          <div class="list">
+            <div class="notif"><span class="ni c3"><svg class="ic"><use href="#i-clock"/></svg></span><div class="grow"><b>Тимур опоздал на 10 минут</b><div class="sm mut">16:00 · Family &amp; Friends 2</div><span class="wa-tag"><svg class="ic"><use href="#i-wa"/></svg>Доставлено в WhatsApp</span></div></div>
+            <div class="notif"><span class="ni c4"><svg class="ic"><use href="#i-cal"/></svg></span><div class="grow"><b>Перенос урока Айданы</b><div class="sm mut">Чт, 29 октября: 17:00 вместо 15:00</div></div></div>
+          </div>
+        </div>
+      </div></div></div><figcaption><span class="num">12</span><div><b>Уведомления</b><p>Каждое событие помечено каналом: push и WhatsApp или только push. Напоминание об оплате с кнопкой прямо в ленте.</p></div></figcaption></figure>
+    </div>
+  </section>
+
+  <section class="grp" data-for="parent" hidden>
+    <header><h2>Оплаты</h2><p>Сначала итог: сколько должна семья. Затем по каждому ребёнку уроки и деньги. Оплата через Kaspi в один шаг, чек приходит в WhatsApp.</p></header>
+    <div class="shots">
+      <figure class="shot"><div class="dev-wrap"><div class="device"><div class="screen" data-nav="parent" data-active="1">
+        <div class="app">
+          <div class="top"><h1>Оплаты</h1><div class="acts"><button class="ibtn" type="button" aria-label="Чеки"><svg class="ic"><use href="#i-receipt"/></svg></button></div></div>
+          <div class="card debt"><span class="pill p-red">Задолженность</span><div class="big" style="margin:10px 0 4px;font-size:34px">33 500 ₸</div><div class="sm mut">Тимур · Family &amp; Friends 2 · месяц, 12 уроков. Оплатить до 1 ноября.</div><button class="btn red" type="button" style="margin-top:14px">Оплатить онлайн</button><div class="row" style="justify-content:center;gap:8px;margin-top:10px"><span class="kaspi" style="width:22px;height:22px;border-radius:6px"><svg viewBox="0 0 24 24"><path d="M8 5v14M8 12l7-7M10.5 10 16 19" stroke="#fff" stroke-width="2.6" stroke-linecap="round" fill="none"/></svg></span><span class="xs mut">Kaspi.kz или банковская карта</span></div></div>
+          <div class="list">
+            <div class="li"><div class="av s36 c1">АС</div><div class="grow"><b>Айдана</b><div class="xs mut">PI-3 · 3 000 ₸ за урок</div></div><div style="text-align:right"><div style="font-weight:600" class="num">5 уроков</div><div class="xs mut num">+1 000 ₸ на балансе</div></div></div>
+            <div class="li"><div class="av s36 c4">ТС</div><div class="grow"><b>Тимур</b><div class="xs mut">F&amp;F 2 · 33 500 ₸ в месяц</div></div><div style="text-align:right"><div style="font-weight:600;color:var(--red)" class="num">0 уроков</div><div class="xs mut">нужна оплата</div></div></div>
+          </div>
+          <div class="sec-h" style="margin:4px 0 -2px"><h3 class="h2">История</h3><a class="link">Все</a></div>
+          <div class="list">
+            <div class="li"><span class="lic c2"><svg class="ic"><use href="#i-check"/></svg></span><div class="grow"><b class="sm">Айдана · 12 уроков</b><div class="xs mut">10 октября · Kaspi · 12 × 3 000 ₸</div></div><div style="text-align:right"><div class="num" style="font-weight:600">36 000 ₸</div><a class="link xs">Чек PDF</a></div></div>
+            <div class="li"><span class="lic c1"><svg class="ic"><use href="#i-book"/></svg></span><div class="grow"><b class="sm">Книга Solutions WB</b><div class="xs mut">10 октября · наличные</div></div><div class="num" style="font-weight:600">4 500 ₸</div></div>
+            <div class="li"><span class="lic c2"><svg class="ic"><use href="#i-check"/></svg></span><div class="grow"><b class="sm">Тимур · месяц</b><div class="xs mut">1 октября · карта</div></div><div class="num" style="font-weight:600">33 500 ₸</div></div>
+          </div>
+        </div>
+      </div></div></div><figcaption><span class="num">10a</span><div><b>Оплаты</b><p>Долг крупно и красным, кнопка оплаты сразу под ним. По детям уроки и денежный остаток после перевода между уровнями. История с чеками.</p></div></figcaption></figure>
+
+      <figure class="shot"><div class="dev-wrap"><div class="device"><div class="screen" data-nav="parent" data-active="1">
+        <div class="app">
+          <div class="top"><h1>Оплаты</h1><div class="acts"><button class="ibtn" type="button" aria-label="Чеки"><svg class="ic"><use href="#i-receipt"/></svg></button></div></div>
+          <div class="card debt"><span class="pill p-red">Задолженность</span><div class="big" style="margin:10px 0 4px;font-size:34px">33 500 ₸</div><div class="sm mut">Тимур · Family &amp; Friends 2</div></div>
+          <div class="list"><div class="li"><div class="av s36 c1">АС</div><div class="grow"><b>Айдана</b></div><b class="num">5 уроков</b></div></div>
+        </div>
+        <div class="scrim"></div>
+        <div class="asheet ios-only">
+          <div class="grp1">
+            <div class="hd"><b>Оплата за Тимура · 33 500 ₸</b>Месяц, 12 уроков. Чек придёт в WhatsApp</div>
+            <div class="op"><span class="kaspi"><svg viewBox="0 0 24 24"><path d="M8 5v14M8 12l7-7M10.5 10 16 19" stroke="#fff" stroke-width="2.6" stroke-linecap="round" fill="none"/></svg></span>Kaspi.kz</div>
+            <div class="op"><span class="cardi"><svg class="ic"><use href="#i-card"/></svg></span>Банковская карта</div>
+          </div>
+          <div class="grp2"><div class="op">Отмена</div></div>
+        </div>
+        <div class="bsheet and-only">
+          <span class="hdl"></span>
+          <div><b class="ttl" style="font-size:18px">Оплата за Тимура</b><div class="sm mut">Family &amp; Friends 2 · месяц, 12 уроков</div></div>
+          <div class="opt on"><span class="kaspi"><svg viewBox="0 0 24 24"><path d="M8 5v14M8 12l7-7M10.5 10 16 19" stroke="#fff" stroke-width="2.6" stroke-linecap="round" fill="none"/></svg></span><div class="grow"><b>Kaspi.kz</b><div class="xs mut">Откроется приложение Kaspi</div></div><span class="radio on"></span></div>
+          <div class="opt"><span class="cardi"><svg class="ic"><use href="#i-card"/></svg></span><div class="grow"><b>Банковская карта</b><div class="xs mut">Visa, Mastercard</div></div><span class="radio"></span></div>
+          <button class="btn red" type="button">Оплатить 33 500 ₸</button>
+          <span class="xs mut" style="text-align:center">Чек придёт в WhatsApp и в приложение</span>
+        </div>
+      </div></div></div><figcaption><span class="num">10b</span><div><b>Выбор способа оплаты</b><p>iOS: системный action sheet, выбор сразу запускает оплату. Android: bottom sheet M3 с выбором и итоговой суммой на кнопке.</p></div></figcaption></figure>
+    </div>
+  </section>
+
+  <section class="grp" data-for="parent" hidden>
+    <header><h2>Чаты родителя</h2><p>Каждый чат подписан, о каком ребёнке он, чтобы у родителя двух детей не путались учителя.</p></header>
+    <div class="shots">
+      <figure class="shot"><div class="dev-wrap"><div class="device"><div class="screen" data-nav="parent" data-active="2">
+        <div class="app">
+          <div class="top"><h1>Чаты</h1><div class="acts"><button class="ibtn ios-only" type="button" aria-label="Новое сообщение"><svg class="ic"><use href="#i-compose"/></svg></button><button class="ibtn and-only" type="button" aria-label="Поиск"><svg class="ic"><use href="#i-search"/></svg></button></div></div>
+          <div class="search ios-only"><svg class="ic s18"><use href="#i-search"/></svg>Поиск</div>
+          <div class="xs mut" style="font-weight:600;text-transform:uppercase;letter-spacing:.06em">Айдана · PI-3</div>
+          <div><div class="ch"><div class="av c2 online">АН</div><div class="grow"><div class="nm">Асель Нурлановна<span class="role">учитель</span></div><div class="lm">Голосовое сообщение · 0:38</div></div><div class="side"><span class="num">14:40</span><span class="unread">1</span></div></div></div>
+          <div class="xs mut" style="font-weight:600;text-transform:uppercase;letter-spacing:.06em">Тимур · F&amp;F 2</div>
+          <div><div class="ch"><div class="av c4">ГА</div><div class="grow"><div class="nm">Гульнара Ахметовна<span class="role">учитель</span></div><div class="lm">Вы: Хорошо, спасибо!</div></div><div class="side"><span>Чт</span><svg class="ic s16" style="color:var(--tint)"><use href="#i-check"/></svg></div></div></div>
+          <div class="xs mut" style="font-weight:600;text-transform:uppercase;letter-spacing:.06em">Филиал Янги шахар</div>
+          <div><div class="ch"><div class="av c3">М</div><div class="grow"><div class="nm">Мадина<span class="role mgr">менеджер</span></div><div class="lm">Счёт за ноябрь отправила, можно через Kaspi</div></div><div class="side"><span class="num">10:16</span><span class="unread">1</span></div></div></div>
+          <div class="fab and-only"><svg class="ic"><use href="#i-pencil"/></svg>Новое сообщение</div>
+        </div>
+      </div></div></div><figcaption><span class="num">11a</span><div><b>Чаты родителя</b><p>Учителя сгруппированы по детям, менеджер по филиалу. Групповых чатов у родителя нет.</p></div></figcaption></figure>
+
+      <figure class="shot"><div class="dev-wrap"><div class="device"><div class="screen">
+        <div class="nbar" style="border-bottom:1px solid var(--line)"><a class="back"><svg class="ic ios-only"><use href="#i-chev-l"/></svg><svg class="ic and-only"><use href="#i-arrow-l"/></svg><span class="ios-only">Чаты</span></a><div class="nb-title"><b>Асель Нурлановна</b><small>учитель Айданы · в сети</small></div><div class="acts"><button class="ibtn" type="button" aria-label="Ещё"><svg class="ic"><use href="#i-dots"/></svg></button></div></div>
+        <div class="notice"><svg class="ic"><use href="#i-shield"/></svg>Переписка сохраняется и доступна администрации школы</div>
+        <div class="msgs">
+          <span class="daysep">Сегодня</span>
+          <div class="m"><div class="av s36 c2">АН</div><div class="bub">Сауле, добрый день! Айдана сегодня отлично отвечала на Speaking, поставила 5.<span class="tm num">16:35</span></div></div>
+          <div class="m out"><div class="bub">Спасибо! Подскажите, как ей готовиться к Final test в декабре?<span class="tm num">16:50 ✓✓</span></div></div>
+          <div class="m"><div class="av s36 c2">АН</div><div class="bub" style="display:flex;align-items:center;gap:10px;width:230px"><button class="playb" type="button" aria-label="Слушать" style="width:32px;height:32px"><svg class="ic"><use href="#i-play"/></svg></button><div class="wave" style="color:var(--tint);height:24px" data-wave="24" data-p="0"></div><span class="xs mut num">0:38</span></div></div>
+          <div class="m"><div class="av s36 c2">АН</div><div class="bub" style="padding:6px"><div class="att" style="background:var(--paper);border:0"><svg class="ic" style="color:var(--red)"><use href="#i-file"/></svg><div class="grow"><div class="sm" style="font-weight:600">Final test — темы.pdf</div><div class="xs mut">340 КБ</div></div></div></div></div>
+          <div class="m"><div class="av s36 c2">АН</div><div class="bub">Здесь все темы. Главное: неправильные глаголы и Past Continuous.<span class="tm num">17:02</span></div></div>
+        </div>
+        <div class="composer"><button class="ibtn" type="button" aria-label="Прикрепить" style="color:var(--muted)"><svg class="ic"><use href="#i-clip"/></svg></button><div class="inp">Сообщение</div><button class="micb" type="button" aria-label="Голосовое"><svg class="ic s20"><use href="#i-mic"/></svg></button></div>
+      </div></div></div><figcaption><span class="num">11b</span><div><b>Чат с учителем</b><p>В шапке подпись «учитель Айданы». Те же голосовые и файлы, что у ученика.</p></div></figcaption></figure>
+    </div>
+  </section>
+  <!-- ================= БЕЗОПАСНОСТЬ (обе роли) ================= -->
+  <section class="grp" data-for="both">
+    <header><h2>Безопасность</h2><p>Общие для ученика и родителя. После кода из WhatsApp вход только по PIN или биометрии. Детский телефон часто берут в руки другие, поэтому PIN обязателен, а биометрия опциональна.</p></header>
+    <div class="shots">
+      <figure class="shot"><div class="dev-wrap"><div class="device"><div class="screen">
+        <div class="secc" style="padding-top:40px">
+          <div class="bigic"><svg class="ic"><use href="#i-lock"/></svg></div>
+          <h2>Придумайте PIN-код</h2>
+          <p>4 цифры для входа в приложение. Код из WhatsApp больше не понадобится.</p>
+          <div class="pin" style="margin-top:12px"><i class="on"></i><i class="on"></i><i></i><i></i></div>
+          <p class="xs">Не используйте 1234, 0000 и год рождения</p>
+        </div>
+        <div class="pinpad"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span class="e"></span><span>0</span><span class="e"><svg class="ic"><use href="#i-arrow-l"/></svg></span></div>
+      </div></div></div><figcaption><span class="num">13a</span><div><b>Создание PIN</b><p>Сразу после кода подтверждения. Затем повтор PIN; простые комбинации не принимаются.</p></div></figcaption></figure>
+
+      <figure class="shot"><div class="dev-wrap"><div class="device"><div class="screen">
+        <div class="secc" style="padding-top:40px">
+          <div class="bigic"><svg class="ic ios-only"><use href="#i-faceid"/></svg><svg class="ic and-only"><use href="#i-finger"/></svg></div>
+          <h2><span class="ios-only">Входить по Face ID?</span><span class="and-only">Входить по отпечатку?</span></h2>
+          <p>Быстрее, чем вводить PIN. PIN останется запасным способом.</p>
+        </div>
+        <div style="padding:0 24px 48px;display:flex;flex-direction:column;gap:8px"><button class="btn" type="button"><span class="ios-only">Включить Face ID</span><span class="and-only">Включить отпечаток</span></button><button class="btn tonal" type="button" style="background:transparent">Не сейчас</button></div>
+        <div class="scrim"></div>
+        <div class="ialert ios-only"><div class="b"><b>Разрешить «One English» использовать Face ID?</b>Для быстрого входа в приложение без PIN-кода.</div><div class="btns"><span>Не разрешать</span><span>OK</span></div></div>
+        <div class="bprompt and-only">
+          <div class="row" style="gap:8px;align-self:flex-start"><svg class="mark" viewBox="0 0 60 48" style="width:22px;height:18px" aria-hidden="true"><use href="#i-logo"/></svg><span class="sm" style="font-weight:600">One English</span></div>
+          <b style="font-size:22px;font-weight:500;align-self:flex-start">Подтвердите, что это вы</b>
+          <span class="sm mut" style="align-self:flex-start">Приложите палец к сканеру</span>
+          <div class="fp"><svg class="ic"><use href="#i-finger"/></svg></div>
+          <div class="acts2"><span>Использовать PIN</span><span>Отмена</span></div>
+        </div>
+      </div></div></div><figcaption><span class="num">13b</span><div><b>Биометрия</b><p>iOS: системный запрос Face ID. Android: системный BiometricPrompt. Отказ ничего не ломает, включить можно в профиле.</p></div></figcaption></figure>
+
+      <figure class="shot"><div class="dev-wrap"><div class="device"><div class="screen">
+        <div class="secc" style="padding-top:32px">
+          <div class="av c1" style="width:72px;height:72px;font-size:24px">АС</div>
+          <h2>Айдана, введите PIN</h2>
+          <div class="pin" style="margin-top:6px"><i class="on"></i><i></i><i></i><i></i></div>
+          <a class="link" style="margin-top:4px">Забыли PIN? Войти по коду</a>
+        </div>
+        <div class="pinpad"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span class="e"><svg class="ic ios-only"><use href="#i-faceid"/></svg><svg class="ic and-only"><use href="#i-finger"/></svg></span><span>0</span><span class="e"><svg class="ic"><use href="#i-arrow-l"/></svg></span></div>
+      </div></div></div><figcaption><span class="num">13c</span><div><b>Вход по PIN</b><p>При повторном открытии и после автоблокировки. Биометрия на клавише слева. После 5 ошибок нужен новый код из WhatsApp.</p></div></figcaption></figure>
+
+      <figure class="shot"><div class="dev-wrap"><div class="device"><div class="screen">
+        <div class="nbar"><a class="back"><svg class="ic ios-only"><use href="#i-chev-l"/></svg><svg class="ic and-only"><use href="#i-arrow-l"/></svg><span class="ios-only">Профиль</span></a><div class="nb-title"><b>Безопасность</b></div></div>
+        <div class="app">
+          <div class="list">
+            <div class="li"><span class="lic c1"><svg class="ic ios-only"><use href="#i-faceid"/></svg><svg class="ic and-only"><use href="#i-finger"/></svg></span><div class="grow"><span class="ios-only">Вход по Face ID</span><span class="and-only">Вход по отпечатку</span></div><span class="sw on"><i></i></span></div>
+            <div class="li"><span class="lic c1"><svg class="ic"><use href="#i-key"/></svg></span><div class="grow">Сменить PIN-код</div><svg class="ic s20 chev"><use href="#i-chev-r"/></svg></div>
+            <div class="li" style="flex-wrap:wrap"><span class="lic c1"><svg class="ic"><use href="#i-lock"/></svg></span><div class="grow">Автоблокировка<div class="xs mut">Спросим PIN, если приложение было свёрнуто</div></div><div class="seg" style="width:100%"><button type="button">Сразу</button><button type="button">1 мин</button><button type="button" class="on"><svg class="ic and-only"><use href="#i-check"/></svg>5 мин</button><button type="button">15 мин</button></div></div>
+          </div>
+          <div class="sec-h" style="margin:4px 0 -2px"><h3 class="h2">Активные устройства</h3></div>
+          <div class="list">
+            <div class="li dev-row"><span class="lic"><svg class="ic"><use href="#i-phone"/></svg></span><div class="grow"><b class="sm"><span class="ios-only">iPhone 13</span><span class="and-only">Samsung Galaxy A54</span></b><div class="xs mut">Шымкент · сейчас</div></div><span class="pill p-ok">Это устройство</span></div>
+            <div class="li dev-row"><span class="lic"><svg class="ic"><use href="#i-phone"/></svg></span><div class="grow"><b class="sm"><span class="ios-only">Samsung Galaxy A54</span><span class="and-only">iPhone 13</span></b><div class="xs mut">Шымкент · вчера в 21:14</div></div><button class="btn sm tonal" type="button">Выйти</button></div>
+            <div class="li dev-row"><span class="lic"><svg class="ic"><use href="#i-monitor"/></svg></span><div class="grow"><b class="sm">Веб · Chrome, Windows</b><div class="xs mut">Алматы · 3 дня назад</div></div><button class="btn sm tonal" type="button">Выйти</button></div>
+          </div>
+          <button class="btn tonal" type="button" style="background:transparent;color:var(--red)">Выйти на всех других устройствах</button>
+          <p class="xs mut" style="margin:-6px 0 0;text-align:center">Не узнаёте устройство? Выйдите на нём и смените PIN. Родитель видит устройства ребёнка.</p>
+        </div>
+      </div></div></div><figcaption><span class="num">14</span><div><b>Профиль → Безопасность</b><p>Биометрия, смена PIN, автоблокировка через N минут, список устройств с городом и временем входа. Незнакомый город сразу бросается в глаза.</p></div></figcaption></figure>
+
+      <figure class="shot"><div class="dev-wrap"><div class="device"><div class="screen">
+        <div class="nbar" style="border-bottom:1px solid var(--line)"><a class="back"><svg class="ic ios-only"><use href="#i-chev-l"/></svg><svg class="ic and-only"><use href="#i-arrow-l"/></svg><span class="ios-only">Чаты</span></a><div class="nb-title"><b>Мадина</b><small>менеджер · Янги шахар</small></div></div>
+        <div class="notice"><svg class="ic"><use href="#i-shield"/></svg>Переписка сохраняется и доступна администрации школы</div>
+        <div class="msgs"></div>
+        <div class="composer"><button class="ibtn" type="button" aria-label="Прикрепить" style="color:var(--muted)"><svg class="ic"><use href="#i-clip"/></svg></button><div class="inp">Сообщение</div><button class="micb" type="button" aria-label="Голосовое"><svg class="ic s20"><use href="#i-mic"/></svg></button></div>
+        <div class="scrim"></div>
+        <div class="bsheet">
+          <span class="hdl"></span>
+          <div class="row"><div class="bigic" style="width:48px;height:48px;border-radius:14px"><svg class="ic" style="width:26px;height:26px"><use href="#i-shield"/></svg></div><b class="ttl" style="font-size:18px;color:var(--brand-ink)">Правила чатов</b></div>
+          <div class="row" style="align-items:flex-start"><svg class="ic s20" style="color:var(--tint)"><use href="#i-file"/></svg><span class="sm">Переписка сохраняется. Администрация школы может её просматривать для контроля качества.</span></div>
+          <div class="row" style="align-items:flex-start"><svg class="ic s20" style="color:var(--tint)"><use href="#i-phone"/></svg><span class="sm">Не отправляйте номера телефонов, адреса и пароли.</span></div>
+          <div class="row" style="align-items:flex-start"><svg class="ic s20" style="color:var(--tint)"><use href="#i-flag"/></svg><span class="sm">Если сообщение вас задело, нажмите на него и выберите «Пожаловаться».</span></div>
+          <button class="btn" type="button">Понятно</button>
+        </div>
+      </div></div></div><figcaption><span class="num">15a</span><div><b>Правила при первом входе в чат</b><p>Показываются один раз. Потом в шапке каждого чата остаётся строка «Переписка сохраняется…» (она же на экранах 5b и 11b).</p></div></figcaption></figure>
+
+      <figure class="shot"><div class="dev-wrap"><div class="device"><div class="screen">
+        <div class="nbar" style="border-bottom:1px solid var(--line)"><a class="back"><svg class="ic ios-only"><use href="#i-chev-l"/></svg><svg class="ic and-only"><use href="#i-arrow-l"/></svg><span class="ios-only">Чаты</span></a><div class="nb-title"><b>PI-3 · Pre-Intermediate</b><small>Учитель и 11 учеников</small></div></div>
+        <div class="notice"><svg class="ic"><use href="#i-shield"/></svg>Переписка сохраняется и доступна администрации школы</div>
+        <div class="msgs">
+          <div class="m"><div class="av s36 c4">ТБ</div><div class="bub"><span class="who" style="color:var(--info)">Тимур Б.</span>Кто сделал упр. 4? Скиньте ответы<span class="tm num">18:40</span></div></div>
+        </div>
+        <div class="warnbox"><svg class="ic s20"><use href="#i-alert"/></svg><div class="grow"><b>Номер телефона отправить нельзя</b><p>По правилам школы ученики не передают в чатах личные контакты. Обсудите задание здесь или напишите учителю.</p><button class="btn sm" type="button" style="height:32px">Убрать номер</button></div></div>
+        <div class="composer"><button class="ibtn" type="button" aria-label="Прикрепить" style="color:var(--muted)"><svg class="ic"><use href="#i-clip"/></svg></button><div class="inp" style="color:var(--ink);font-size:14px;white-space:nowrap;overflow:hidden">Пиши в WhatsApp&nbsp;<span class="hl num">8 777 123 45 67</span></div><span class="sendb" aria-label="Отправка недоступна"><svg class="ic s20"><use href="#i-send"/></svg></span></div>
+      </div></div></div><figcaption><span class="num">15b</span><div><b>Запрет на отправку контактов</b><p>Для учеников до 18 лет. Номер подсвечивается прямо в поле, отправка блокируется. Спокойный жёлтый тон: это правило, не наказание.</p></div></figcaption></figure>
+
+      <figure class="shot"><div class="dev-wrap"><div class="device"><div class="screen">
+        <div class="nbar" style="border-bottom:1px solid var(--line)"><a class="back"><svg class="ic ios-only"><use href="#i-chev-l"/></svg><svg class="ic and-only"><use href="#i-arrow-l"/></svg><span class="ios-only">Чаты</span></a><div class="nb-title"><b>PI-3 · Pre-Intermediate</b><small>Учитель и 11 учеников</small></div></div>
+        <div class="notice"><svg class="ic"><use href="#i-shield"/></svg>Переписка сохраняется и доступна администрации школы</div>
+        <div class="msgs">
+          <div class="m"><div class="av s36 c2">АН</div><div class="bub">Good afternoon! ДЗ на субботу закрепила сверху.<span class="tm num">13:05</span></div></div>
+          <div class="m"><div class="av s36 c4">ТБ</div><div class="bub">Упражнение 4 тоже письменно?<span class="tm num">13:18</span></div></div>
+          <div class="m out"><div class="bub">Да, всё письменно<span class="tm num">13:20 ✓✓</span></div></div>
+        </div>
+        <div class="composer"><button class="ibtn" type="button" aria-label="Прикрепить" style="color:var(--muted)"><svg class="ic"><use href="#i-clip"/></svg></button><div class="inp">Сообщение</div><button class="micb" type="button" aria-label="Голосовое"><svg class="ic s20"><use href="#i-mic"/></svg></button></div>
+        <div class="scrim"></div>
+        <div class="ctx" style="top:250px">
+          <div class="m" style="max-width:100%"><div class="bub"><span class="who" style="color:var(--info)">Бекзат К.</span>Тимур, ты опять всё списал, лол<span class="tm num">13:22</span></div></div>
+          <div class="menu">
+            <div>Ответить<svg class="ic s20"><use href="#i-reply"/></svg></div>
+            <div>Копировать<svg class="ic s20"><use href="#i-copy"/></svg></div>
+            <div class="rep">Пожаловаться<svg class="ic s20"><use href="#i-flag"/></svg></div>
+          </div>
+          <span class="xs" style="color:var(--white);opacity:.85">Жалобу увидит администратор филиала. Автор не узнает, кто пожаловался.</span>
+        </div>
+      </div></div></div><figcaption><span class="num">15c</span><div><b>Пожаловаться на сообщение</b><p>Долгое нажатие на сообщение. Затем выбор причины: оскорбление, спам, личные данные. Жалоба видна админу вместе с контекстом.</p></div></figcaption></figure>
+
+      <figure class="shot"><div class="dev-wrap"><div class="device"><div class="screen" data-sb="dark">
+        <div class="switcher"></div>
+        <div class="appcard" style="left:-250px;opacity:.85"><div class="blurc"><div style="height:100px"></div><div style="height:200px"></div></div></div>
+        <div class="applbl" style="left:55px"><span class="aic"><svg viewBox="0 0 60 48" style="width:20px;height:16px" aria-hidden="true"><use href="#i-logo"/></svg></span>One English</div>
+        <div class="appcard" style="left:55px">
+          <div class="blurc"><div style="height:44px;width:60%;background:var(--navy-100)"></div><div style="height:150px;background:var(--hero)"></div><div style="height:110px"></div><div style="height:140px"></div></div>
+          <div class="shield"><svg viewBox="0 0 60 48" style="width:72px;height:58px" aria-hidden="true"><use href="#i-logo"/></svg><div class="logo"><div class="wm" style="align-items:center"><b><span>ONE</span> <span>ENGLISH</span></b></div></div></div>
+        </div>
+        <div class="appcard" style="left:355px;opacity:.85"><div class="blurc"><div style="height:200px"></div></div></div>
+        <div class="recbtns and-only"><span>Скриншот</span><span>Выбрать</span></div>
+      </div></div></div><figcaption><span class="num">16</span><div><b>Скрытие в переключателе приложений</b><p>Когда приложение свёрнуто, вместо чатов и оплат в превью размытый экран с логотипом. На Android ещё и запрет скриншотов на экранах оплаты и чатов (FLAG_SECURE).</p></div></figcaption></figure>
+    </div>
+  </section>
+
+</div>
+
+<script>
+(function(){
+  var root=document.getElementById('root');
+  var NAV={
+    student:[['i-home','Главная'],['i-cal','Расписание'],['i-task','Задания',{n:'1'}],['i-chat','Чаты',{n:'4'}],['i-coin','Коины']],
+    parent:[['i-home','Главная'],['i-wallet','Оплаты',{dot:1}],['i-chat','Чаты',{n:'2'}],['i-bell','Уведомления',{n:'2'}],['i-user','Профиль']]
+  };
+  var SB='<div class="sb"><span class="sb-time">9:41</span><span class="island ios-only"></span><span class="punch and-only"></span>'+
+    '<span class="sb-icons ios-only"><svg viewBox="0 0 18 12"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg>'+
+    '<svg viewBox="0 0 16 12"><path d="M8 2.5c2.3 0 4.4.9 5.9 2.4l1.3-1.3A10.2 10.2 0 0 0 8 .6 10.2 10.2 0 0 0 .8 3.6l1.3 1.3A8.3 8.3 0 0 1 8 2.5zm0 3.6c1.3 0 2.5.5 3.4 1.4l1.3-1.3A6.6 6.6 0 0 0 8 4.2c-1.8 0-3.5.7-4.7 2l1.3 1.3c.9-.9 2.1-1.4 3.4-1.4zM8 9.6l1.9-1.9a2.7 2.7 0 0 0-3.8 0z"/></svg>'+
+    '<svg viewBox="0 0 27 12"><rect x=".5" y=".5" width="23" height="11" rx="3" fill="none" stroke="currentColor" opacity=".4"/><rect x="2" y="2" width="17" height="8" rx="1.8"/><rect x="24.5" y="4" width="1.8" height="4" rx=".9" opacity=".4"/></svg></span>'+
+    '<span class="sb-icons and-only"><svg viewBox="0 0 16 12"><path d="M8 11.5 0 2.6A12 12 0 0 1 16 2.6z"/></svg><svg viewBox="0 0 12 12"><path d="M12 0v12H0z"/></svg><svg viewBox="0 0 7 12"><rect x="0" y="1" width="7" height="11" rx="1.2"/><rect x="2" y="0" width="3" height="1.5"/></svg></span></div>';
+  document.querySelectorAll('.screen').forEach(function(s){
+    s.insertAdjacentHTML('afterbegin',SB);if(s.getAttribute('data-sb')==='dark')s.firstElementChild.classList.add('on-dark');
+    var role=s.getAttribute('data-nav');
+    if(role){
+      var a=+s.getAttribute('data-active');
+      var h='<nav class="tabbar">'+NAV[role].map(function(it,i){
+        var b=it[2]?(it[2].dot?'<b class="nb dot"></b>':'<b class="nb">'+it[2].n+'</b>'):'';
+        return '<a class="tab"'+(i===a?' aria-current="page"':'')+'><span class="tab-ic"><svg class="ic"><use href="#'+it[0]+'"/></svg>'+b+'</span><span class="tab-l">'+it[1]+'</span></a>';
+      }).join('')+'</nav>';
+      s.insertAdjacentHTML('beforeend',h);
+    }
+    s.insertAdjacentHTML('beforeend','<div class="homebar"></div>');
+  });
+  // волна голосовых
+  var seed=7;function rnd(){seed=(seed*9301+49297)%233280;return seed/233280}
+  document.querySelectorAll('[data-wave]').forEach(function(w){
+    var n=+w.getAttribute('data-wave'),h='';
+    for(var i=0;i<n;i++){var v=20+Math.round(Math.abs(Math.sin(i*.7))*50+rnd()*30);h+='<i style="height:'+v+'%"'+(i<n*.35?' class="p"':'')+'></i>';}
+    w.innerHTML=h;
+  });
+  // масштаб рамок
+  function fit(){document.querySelectorAll('.dev-wrap').forEach(function(w){
+    var d=w.firstElementChild,s=Math.min(1,w.clientWidth/410);
+    d.style.transform=s<1?'scale('+s+')':'';w.style.height=s<1?(864*s)+'px':'';
+  });}
+  window.addEventListener('resize',fit);
+  // переключатели
+  function setRole(r){root.setAttribute('data-role',r);
+    document.querySelectorAll('[data-role-btn]').forEach(function(b){b.setAttribute('aria-pressed',b.getAttribute('data-role-btn')===r)});
+    document.querySelectorAll('.grp').forEach(function(g){var f=g.getAttribute('data-for');g.hidden=!(f===r||f==='both')});fit();}
+  function setPf(p){root.setAttribute('data-platform',p);
+    document.querySelectorAll('[data-pf-btn]').forEach(function(b){b.setAttribute('aria-pressed',b.getAttribute('data-pf-btn')===p)});}
+  document.querySelectorAll('[data-role-btn]').forEach(function(b){b.onclick=function(){setRole(b.getAttribute('data-role-btn'));try{localStorage.setItem('oe-role',b.getAttribute('data-role-btn'))}catch(e){}}});
+  document.querySelectorAll('[data-pf-btn]').forEach(function(b){b.onclick=function(){setPf(b.getAttribute('data-pf-btn'));try{localStorage.setItem('oe-pf',b.getAttribute('data-pf-btn'))}catch(e){}}});
+  var modes=['system','light','dark'],names={system:'системная',light:'светлая',dark:'тёмная'},mi=0;
+  var tb=document.getElementById('themebtn');
+  tb.onclick=function(){mi=(mi+1)%3;var m=modes[mi];if(m==='system')document.documentElement.removeAttribute('data-theme');else document.documentElement.setAttribute('data-theme',m);tb.lastChild.textContent='Тема: '+names[m];};
+  var h=(location.hash||'').slice(1);
+  try{var r0=localStorage.getItem('oe-role'),p0=localStorage.getItem('oe-pf');if(r0)setRole(r0);if(p0)setPf(p0);}catch(e){}
+  if(h==='parent'||h==='student')setRole(h);
+  if(h==='android'||h==='ios')setPf(h);
+  fit();
+})();
+</script>
