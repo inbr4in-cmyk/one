@@ -23,7 +23,10 @@ const max = computed(() => (props.payment ? props.payment.amount - props.payment
 watch(() => props.payment, (p) => {
   if (!p) return
   const rest = p.amount - p.refunded
-  Object.assign(form, { lessons: String(p.lesson_price ? Math.min(p.lessons, Math.floor(rest / p.lesson_price)) : 0), amount: String(rest), reason: '' })
+  // Never default to more lessons than the student still has (they may have used some of this payment).
+  const fit = p.lesson_price ? Math.min(p.lessons, Math.floor(rest / p.lesson_price)) : 0
+  const lessons = Math.max(0, Math.min(fit, p.student_lessons_left ?? fit))
+  Object.assign(form, { lessons: String(lessons), amount: String(p.lesson_price && lessons < fit ? lessons * p.lesson_price : rest), reason: '' })
   error.value = null
 })
 

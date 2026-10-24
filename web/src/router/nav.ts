@@ -3,21 +3,23 @@ export interface NavItem {
   key: string
   path: string
   icon: string
-  /** `module.action` from /auth/me permissions; omitted = everyone signed in */
-  perm?: string
+  /** `module.action` from /auth/me permissions (any of a list); omitted = every staff member */
+  perm?: string | string[]
   group: 'main' | 'settings'
   /** Key in GET /api/counters; `soft` = not urgent, not red */
-  counter?: 'inbox' | 'chats'
+  counter?: 'inbox' | 'chats' | 'crm' | 'tasks'
   soft?: boolean
   /** Built page; the rest render the "in development" stub */
   page?: () => Promise<unknown>
   /** Route pattern when it differs from `path` (optional params) */
   route?: string
+  /** i18n key under `nav.` when it differs from `key` */
+  label?: string
 }
 
 export const NAV: NavItem[] = [
-  { key: 'dashboard', path: '/dashboard', icon: 'dash', perm: 'dashboard.view', group: 'main' },
-  { key: 'crm', path: '/crm', icon: 'crm', perm: 'crm.view', group: 'main', page: () => import('@/pages/crm/CrmPage.vue') },
+  { key: 'dashboard', path: '/dashboard', icon: 'dash', perm: 'dashboard.view', group: 'main', page: () => import('@/pages/dashboard/DashboardPage.vue') },
+  { key: 'crm', path: '/crm', icon: 'crm', perm: 'crm.view', group: 'main', counter: 'crm', page: () => import('@/pages/crm/CrmPage.vue') },
   {
     key: 'inbox', path: '/inbox', route: '/inbox/:id(\\d+)?', icon: 'inbox', perm: 'inbox.view', group: 'main', counter: 'inbox',
     page: () => import('@/pages/inbox/InboxPage.vue'),
@@ -34,25 +36,44 @@ export const NAV: NavItem[] = [
     page: () => import('@/pages/attendance/AttendancePage.vue'),
   },
   { key: 'payments', path: '/payments', icon: 'wallet', perm: 'payments.view', group: 'main', page: () => import('@/pages/payments/PaymentsPage.vue') },
-  { key: 'finance', path: '/finance', icon: 'trend', perm: 'finance.view', group: 'main' },
-  { key: 'coins', path: '/coins', icon: 'coin', perm: 'coins.view', group: 'main' },
-  { key: 'tasks', path: '/tasks', icon: 'task', perm: 'tasks.view', group: 'main' },
-  { key: 'books', path: '/books', icon: 'book', perm: 'books.view', group: 'main' },
-  { key: 'roles', path: '/settings/roles', icon: 'key', perm: 'roles.view', group: 'settings' },
+  { key: 'finance', path: '/finance', icon: 'trend', perm: 'finance.view', group: 'main', page: () => import('@/pages/finance/FinancePage.vue') },
+  { key: 'payroll', path: '/payroll', icon: 'salary', perm: 'payroll.view', group: 'main', page: () => import('@/pages/payroll/PayrollPage.vue') },
+  { key: 'tasks', path: '/tasks', icon: 'task', perm: 'tasks.view', group: 'main', counter: 'tasks', soft: true, page: () => import('@/pages/tasks/TasksPage.vue') },
+  { key: 'coins', path: '/coins', icon: 'coin', perm: ['coins.view', 'shop.view'], group: 'main', page: () => import('@/pages/coins/CoinsPage.vue') },
+  { key: 'books', path: '/books', route: '/books/:tab(transfers|report)?', icon: 'book', perm: 'books.view', group: 'main', page: () => import('@/pages/books/BooksPage.vue') },
+  { key: 'complaints', path: '/complaints', icon: 'flag', perm: 'complaints.view', group: 'main', route: '/complaints/:id(\\d+)?', page: () => import('@/pages/complaints/ComplaintsPage.vue') },
+  { key: 'training', path: '/training', icon: 'learning-base', perm: 'training.view', group: 'main', page: () => import('@/pages/training/TrainingPage.vue') },
+  { key: 'roles', path: '/settings/roles', icon: 'key', perm: 'roles.view', group: 'settings', page: () => import('@/pages/settings/RolesPage.vue') },
+  { key: 'staff', path: '/settings/staff', icon: 'teachers', perm: 'staff.view', group: 'settings', page: () => import('@/pages/settings/StaffPage.vue') },
+  { key: 'settingsPage', path: '/settings/general', icon: 'gear', perm: 'settings.view', group: 'settings', page: () => import('@/pages/settings/SettingsPage.vue') },
+  {
+    key: 'documents', path: '/settings/documents', icon: 'file', perm: ['settings.view', 'students.view'], group: 'settings',
+    page: () => import('@/pages/settings/DocumentsPage.vue'),
+  },
   {
     key: 'security', path: '/settings/security', icon: 'shield', group: 'settings',
     page: () => import('@/pages/SecurityPage.vue'),
   },
-  { key: 'audit', path: '/settings/audit', icon: 'log', perm: 'audit.view', group: 'settings' },
+  { key: 'audit', path: '/settings/audit', icon: 'log', perm: 'audit.view', group: 'settings', page: () => import('@/pages/settings/AuditPage.vue') },
 ]
 
 /** Detail pages: not in the menu, highlighted under their parent item. */
-export const DETAIL_ROUTES = [
+export const DETAIL_ROUTES: { name: string; path: string; parent?: string; perm?: string; title?: string; page: () => Promise<unknown> }[] = [
   { name: 'student', path: '/students/:id(\\d+)', parent: 'students', perm: 'students.view', page: () => import('@/pages/students/StudentPage.vue') },
+  { name: 'import', path: '/students/import', parent: 'students', perm: 'students.create', page: () => import('@/pages/students/ImportPage.vue') },
   { name: 'group', path: '/groups/:id(\\d+)', parent: 'groups', perm: 'schedule.view', page: () => import('@/pages/groups/GroupPage.vue') },
   { name: 'lesson-attendance', path: '/attendance/:lessonId(\\d+)', parent: 'attendance', perm: 'attendance.view', page: () => import('@/pages/attendance/AttendanceSheetPage.vue') },
+  { name: 'task', path: '/tasks/:id(\\d+)', parent: 'tasks', perm: 'tasks.view', page: () => import('@/pages/tasks/TaskPage.vue') },
+  { name: 'course', path: '/training/:id(\\d+)', parent: 'training', perm: 'training.view', page: () => import('@/pages/training/CoursePage.vue') },
+  { name: 'feedback', path: '/feedback', title: 'nav.feedback', page: () => import('@/pages/FeedbackPage.vue') },
+  { name: 'rules', path: '/rules', title: 'nav.rules', page: () => import('@/pages/RulesPage.vue') },
 ]
 
+export function allowed(perm: string | string[] | undefined, can: (perm: string) => boolean): boolean {
+  if (!perm) return true
+  return Array.isArray(perm) ? perm.some(can) : can(perm)
+}
+
 export function visibleNav(can: (perm: string) => boolean): NavItem[] {
-  return NAV.filter((i) => !i.perm || can(i.perm))
+  return NAV.filter((i) => allowed(i.perm, can))
 }

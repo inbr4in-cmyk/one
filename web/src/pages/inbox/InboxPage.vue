@@ -167,6 +167,7 @@ useRealtime('inbox.message', async (e) => {
 useRealtime('realtime.open', (e) => e.reconnect && (loadList(), conv.value && openConv(conv.value.id)))
 
 const statusIcon = (m: InboxMessage) => (m.status === 'failed' ? t('inbox.failed') : m.status === 'read' ? t('inbox.read') : '')
+import { safeUrl } from '@/utils/url'
 </script>
 
 <template>
@@ -220,7 +221,7 @@ const statusIcon = (m: InboxMessage) => (m.status === 'failed' ? t('inbox.failed
             <div class="b" :class="[m.direction, { failed: m.status === 'failed', tpl: m.kind === 'template' }]">
               <span v-if="m.kind === 'template'" class="by"><UiIcon name="zap" :size="14" /> {{ t('inbox.template') }}</span>
               <img v-if="m.media_url && m.kind === 'image'" :src="m.media_url" alt="" class="photo" loading="lazy" />
-              <a v-else-if="m.media_url" :href="m.media_url" target="_blank" rel="noopener" class="file"><span class="fi">{{ m.kind.toUpperCase().slice(0, 3) }}</span>{{ t('chats.file') }}</a>
+              <a v-else-if="safeUrl(m.media_url)" :href="safeUrl(m.media_url)!" target="_blank" rel="noopener" class="file"><span class="fi">{{ m.kind.toUpperCase().slice(0, 3) }}</span>{{ t('chats.file') }}</a>
               <span class="pre">{{ m.text }}</span>
               <time>{{ hm(m.at, loc) }}<template v-if="statusIcon(m)"> · {{ statusIcon(m) }}</template></time>
             </div>
@@ -237,7 +238,7 @@ const statusIcon = (m: InboxMessage) => (m.status === 'failed' ? t('inbox.failed
             <textarea v-model="text" rows="1" :placeholder="conv.channel === 'instagram' ? t('inbox.replyIg') : t('inbox.replyWa')" :aria-label="t('chats.message')" :disabled="!conv.in_window && conv.channel === 'instagram'" @keydown="onKey" />
             <button type="button" class="send" :aria-label="t('chats.send')" :disabled="!text.trim() || sending" @click="send"><UiIcon name="send" /></button>
           </div>
-          <div v-if="conv.in_window" class="window"><UiIcon name="clock" :size="16" />{{ t('inbox.windowOpen') }}</div>
+          <div v-if="conv.in_window" class="window"><UiIcon name="clock" :size="16" />{{ conv.channel === 'instagram' ? t('inbox.windowOpenIg') : t('inbox.windowOpen') }}</div>
         </div>
         <div v-else class="composer"><div class="window"><UiIcon name="lock" :size="16" />{{ t('inbox.readOnly') }}</div></div>
       </template>

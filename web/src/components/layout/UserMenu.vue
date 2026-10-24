@@ -71,6 +71,11 @@ async function logout() {
         <button type="button" class="mi" role="menuitem" @click="go('/settings/security#sessions')">
           <UiIcon name="laptop" :size="18" />{{ t('user.sessions') }}
         </button>
+        <template v-if="auth.isStaff">
+          <button v-if="auth.can('payroll.view')" type="button" class="mi" role="menuitem" @click="go('/payroll?tab=my')"><UiIcon name="salary" :size="18" />{{ t('user.myPay') }}</button>
+          <button type="button" class="mi" role="menuitem" @click="go('/feedback')"><UiIcon name="flag" :size="18" />{{ t('user.feedback') }}</button>
+          <button type="button" class="mi" role="menuitem" @click="go('/rules')"><UiIcon name="file" :size="18" />{{ t('user.rules') }}</button>
+        </template>
         <hr />
         <div class="row"><span>{{ t('user.theme') }}</span><UiSegmented v-model="ui.theme" :options="themes" :label="t('user.theme')" size="sm" /></div>
         <div class="row"><span>{{ t('user.language') }}</span><UiSegmented v-model="ui.locale" :options="langs" :label="t('user.language')" size="sm" /></div>

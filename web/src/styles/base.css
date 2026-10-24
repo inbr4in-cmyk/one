@@ -24,5 +24,5 @@ h1, h2, h3, h4 { text-wrap: balance }
 .sp { flex: 1 }
 .mask { font-variant-numeric: tabular-nums; font-weight: 600; letter-spacing: .02em }
 .code { font-family: var(--font-mono); font-size: 12px; background: var(--navy-50); border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; white-space: nowrap }
-.scroll-x { overflow-x: auto; -webkit-overflow-scrolling: touch }
+.scroll-x { position: relative; overflow-x: auto; -webkit-overflow-scrolling: touch }
 .grid { display: grid; gap: 16px }

@@ -4,6 +4,7 @@ import UiIcon from '@/components/ui/UiIcon.vue'
 import SearchBox from './SearchBox.vue'
 import NotificationsMenu from './NotificationsMenu.vue'
 import UserMenu from './UserMenu.vue'
+import CheckinMenu from './CheckinMenu.vue'
 import { useUiStore } from '@/stores/ui'
 
 const ui = useUiStore()
@@ -24,6 +25,7 @@ const { t } = useI18n()
     </button>
     <SearchBox />
     <span class="sp" />
+    <CheckinMenu />
     <NotificationsMenu />
     <UserMenu />
   </header>

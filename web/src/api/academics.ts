@@ -138,7 +138,7 @@ export const academicsApi = {
   addMember: (id: number, student_id: number) => http.post<{ ok: boolean }>(`/groups/${id}/members`, { student_id }),
   removeMember: (id: number, studentId: number) => http.delete(`/groups/${id}/members/${studentId}`),
   addRule: (id: number, body: RuleIn) =>
-    http.post<{ rule_id: number; created: number; conflicts: string[] }>(`/groups/${id}/schedule`, body),
+    http.post<{ rule_id: number; created: number; conflicts: string[] }>(`/groups/${id}/schedule`, body, { silent: true }),
   endRule: (ruleId: number) => http.delete(`/schedule-rules/${ruleId}`),
   lessons: (q: LessonQuery) => http.get<Lesson[]>(`/lessons${qs({ ...q })}`),
   createLesson: (body: { group_id?: number | null; student_id?: number | null; teacher_id: number; room_id: number; starts_at: string; ends_at: string; topic?: string | null }) =>

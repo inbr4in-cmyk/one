@@ -41,7 +41,7 @@ const dayIdx = ref((new Date().getDay() + 6) % 7)
 const now = ref(new Date())
 const timer = setInterval(() => (now.value = new Date()), 60_000)
 onBeforeUnmount(() => clearInterval(timer))
-const teachers = useTeachers(computed(() => [...lessons.value, ...groups.value]))
+const teachers = useTeachers()
 
 const viewOptions = computed(() => [
   { value: 'rooms' as const, label: t('schedule.byRooms') },

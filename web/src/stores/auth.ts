@@ -5,6 +5,7 @@ import { hasAccessToken, refreshAccess, setAccessToken } from '@/api/http'
 import { readPref, writePref } from '@/utils/storage'
 import { stopRealtime } from '@/composables/useRealtime'
 import { useRefsStore } from './refs'
+import { usePortalStore } from './portal'
 
 export type LoginStep =
   | { step: 'done' }
@@ -103,6 +104,7 @@ export const useAuthStore = defineStore('auth', () => {
   function clear() {
     stopRealtime()
     useRefsStore().reset()
+    usePortalStore().reset()
     setAccessToken(null)
     user.value = null
     writePref(HINT, null)

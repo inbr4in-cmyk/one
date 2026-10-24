@@ -93,6 +93,7 @@ function resetFilters() {
   <div class="ph">
     <div><h1>{{ t('students.title') }}</h1><p>{{ t('students.subtitle', { n: total }) }}</p></div>
     <span class="sp" />
+    <UiButton v-if="auth.can('students.create')" icon="file" to="/students/import">{{ t('import.action') }}</UiButton>
     <UiButton v-if="auth.can('students.create')" variant="primary" icon="plus" @click="creating = true">{{ t('students.new') }}</UiButton>
   </div>
 

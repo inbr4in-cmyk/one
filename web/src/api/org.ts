@@ -41,6 +41,15 @@ export interface StaffMember {
   branch_ids: number[]
 }
 
+/** GET /staff-directory: a light list of colleagues for pickers, open to any staff member. */
+export interface DirectoryEntry {
+  id: number
+  full_name: string
+  position: string | null
+  branch_ids: number[]
+  roles: string[]
+}
+
 export interface Page<T> {
   items: T[]
   total: number
@@ -52,6 +61,7 @@ export const orgApi = {
   branches: () => http.get<Branch[]>('/branches', { silent: true }),
   rooms: (branchId: number) => http.get<Room[]>(`/branches/${branchId}/rooms`),
   levels: () => http.get<Level[]>('/levels'),
+  directory: (p: { role?: string; branch_id?: number } = {}) => http.get<DirectoryEntry[]>(`/staff-directory${qs(p)}`, { silent: true }),
   staff: (p: { role?: string; branch_id?: number; q?: string; limit?: number } = {}) =>
     http.get<Page<StaffMember>>(`/staff${qs({ limit: 200, ...p })}`, { silent: true }),
 }

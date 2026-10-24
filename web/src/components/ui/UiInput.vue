@@ -41,7 +41,7 @@ defineExpose({ focus: () => el.value?.focus(), el })
       <input
         :id="id"
         ref="el"
-        v-model="model"
+        :value="model"
         :type="actualType"
         :placeholder="placeholder"
         :autocomplete="autocomplete"
@@ -53,6 +53,7 @@ defineExpose({ focus: () => el.value?.focus(), el })
         :required="required"
         :autofocus="autofocus"
         :aria-invalid="!!error || undefined"
+        @input="model = ($event.target as HTMLInputElement).value"
       />
       <button
         v-if="type === 'password'"

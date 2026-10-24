@@ -1,7 +1,9 @@
 import modules from './modules.ru'
+import ops from './ops.ru'
 
 const ru = {
   ...modules,
+  ...ops,
   app: {
     name: 'One English',
     tagline: 'Innovation in Learning',
@@ -58,9 +60,18 @@ const ru = {
     coins: 'Коины',
     tasks: 'Задачи',
     books: 'Книги',
+    payroll: 'Зарплата',
+    complaints: 'Жалобы',
+    training: 'Обучение',
     roles: 'Роли и доступы',
+    staff: 'Сотрудники',
     security: 'Безопасность',
     audit: 'Журнал действий',
+    settingsPage: 'Настройки и ставки',
+    documents: 'Правила и согласия',
+    feedback: 'Жалобы и предложения',
+    rules: 'Правила платформы',
+    myPay: 'Мои начисления',
   },
   branch: {
     label: 'Филиал',
@@ -81,6 +92,9 @@ const ru = {
   user: {
     security: 'Безопасность',
     sessions: 'Мои сессии и устройства',
+    myPay: 'Мои начисления',
+    feedback: 'Жалобы и предложения',
+    rules: 'Правила платформы',
     theme: 'Тема',
     language: 'Язык',
     logout: 'Выйти',

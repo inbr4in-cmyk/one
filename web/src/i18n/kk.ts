@@ -1,8 +1,10 @@
 import type { Messages } from './ru'
 import modules from './modules.kk'
+import ops from './ops.kk'
 
 const kk: Messages = {
   ...modules,
+  ...ops,
   app: {
     name: 'One English',
     tagline: 'Innovation in Learning',
@@ -59,9 +61,18 @@ const kk: Messages = {
     coins: 'Коиндер',
     tasks: 'Тапсырмалар',
     books: 'Кітаптар',
+    payroll: 'Жалақы',
+    complaints: 'Шағымдар',
+    training: 'Оқыту',
     roles: 'Рөлдер мен қолжетімділік',
+    staff: 'Қызметкерлер',
     security: 'Қауіпсіздік',
     audit: 'Әрекеттер журналы',
+    settingsPage: 'Баптаулар мен мөлшерлемелер',
+    documents: 'Ережелер мен келісімдер',
+    feedback: 'Шағымдар мен ұсыныстар',
+    rules: 'Платформа ережелері',
+    myPay: 'Менің есептеулерім',
   },
   branch: {
     label: 'Филиал',
@@ -82,6 +93,9 @@ const kk: Messages = {
   user: {
     security: 'Қауіпсіздік',
     sessions: 'Менің сессияларым мен құрылғыларым',
+    myPay: 'Менің есептеулерім',
+    feedback: 'Шағымдар мен ұсыныстар',
+    rules: 'Платформа ережелері',
     theme: 'Тақырып',
     language: 'Тіл',
     logout: 'Шығу',

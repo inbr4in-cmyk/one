@@ -60,7 +60,7 @@ async function pick(u: ChatUser) {
         <template v-if="loading && !items.length"><div v-for="i in 4" :key="i" class="list-row"><UiSkeleton width="60%" /></div></template>
         <button v-for="u in items" :key="u.id" type="button" role="option" class="list-row pick" :disabled="busyId !== null" @click="pick(u)">
           <UiAvatar :name="u.full_name" size="sm" />
-          <div class="grow"><b>{{ u.full_name }}</b><span>{{ u.position ?? t(`chats.kind.${u.kind}`) }}</span></div>
+          <div class="grow"><b>{{ u.full_name }}</b><span>{{ u.subtitle || u.position || t(`chats.kind.${u.kind}`) }}</span></div>
           <span v-if="busyId === u.id" class="spin" aria-hidden="true" />
         </button>
         <p v-if="!loading && !items.length" class="muted m0" style="padding: 10px 2px">{{ t('common.nothingFound') }}</p>

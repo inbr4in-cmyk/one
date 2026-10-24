@@ -33,6 +33,7 @@ watch(() => route.fullPath, () => (ui.sidebarOpen = false))
 function onKey(e: KeyboardEvent) {
   if (e.key === 'Escape' && ui.sidebarOpen) ui.sidebarOpen = false
 }
+import RulesGate from '@/components/compliance/RulesGate.vue'
 </script>
 
 <template>
@@ -52,5 +53,6 @@ function onKey(e: KeyboardEvent) {
       </RouterView>
     </div>
     <BottomNav />
+    <RulesGate />
   </div>
 </template>

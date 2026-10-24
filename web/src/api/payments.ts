@@ -40,6 +40,8 @@ export interface Payment {
   is_first: boolean
   note: string | null
   student_name: string | null
+  /** The student's current balance, so a refund never defaults to more than is left */
+  student_lessons_left?: number | null
 }
 
 export const paymentsApi = {

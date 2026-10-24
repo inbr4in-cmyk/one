@@ -27,14 +27,23 @@ export interface InboxMessage {
   sender_id: number | null
 }
 
+/** GET /message-templates: WhatsApp templates allowed outside the 24 h window. */
+export interface MessageTemplate {
+  code: string
+  locale: 'ru' | 'kk'
+  body: string
+  variables: string[]
+}
+
 export const inboxApi = {
+  templates: () => http.get<MessageTemplate[]>('/message-templates'),
   list: (p: { channel?: Channel | ''; status?: string; unread?: boolean; mine?: boolean; q?: string }) =>
     http.get<Conversation[]>(`/inbox/conversations${qs(p)}`),
   get: (id: number) => http.get<Conversation>(`/inbox/conversations/${id}`),
   messages: (id: number, before_id?: number) => http.get<InboxMessage[]>(`/inbox/conversations/${id}/messages${qs({ before_id })}`),
   reply: (id: number, text: string) => http.post<InboxMessage>(`/inbox/conversations/${id}/messages`, { text }, { silent: true }),
-  template: (id: number, code: string, variables: Record<string, string>) =>
-    http.post<InboxMessage>(`/inbox/conversations/${id}/template`, { code, variables }),
+  template: (id: number, code: string, variables: Record<string, string>, locale: 'ru' | 'kk') =>
+    http.post<InboxMessage>(`/inbox/conversations/${id}/template`, { code, variables, locale }),
   patch: (id: number, body: { status?: 'open' | 'closed'; assignee_id?: number | null; branch_id?: number | null }) =>
     http.patch<Conversation>(`/inbox/conversations/${id}`, body),
 }

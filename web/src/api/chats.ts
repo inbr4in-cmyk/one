@@ -5,6 +5,8 @@ export interface ChatUser {
   full_name: string
   kind: 'staff' | 'student' | 'parent'
   position: string | null
+  /** Role and group, e.g. «Ученик, IELTS-1», to tell namesakes apart */
+  subtitle?: string | null
 }
 
 export interface Chat {
@@ -55,6 +57,10 @@ export interface Counters {
   notifications: number
   chats?: number
   inbox?: number
+  /** New leads nobody has answered yet */
+  crm?: number
+  /** My open tasks */
+  tasks?: number
 }
 
 export const chatsApi = {

@@ -110,6 +110,21 @@ export interface Attempt {
   score: number
   status: string
   recommended_level_id: number | null
+  test_title: string | null
+  test_kind: string | null
+  max_score: number | null
+  finished_at: string | null
+}
+
+/** GET /students/{id}/attendance: newest first. */
+export interface AttendanceMark {
+  lesson_id: number
+  at: string
+  group: string | null
+  status: 'present' | 'absent' | 'late' | 'excused'
+  charged: boolean
+  grade: number | null
+  comment: string | null
 }
 
 export interface StudentFilters {
@@ -138,6 +153,6 @@ export const studentsApi = {
     http.post<Student>(`/students/${id}/freeze`, { starts_on, ends_on, reason }),
   unfreeze: (id: number) => http.post<Student>(`/students/${id}/unfreeze`),
   archive: (id: number) => http.post<null>(`/students/${id}/archive`),
-  testList: () => http.get<{ id: number; title: string; kind: string; max_score: number; pass_score: number | null }[]>('/tests', { silent: true }),
   tests: (id: number) => http.get<Attempt[]>(`/students/${id}/tests`, { silent: true }),
+  attendance: (id: number) => http.get<AttendanceMark[]>(`/students/${id}/attendance`, { silent: true }),
 }

@@ -1,20 +1,21 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import { orgApi, type Branch, type Level, type Room, type StaffMember } from '@/api/org'
-import { useAuthStore } from './auth'
+import { orgApi, type Branch, type DirectoryEntry, type Level, type Room } from '@/api/org'
 
-/** Reference data shared by many screens: branches, levels, rooms per branch, teachers. Loaded once. */
+/** Reference data shared by many screens: branches, levels, rooms per branch, the staff directory. Loaded once. */
 export const useRefsStore = defineStore('refs', () => {
   const branches = ref<Branch[]>([])
   const levels = ref<Level[]>([])
   const rooms = ref<Record<number, Room[]>>({})
-  const teachers = ref<StaffMember[]>([])
+  const staff = ref<DirectoryEntry[]>([])
   let loaded: Promise<void> | null = null
-  let teachersLoaded: Promise<void> | null = null
+  let staffLoaded: Promise<void> | null = null
 
   const levelById = computed(() => new Map(levels.value.map((l) => [l.id, l])))
   const branchById = computed(() => new Map(branches.value.map((b) => [b.id, b])))
   const allRooms = computed(() => Object.values(rooms.value).flat())
+  const teachers = computed(() => staff.value.filter((x) => x.roles.includes('teacher')))
+  const staffById = computed(() => new Map(staff.value.map((x) => [x.id, x])))
 
   function load(): Promise<void> {
     if (!loaded) {
@@ -38,31 +39,26 @@ export const useRefsStore = defineStore('refs', () => {
     return rooms.value[branchId] ?? []
   }
 
-  /** Teachers need staff.view; without it the list stays empty and pickers fall back to what screens know. */
-  function loadTeachers(): Promise<void> {
-    if (!teachersLoaded) {
-      teachersLoaded = (async () => {
-        if (!useAuthStore().can('staff.view')) return
-        try {
-          teachers.value = (await orgApi.staff({ role: 'teacher' })).items
-        } catch {
-          /* no access */
-        }
-      })()
+  /** Colleagues for pickers (teachers, task assignees, payroll); any staff member may read the directory. */
+  function loadStaff(): Promise<void> {
+    if (!staffLoaded) {
+      staffLoaded = orgApi.directory().then((r) => void (staff.value = r), () => void (staffLoaded = null))
     }
-    return teachersLoaded
+    return staffLoaded
   }
 
   function reset() {
-    loaded = teachersLoaded = null
+    loaded = staffLoaded = null
     branches.value = []
     levels.value = []
     rooms.value = {}
-    teachers.value = []
+    staff.value = []
   }
 
   const branchName = (id: number | null | undefined) => (id ? branchById.value.get(id)?.name ?? `#${id}` : '')
   const level = (id: number | null | undefined) => (id ? levelById.value.get(id) : undefined)
 
-  return { branches, levels, rooms, teachers, allRooms, levelById, load, roomsOf, loadTeachers, reset, branchName, level }
+  const staffName = (id: number | null | undefined) => (id ? staffById.value.get(id)?.full_name ?? `#${id}` : '')
+
+  return { branches, levels, rooms, staff, teachers, allRooms, levelById, staffById, load, roomsOf, loadStaff, reset, branchName, level, staffName }
 })

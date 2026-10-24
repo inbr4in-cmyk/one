@@ -1,0 +1,51 @@
+import { http, qs } from './http'
+
+export type PeriodStatus = 'draft' | 'approved' | 'paid'
+
+export interface PayrollPerson {
+  user_id: number
+  full_name: string
+  position: string | null
+  by_kind: Record<string, { title: string; amount: number; count: number }>
+  total: number
+}
+
+export interface PayrollSheet {
+  period: string
+  /** Filled only when a branch is asked for: { [branch_id]: status } */
+  status: Record<string, PeriodStatus>
+  people: PayrollPerson[]
+  total: number
+}
+
+export interface Accrual {
+  id: number
+  user_id: number
+  branch_id: number | null
+  period: string
+  kind: string
+  amount: number
+  description: string
+  ref_type: string | null
+  ref_id: number | null
+  created_by: number | null
+  created_at: string
+}
+
+export interface AdjustIn {
+  user_id: number
+  branch_id: number
+  kind: 'bonus' | 'deduction' | 'salary'
+  amount: number
+  description: string
+  period?: string
+}
+
+export const payrollApi = {
+  sheet: (p: { period: string; branch_id?: number | null }) => http.get<PayrollSheet>(`/payroll${qs(p)}`),
+  accruals: (p: { period: string; user_id?: number; branch_id?: number | null }) => http.get<Accrual[]>(`/payroll/accruals${qs(p)}`),
+  my: (period: string) => http.get<{ period: string; total: number; items: Accrual[] }>(`/payroll/my${qs({ period })}`),
+  adjust: (body: AdjustIn) => http.post<Accrual>('/payroll/adjust', body, { silent: true }),
+  approve: (period: string, branch_id: number) => http.post<{ status: PeriodStatus; total: number }>('/payroll/periods/approve', { period, branch_id }, { silent: true }),
+  paid: (period: string, branch_id: number) => http.post<{ status: PeriodStatus }>('/payroll/periods/paid', { period, branch_id }, { silent: true }),
+}

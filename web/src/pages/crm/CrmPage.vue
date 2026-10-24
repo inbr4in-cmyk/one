@@ -172,8 +172,8 @@ function onRemoved(id: number) {
   }
 }
 const SRC: Record<string, { cls: string; icon: string }> = {
-  instagram: { cls: 'ig', icon: 'ig' }, whatsapp: { cls: 'wa', icon: 'wa' }, qr: { cls: 'qr', icon: 'qr' }, qr_test: { cls: 'qr', icon: 'qr' }, site: { cls: 'web', icon: 'globe' },
-  referral: { cls: 'ref', icon: 'ref' }, sales: { cls: 'call', icon: 'phone' }, return: { cls: 'call', icon: 'lead-return' },
+  instagram: { cls: 'ig', icon: 'ig' }, whatsapp: { cls: 'wa', icon: 'wa' }, qr: { cls: 'qr', icon: 'qr' }, site: { cls: 'web', icon: 'globe' },
+  referral: { cls: 'ref', icon: 'ref' }, sales: { cls: 'call', icon: 'phone' }, return: { cls: 'call', icon: 'lead-return' }, walk_in: { cls: 'call', icon: 'user' },
 }
 const units = computed(() => ({ m: t('time.min'), h: t('time.h'), d: t('time.d') }))
 function onCardKey(e: KeyboardEvent, l: Lead) {

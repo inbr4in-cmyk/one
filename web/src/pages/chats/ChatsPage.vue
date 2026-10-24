@@ -48,7 +48,9 @@ const { onScroll, toBottom, keepPosition } = useAutoScroll(msgsEl)
 
 const me = computed(() => auth.user?.id)
 const id = computed(() => (route.params.id ? Number(route.params.id) : null))
-const canMonitor = computed(() => auth.can('chats.monitor'))
+const canMonitor = computed(() => auth.isStaff && auth.can('chats.monitor'))
+/** The same page serves staff (/chats) and the student / parent cabinet (/portal/chats) */
+const base = computed(() => (route.meta.portal ? '/portal/chats' : '/chats'))
 const current = computed(() => chats.value.find((c) => c.id === id.value) ?? monitorChats.value.find((c) => c.id === id.value) ?? null)
 /** Viewing a chat the user is not a member of: read-only, audited by the server. */
 const monitoring = computed(() => id.value !== null && !chats.value.some((c) => c.id === id.value))
@@ -101,7 +103,7 @@ async function openChat(cid: number | null) {
     counters.refresh()
     toBottom(true)
   } catch (e) {
-    if (e instanceof ApiError && e.status === 404) router.replace('/chats')
+    if (e instanceof ApiError && e.status === 404) router.replace(base.value)
   } finally {
     msgsLoading.value = false
   }
@@ -217,6 +219,21 @@ useRealtime('chat.message', (e) => {
   }
   if (m.sender_id !== me.value || !open) bumpList(chatId, m, !open && m.sender_id !== me.value)
 })
+useRealtime('chat.pinned', (e) => {
+  if (Number(e.chat_id) !== id.value) return
+  const m = e.message as ChatMessage
+  const i = messages.value.findIndex((x) => x.id === m.id)
+  if (i >= 0) messages.value[i] = m
+  pinned.value = m.pinned ? [m, ...pinned.value.filter((p) => p.id !== m.id)] : pinned.value.filter((p) => p.id !== m.id)
+})
+useRealtime('chat.hidden', (e) => {
+  if (Number(e.chat_id) !== id.value) return
+  const mid = Number(e.message_id)
+  // Monitors still see a hidden message, marked; members no longer do.
+  if (monitoring.value) messages.value = messages.value.map((x) => (x.id === mid ? { ...x, hidden: true } : x))
+  else messages.value = messages.value.filter((x) => x.id !== mid)
+  pinned.value = pinned.value.filter((x) => x.id !== mid)
+})
 useRealtime('realtime.open', async (e) => {
   if (!e.reconnect) return
   await loadList()
@@ -233,6 +250,7 @@ const subtitle = computed(() => {
   return c.other_user?.position ?? (c.other_user ? t(`chats.kind.${c.other_user.kind}`) : '')
 })
 const isImage = (m: ChatMessage) => m.kind === 'image' && m.file_url
+import { safeUrl } from '@/utils/url'
 </script>
 
 <template>
@@ -252,7 +270,7 @@ const isImage = (m: ChatMessage) => m.kind === 'image' && m.file_url
         <template v-else>
           <template v-for="sec in [{ k: 'groups', items: groups }, { k: 'direct', items: directs }]" :key="sec.k">
             <div v-if="sec.items.length" class="grp-h">{{ t(`chats.${sec.k}`) }}</div>
-            <RouterLink v-for="c in sec.items" :key="c.id" :to="`/chats/${c.id}`" class="dlg" :class="{ on: c.id === id }">
+            <RouterLink v-for="c in sec.items" :key="c.id" :to="`${base}/${c.id}`" class="dlg" :class="{ on: c.id === id }">
               <span v-if="c.kind === 'group'" class="av gav-av">{{ c.title.slice(0, 2) }}</span>
               <UiAvatar v-else :name="c.title" />
               <div class="grow">
@@ -268,7 +286,7 @@ const isImage = (m: ChatMessage) => m.kind === 'image' && m.file_url
               </div>
             </RouterLink>
           </template>
-          <UiEmptyState v-if="!filtered.length" icon="chat" :title="t('chats.empty')" :text="mode === 'mine' ? t('chats.emptyText') : undefined" />
+          <UiEmptyState v-if="!filtered.length" icon="chat" :title="t('chats.empty')" :text="mode === 'mine' ? t(route.meta.portal ? 'chats.emptyTextPortal' : 'chats.emptyText') : undefined" />
         </template>
       </div>
     </div>
@@ -276,7 +294,7 @@ const isImage = (m: ChatMessage) => m.kind === 'image' && m.file_url
     <div class="ib-chat">
       <template v-if="id">
         <div class="hd">
-          <UiButton class="back-btn" size="sm" variant="ghost" icon="arrow" :aria-label="t('common.back')" to="/chats" />
+          <UiButton class="back-btn" size="sm" variant="ghost" icon="arrow" :aria-label="t('common.back')" :to="base" />
           <span v-if="current?.kind === 'group'" class="av gav-av">{{ current.title.slice(0, 2) }}</span>
           <UiAvatar v-else :name="current?.title ?? '·'" />
           <div class="grow"><b>{{ current?.title ?? '…' }}</b><span>{{ subtitle }}</span></div>
@@ -301,8 +319,8 @@ const isImage = (m: ChatMessage) => m.kind === 'image' && m.file_url
                   {{ m.sender_name }}<span v-if="m.sender_kind" class="role" :class="ROLE[m.sender_kind]">{{ t(`chats.kind.${m.sender_kind}`) }}</span>
                 </span>
                 <span v-if="m.hidden" class="hid-tag"><UiIcon name="eye" :size="14" />{{ t('chats.hiddenByAuthor') }}</span>
-                <a v-if="isImage(m)" :href="m.file_url!" target="_blank" rel="noopener"><img :src="m.file_url!" :alt="m.file_name ?? ''" class="photo" loading="lazy" /></a>
-                <a v-else-if="m.file_url" :href="m.file_url" target="_blank" rel="noopener" class="file">
+                <a v-if="isImage(m) && safeUrl(m.file_url)" :href="safeUrl(m.file_url)!" target="_blank" rel="noopener"><img :src="m.file_url!" :alt="m.file_name ?? ''" class="photo" loading="lazy" /></a>
+                <a v-else-if="safeUrl(m.file_url)" :href="safeUrl(m.file_url)!" target="_blank" rel="noopener" class="file">
                   <span class="fi">{{ (m.file_name?.split('.').pop() ?? 'FILE').slice(0, 4).toUpperCase() }}</span>
                   <b style="font-size: 13px">{{ m.file_name ?? t('chats.file') }}</b>
                 </a>
@@ -331,6 +349,6 @@ const isImage = (m: ChatMessage) => m.kind === 'image' && m.file_url
       <UiEmptyState v-else large icon="chat" :title="t('chats.pick')" :text="t('chats.pickText')" />
     </div>
   </div>
-  <ContactsModal v-model:open="contactsOpen" @opened="(c) => { loadList(); router.push(`/chats/${c.id}`) }" />
+  <ContactsModal v-model:open="contactsOpen" @opened="(c) => { loadList(); router.push(`${base}/${c.id}`) }" />
   <UiPrompt :open="hiding !== null" :title="t('chats.hide')" :text="t('chats.hideText')" :confirm-label="t('chats.hide')" danger @update:open="(v) => !v && (hiding = null)" @confirm="hide" />
 </template>

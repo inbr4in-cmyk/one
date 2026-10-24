@@ -159,6 +159,39 @@ export async function request<T>(method: string, path: string, opts: RequestOpti
   return data as T
 }
 
+/**
+ * Download a file the API streams (Excel exports, templates). A plain link can't send the bearer token,
+ * so we fetch the bytes and hand the browser a blob URL. Errors go through the same handler as JSON calls.
+ */
+export async function download(path: string, fallbackName: string): Promise<void> {
+  let res: Response
+  try {
+    res = await send('GET', path, {})
+    if (res.status === 401 && (await refreshAccess())) res = await send('GET', path, {})
+  } catch {
+    const err = new ApiError(0, '')
+    onError?.(err)
+    throw err
+  }
+  if (!res.ok) {
+    const err = new ApiError(res.status, readDetail(await parseBody(res), res.status))
+    if (res.status === 401) {
+      setAccessToken(null)
+      onAuthLost?.()
+    } else onError?.(err)
+    throw err
+  }
+  const name = /filename="?([^";]+)"?/.exec(res.headers.get('content-disposition') ?? '')?.[1] ?? fallbackName
+  const url = URL.createObjectURL(await res.blob())
+  const a = document.createElement('a')
+  a.href = url
+  a.download = name
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 10_000)
+}
+
 /** `?a=1&b=x` from an object; empty, null and false values are skipped. */
 export function qs(params: Record<string, string | number | boolean | null | undefined>): string {
   const sp = new URLSearchParams()

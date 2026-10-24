@@ -11,7 +11,10 @@ import TransferModal from '@/components/students/TransferModal.vue'
 import FreezeModal from '@/components/students/FreezeModal.vue'
 import GuardianModal from '@/components/students/GuardianModal.vue'
 import RefundModal from '@/components/students/RefundModal.vue'
-import { studentsApi, type Attempt, type LedgerEntry, type Student } from '@/api/students'
+import AttendanceCard from '@/components/students/AttendanceCard.vue'
+import StudentCoinsTab from '@/components/store/StudentCoinsTab.vue'
+import StudentBooksTab from '@/components/store/StudentBooksTab.vue'
+import { studentsApi, type Attempt, type AttendanceMark, type LedgerEntry, type Student } from '@/api/students'
 import { paymentsApi, type Payment } from '@/api/payments'
 import { chatsApi } from '@/api/chats'
 import { ApiError } from '@/api/http'
@@ -23,7 +26,7 @@ import { shortDate } from '@/utils/format'
 import { formatPhone } from '@/utils/phone'
 import type { Locale } from '@/i18n'
 
-type Tab = 'overview' | 'ledger' | 'payments' | 'tests'
+type Tab = 'overview' | 'ledger' | 'payments' | 'tests' | 'coins' | 'books'
 
 const { t, locale } = useI18n()
 const srcLabel = useSourceLabel()
@@ -40,7 +43,7 @@ const tab = ref<Tab>('overview')
 const ledger = ref<LedgerEntry[] | null>(null)
 const payments = ref<Payment[] | null>(null)
 const attempts = ref<Attempt[] | null>(null)
-const testNames = ref(new Map<number, { title: string; max: number }>())
+const marks = ref<AttendanceMark[] | null>(null)
 const modal = ref<'pay' | 'transfer' | 'freeze' | 'guardian' | 'unfreeze' | 'archive' | null>(null)
 const refundOf = ref<Payment | null>(null)
 const busy = ref(false)
@@ -59,6 +62,8 @@ const tabs = computed(() => {
   items.push({ value: 'ledger', label: t('students.tab.ledger') })
   if (auth.can('payments.view')) items.push({ value: 'payments', label: t('students.tab.payments') })
   items.push({ value: 'tests', label: t('students.tab.tests') })
+  if (auth.can('coins.view')) items.push({ value: 'coins', label: t('students.tab.coins') })
+  items.push({ value: 'books', label: t('students.tab.books') })
   return items
 })
 
@@ -70,8 +75,9 @@ async function load() {
     if (e instanceof ApiError && (e.status === 404 || e.status === 403)) notFound.value = true
     return
   }
-  ledger.value = payments.value = attempts.value = null
+  ledger.value = payments.value = attempts.value = marks.value = null
   if (auth.can('payments.view')) loadPayments()
+  studentsApi.attendance(id.value).then((m) => (marks.value = m), () => (marks.value = []))
   if (tab.value !== 'overview') loadTab(tab.value)
 }
 
@@ -82,9 +88,7 @@ async function loadPayments() {
 async function loadTab(v: Tab) {
   if (v === 'ledger' && !ledger.value) ledger.value = await studentsApi.ledger(id.value).catch(() => [])
   if (v === 'tests' && !attempts.value) {
-    const [a, list] = await Promise.all([studentsApi.tests(id.value).catch(() => []), studentsApi.testList().catch(() => [])])
-    testNames.value = new Map(list.map((x) => [x.id, { title: x.title, max: x.max_score }]))
-    attempts.value = a
+    attempts.value = await studentsApi.tests(id.value).catch(() => [])
   }
 }
 
@@ -243,6 +247,8 @@ const canRefund = (p: Payment) => auth.can('payments.refund') && p.refunded < p.
             </div>
           </UiCard>
 
+          <AttendanceCard :marks="marks" />
+
           <UiCard :title="t('students.guardians')">
             <template v-if="auth.can('students.edit')" #actions>
               <UiButton size="sm" variant="ghost" icon="plus" @click="modal = 'guardian'">{{ t('common.add') }}</UiButton>
@@ -303,14 +309,16 @@ const canRefund = (p: Payment) => auth.can('payments.refund') && p.refunded < p.
         </UiTable>
       </UiCard>
 
+      <StudentCoinsTab v-else-if="tab === 'coins'" key="c" :student="s" />
+      <StudentBooksTab v-else-if="tab === 'books'" key="b" :student="s" @sold="afterPayment" />
       <UiCard v-else key="t" flush>
         <div v-if="!attempts" style="padding: 18px"><UiSkeleton :lines="3" /></div>
         <div v-else-if="attempts.length" class="card-b" style="padding-top: 6px">
           <div v-for="a in attempts" :key="a.id" class="list-row">
             <span class="grade">{{ a.score }}</span>
             <div class="grow">
-              <b>{{ testNames.get(a.test_id)?.title ?? t('students.testN', { n: a.test_id }) }}</b>
-              <span>{{ t('students.score', { s: a.score, max: testNames.get(a.test_id)?.max ?? '—' }) }}<template v-if="a.recommended_level_id"> · {{ t('students.recommended', { lv: refs.level(a.recommended_level_id)?.name }) }}</template></span>
+              <b>{{ a.test_title ?? t('students.testN', { n: a.test_id }) }}</b>
+              <span>{{ t('students.score', { s: a.score, max: a.max_score ?? '—' }) }}<template v-if="a.finished_at"> · {{ shortDate(a.finished_at, loc) }}</template><template v-if="a.recommended_level_id"> · {{ t('students.recommended', { lv: refs.level(a.recommended_level_id)?.name }) }}</template></span>
             </div>
             <UiChip :tone="a.status === 'reviewed' || a.status === 'done' ? 'ok' : 'warn'" small>{{ t(`students.attempt.${a.status}`, a.status) }}</UiChip>
           </div>

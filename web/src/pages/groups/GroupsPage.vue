@@ -27,7 +27,7 @@ const q = ref('')
 const level = ref(0)
 const status = ref<'' | Group['status']>('')
 const creating = ref(false)
-const teachers = useTeachers(groups)
+const teachers = useTeachers()
 
 const columns = computed<TableColumn[]>(() => [
   { key: 'name', label: t('groups.name') },

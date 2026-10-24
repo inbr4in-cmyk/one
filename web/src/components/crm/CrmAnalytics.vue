@@ -41,7 +41,7 @@ const funnel = computed(() => {
 const rows = (rec: Record<string, Funnel> | undefined, label: (k: string) => string) =>
   Object.entries(rec ?? {}).map(([k, v]) => ({ k, name: label(k), ...v })).sort((a, b) => b.new - a.new)
 const bySource = computed(() => rows(data.value?.by_source, (k) => (te(`crm.source.${k}`) ? t(`crm.source.${k}`) : k)))
-const byOwner = computed(() => rows(data.value?.by_owner, (k) => k))
+const byOwner = computed(() => (data.value?.by_owner ?? []).map((r) => ({ ...r, k: String(r.user_id ?? 'none'), name: r.name ?? t('crm.unassigned') })).sort((a, b) => b.new - a.new))
 const byBranch = computed(() => rows(data.value?.by_branch, (k) => (/^\d+$/.test(k) ? refs.branchName(Number(k)) : k)))
 const lost = computed(() => {
   const e = Object.entries(data.value?.lost_reasons ?? {}).sort((a, b) => b[1] - a[1])

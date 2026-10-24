@@ -1,7 +1,7 @@
 import { http, qs } from './http'
 
-export type LeadSource = 'sales' | 'qr' | 'site' | 'instagram' | 'whatsapp' | 'referral' | 'return'
-export const LEAD_SOURCES: LeadSource[] = ['instagram', 'whatsapp', 'qr', 'site', 'referral', 'sales', 'return']
+export type LeadSource = 'sales' | 'qr' | 'site' | 'instagram' | 'whatsapp' | 'referral' | 'return' | 'walk_in' | 'import'
+export const LEAD_SOURCES: LeadSource[] = ['instagram', 'whatsapp', 'qr', 'site', 'referral', 'walk_in', 'sales', 'return']
 
 export interface Stage {
   id: number
@@ -104,7 +104,7 @@ export interface Analytics {
   period: [string, string]
   total: Funnel
   by_source: Record<string, Funnel>
-  by_owner: Record<string, Funnel>
+  by_owner: (Funnel & { user_id: number | null; name: string | null })[]
   by_branch: Record<string, Funnel>
   lost_reasons: Record<string, number>
 }
