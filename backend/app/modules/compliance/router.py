@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.core.audit import write_audit
-from app.core.deps import DB, Actor, CurrentActor, require
+from app.core.deps import DB, Actor, CurrentActor, ensure_staff_mfa, require
 from app.core.errors import bad_request, conflict, forbidden, not_found
 from app.models import Complaint, Consent, DocumentVersion, Role, Student, StudentGuardian, User, UserBranch, UserRole
 from app.models.identity import UserKind
@@ -92,6 +92,14 @@ async def accept(body: AcceptIn, request: Request, db: DB, actor: CurrentActor) 
                       after={"version": doc.version, "student_id": body.student_id})
     await db.commit()
     return {"accepted_at": c.accepted_at, "version": doc.version}
+
+
+@router.get("/consents/my")
+async def my_consents(db: DB, actor: CurrentActor) -> list[dict]:
+    rows = (await db.execute(select(Consent, DocumentVersion).join(DocumentVersion, DocumentVersion.id == Consent.document_id)
+                             .where(Consent.user_id == actor.id).order_by(Consent.id.desc()))).all()
+    return [{"id": c.id, "document_id": d.id, "kind": d.kind, "version": d.version, "student_id": c.student_id,
+             "accepted_at": c.accepted_at, "revoked_at": c.revoked_at} for c, d in rows]
 
 
 @router.post("/consents/{consent_id}/revoke", status_code=204)
@@ -194,7 +202,11 @@ async def complaints(db: DB, actor: Actor = require("complaints", "view"), statu
     q = select(Complaint).where(*_handlers_filter(actor))
     if status:
         q = q.where(Complaint.status == status)
-    return [_view(c, False) for c in await db.scalars(q.order_by(Complaint.due_at).limit(500))]
+    rows = list(await db.scalars(q.order_by(Complaint.due_at).limit(500)))
+    names = dict((await db.execute(select(User.id, User.full_name).where(User.id.in_(
+        {c.author_id for c in rows} | {c.against_user_id for c in rows if c.against_user_id})))).all()) if rows else {}
+    return [_view(c, False) | {"author_name": names.get(c.author_id), "against_name": names.get(c.against_user_id)}
+            for c in rows]
 
 
 class ComplaintAction(BaseModel):
@@ -204,6 +216,7 @@ class ComplaintAction(BaseModel):
 
 @router.post("/complaints/{complaint_id}")
 async def act(complaint_id: int, body: ComplaintAction, db: DB, actor: CurrentActor) -> dict:
+    ensure_staff_mfa(actor)
     c = await db.get(Complaint, complaint_id)
     if c is None:
         raise not_found("Жалоба")

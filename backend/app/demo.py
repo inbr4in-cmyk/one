@@ -9,14 +9,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.security import hash_password
 from app.models import (
-    Attendance, Book, BookStock, Branch, Chat, ChatMessage, Group, GroupMember, Lesson, Level, Payment, Role, Room, ScheduleRule,
-    ShopItem, Student, StudentGuardian, Task, TaskAssignee, User, UserBranch, UserRole,
+    Attendance, Book, BookStock, Branch, Chat, ChatMessage, DocumentVersion, Group, GroupMember, Homework, Lesson, Level,
+    Payment, Role, Room, ScheduleRule, ShopItem, Student, StudentGuardian, Task, TaskAssignee, User, UserBranch, UserRole,
 )
 from app.models.identity import UserKind
 from app.models.learning import AttendanceStatus, LessonStatus
 from app.modules.academics.schedule import generate
 from app.modules.crm.service import create_lead
 from app.modules.inbox.service import receive
+from app.modules.students.router import upsert_portal_user
 from app.seed import create_owner
 from app.services import balance as bal
 from app.services import chats
@@ -126,15 +127,11 @@ async def seed_demo(db: AsyncSession) -> None:
             await db.flush()
             pname = rnd.choice(PARENTS)
             base = last.removesuffix("а").removesuffix("ов")
-            pu = User(kind=UserKind.PARENT, full_name=f"{pname} {base}{'ов' if pname in MALE_PARENTS else 'ова'}", phone=_phone(2000000 + k))
-            db.add(pu)
-            await db.flush()
+            pu = await upsert_portal_user(db, _phone(2000000 + k), f"{pname} {base}{'ов' if pname in MALE_PARENTS else 'ова'}",
+                                          UserKind.PARENT)
             db.add(StudentGuardian(student_id=s.id, user_id=pu.id, relation=rnd.choice(["мама", "папа"])))
             if s.phone:
-                su = User(kind=UserKind.STUDENT, full_name=s.full_name, phone=s.phone)
-                db.add(su)
-                await db.flush()
-                s.user_id = su.id
+                s.user_id = (await upsert_portal_user(db, s.phone, s.full_name, UserKind.STUDENT)).id
             db.add(GroupMember(group_id=g.id, student_id=s.id, joined_on=start))
             await chats.sync_student_in_group_chat(db, g, s, True)
             lessons = rnd.choice([8, 12, 12, 24])
@@ -189,6 +186,24 @@ async def seed_demo(db: AsyncSession) -> None:
         db.add(ChatMessage(chat_id=chat.id, sender_id=g.teacher_id, at=now() - timedelta(hours=3), kind="text",
                            text="Домашнее задание: Workbook стр. 24–25. Не забудьте выучить новые слова!", pinned=True))
         chat.last_message_at = now() - timedelta(hours=3)
+
+    # Homework for the groups, and the platform rules + recording consent so the cabinet shows the acceptance flow.
+    for g in groups:
+        db.add(Homework(group_id=g.id, title="Workbook стр. 24–25 и новые слова", body="Выучить слова урока 5, упр. 1–4.",
+                        due_at=at_local(today() + timedelta(days=2), time(15, 0)), created_by=g.teacher_id))
+    from pathlib import Path
+
+    rules = Path(__file__).resolve().parents[2] / "docs" / "source-tz-and-rules.txt"
+    text = rules.read_text(encoding="utf-8") if rules.exists() else "Правила платформы One English."
+    start_of_rules = text.find("Правила платформы")
+    db.add(DocumentVersion(kind="rules", version="1.0", title="Правила платформы One English",
+                           body=text[start_of_rules:][:90_000] if start_of_rules >= 0 else text[:90_000],
+                           effective_from=now() - timedelta(days=30)))
+    db.add(DocumentVersion(kind="recording", version="1.0", title="Согласие на видео- и аудиозапись",
+                           body="Я уведомлён(а), что в классах школы One English ведётся видео- и аудиозапись. Даю согласие на запись "
+                                "с моим участием (участием моего ребёнка) для контроля качества обучения и безопасности. Записи "
+                                "хранятся 30 дней, доступны только администрации школы и не передаются третьим лицам. Согласие "
+                                "можно отозвать.", effective_from=now() - timedelta(days=30)))
 
     # Books, shop, a couple of tasks.
     for code, title, price in (("FF2", "Family & Friends 2 — Class Book", 9500), ("ELE", "Solutions Elementary SB", 9000),

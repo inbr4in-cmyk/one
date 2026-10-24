@@ -85,6 +85,13 @@ async def submit_report(body: ReportIn, db: DB, actor: Actor = require_staff()) 
     return {"day": day}
 
 
+@router.get("/daily-report")
+async def my_report(db: DB, actor: Actor = require_staff()) -> dict:
+    day = today().isoformat()
+    r = await db.scalar(select(DailyReport).where(DailyReport.user_id == actor.id, DailyReport.day == day))
+    return {"day": day, "text": r.text if r else None, "updated_at": r.updated_at if r else None}
+
+
 @router.get("/daily-reports")
 async def reports(db: DB, actor: Actor = require("staff", "view"), day: date | None = None) -> list[dict]:
     d = (day or today()).isoformat()

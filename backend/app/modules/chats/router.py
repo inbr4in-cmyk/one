@@ -10,7 +10,7 @@ from sqlalchemy import func, or_, select
 
 from app.core.audit import write_audit
 from app.core.db import SessionLocal
-from app.core.deps import DB, Actor, CurrentActor, require
+from app.core.deps import DB, Actor, CurrentActor, ensure_staff_mfa, require
 from app.core.errors import bad_request, forbidden, not_found
 from app.core.kv import get_kv
 from app.core.permissions import NETWORK
@@ -343,6 +343,7 @@ async def monitor_list(db: DB, actor: Actor = require("chats", "monitor"), branc
 # ---------- files ----------
 @router.post("/files", status_code=201)
 async def upload(actor: CurrentActor, file: UploadFile = File(...)) -> dict:
+    ensure_staff_mfa(actor)
     await hit(f"upload:{actor.id}", 30, 300)
     data = await file.read(25 * 1024 * 1024 + 1)
     ctype = (file.content_type or "").split(";")[0].strip()
@@ -420,6 +421,7 @@ async def counters(db: DB, actor: CurrentActor) -> dict:
 @router.post("/ws/ticket")
 async def ws_ticket(actor: CurrentActor) -> dict:
     """A one-time, 30-second ticket: the access token never goes into a URL."""
+    ensure_staff_mfa(actor)
     t = secrets.token_urlsafe(24)
     await get_kv().set(f"ws:{t}", f"{actor.id}:{actor.session_id}", 30)
     return {"ticket": t}

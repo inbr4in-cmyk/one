@@ -2,7 +2,7 @@
 
 from datetime import UTC, date, datetime
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import and_, select
 
@@ -89,6 +89,21 @@ async def list_roles(db: DB, actor: Actor = require("roles", "view")) -> list[Ro
         o = RoleOut.model_validate(r)
         o.members = counts.get(r.id, 0)
         out.append(o)
+    return out
+
+
+@router.get("/roles/assignable")
+async def assignable_roles(db: DB, actor: Actor = require("staff", "create")) -> list[dict]:
+    """Roles this person may give when hiring: none wider than their own rights."""
+    out = []
+    for r in await db.scalars(select(Role).where(Role.archived_at.is_(None)).order_by(Role.is_system.desc(), Role.id)):
+        if r.code == "owner" and not actor.is_owner:
+            continue
+        try:
+            _check_grantable(actor, [PermIn(module=p.module, action=p.action, scope=p.scope) for p in r.permissions])
+        except HTTPException:
+            continue
+        out.append({"id": r.id, "code": r.code, "name": r.name})
     return out
 
 

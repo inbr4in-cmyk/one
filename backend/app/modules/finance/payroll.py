@@ -78,10 +78,11 @@ async def sheet(db: DB, actor: Actor = require("payroll", "view"), period: str |
                                     "by_kind": {}, "total": 0})
         p["by_kind"][kind] = {"title": KIND_NAMES.get(kind, kind), "amount": int(total), "count": cnt}
         p["total"] += int(total)
-    statuses = {}
-    if branch_id:
-        pp = await db.scalar(select(PayrollPeriod).where(PayrollPeriod.period == period, PayrollPeriod.branch_id == branch_id))
-        statuses[branch_id] = pp.status if pp else "draft"
+    branch_ids = {branch_id} if branch_id else ({a.branch_id for a in await db.scalars(
+        select(Accrual).where(Accrual.period == period, *_scope_filter(actor, "view", None)))} - {None})
+    done = {p.branch_id: p.status for p in await db.scalars(select(PayrollPeriod).where(
+        PayrollPeriod.period == period, PayrollPeriod.branch_id.in_(branch_ids or {-1})))}
+    statuses = {b: done.get(b, "draft") for b in sorted(branch_ids)}
     return {"period": period, "status": statuses, "people": sorted(people.values(), key=lambda p: -p["total"]),
             "total": sum(p["total"] for p in people.values())}
 

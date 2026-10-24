@@ -106,6 +106,12 @@ async def current_actor(
 CurrentActor = Annotated[Actor, Depends(current_actor)]
 
 
+def ensure_staff_mfa(actor: "Actor") -> None:
+    """For endpoints open to both staff and portal users: staff still need their 2FA session."""
+    if actor.is_staff and get_settings().require_staff_2fa and not actor.mfa:
+        raise forbidden("Включите двухфакторную защиту, чтобы работать в системе")
+
+
 def require(module: str, action: str):
     """Route dependency: the actor must hold module.action (any scope)."""
 

@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
 from app.core.audit import write_audit
-from app.core.deps import DB, Actor, CurrentActor, require
+from app.core.deps import DB, Actor, CurrentActor, ensure_staff_mfa, require
 from app.core.errors import bad_request, conflict, forbidden, not_found
 from app.core.schemas import ORM
 from app.models import (
@@ -321,6 +321,19 @@ async def _coin_limit(db: DB, actor: Actor) -> int:
                                .where(UserRole.user_id == actor.id)))
 
 
+async def _limit_state(db: DB, actor: Actor) -> dict:
+    limit = await _coin_limit(db, actor)
+    _, _, a, b = month_bounds(period_of(today()))
+    used = int(await db.scalar(select(func.coalesce(func.sum(CoinEntry.delta), 0)).where(
+        CoinEntry.actor_id == actor.id, CoinEntry.kind == "manual", CoinEntry.at >= a, CoinEntry.at < b)))
+    return {"limit": limit, "used": used, "left": max(limit - used, 0)}
+
+
+@router.get("/coins/limit")
+async def coin_limit(db: DB, actor: Actor = require("coins", "award")) -> dict:
+    return await _limit_state(db, actor)
+
+
 class AwardIn(BaseModel):
     student_id: int
     amount: int = Field(gt=0, le=10000)
@@ -332,10 +345,8 @@ async def award(body: AwardIn, db: DB, actor: Actor = require("coins", "award"))
     """Manual award within the monthly limit of the role, always with a comment (ТЗ 14.1)."""
     s = await get_student_scoped(db, actor, body.student_id, "coins", "award", lock=True)
     await db.get(User, actor.id, with_for_update=True)  # the monthly limit is per giver: serialize their awards
-    limit = await _coin_limit(db, actor)
-    _, _, a, b = month_bounds(period_of(today()))
-    used = int(await db.scalar(select(func.coalesce(func.sum(CoinEntry.delta), 0)).where(
-        CoinEntry.actor_id == actor.id, CoinEntry.kind == "manual", CoinEntry.at >= a, CoinEntry.at < b)))
+    st = await _limit_state(db, actor)
+    limit, used = st["limit"], st["used"]
     if used + body.amount > limit:
         raise conflict(f"Месячный лимит {limit} коинов: осталось {max(limit - used, 0)}")
     e = CoinEntry(student_id=s.id, at=now(), kind="manual", delta=body.amount, reason=body.reason, actor_id=actor.id)
@@ -363,8 +374,15 @@ async def coin_writeoff(body: AwardIn, db: DB, actor: Actor = require("coins", "
 
 
 @router.get("/students/{student_id}/coins")
-async def student_coins(student_id: int, db: DB, actor: Actor = require("coins", "view")) -> dict:
-    s = await get_student_scoped(db, actor, student_id, "coins", "view")
+async def student_coins(student_id: int, db: DB, actor: CurrentActor) -> dict:
+    """Staff with coins.view, or the student / their parent (from the cabinet)."""
+    if actor.is_staff:
+        ensure_staff_mfa(actor)
+        if not actor.can("coins", "view"):
+            raise forbidden()
+        s = await get_student_scoped(db, actor, student_id, "coins", "view")
+    else:
+        s = await portal_student(db, actor, student_id, allow_blocked=True)
     rows = await db.scalars(select(CoinEntry).where(CoinEntry.student_id == s.id).order_by(CoinEntry.id.desc()).limit(200))
     return {"balance": await coin_svc.balance(db, s.id),
             "items": [{"at": e.at, "kind": e.kind, "delta": e.delta, "reason": e.reason} for e in rows]}
@@ -372,9 +390,10 @@ async def student_coins(student_id: int, db: DB, actor: Actor = require("coins",
 
 @router.get("/coins/top")
 async def coins_top(db: DB, actor: CurrentActor, group_id: int | None = None, branch_id: int | None = None,
-                    limit: int = 20) -> list[dict]:
+                    period: str | None = None, limit: int = 20) -> list[dict]:
     """Leaderboard (ТЗ 14.3). Staff see their scope; students and parents see their group or branch, first names only."""
     if actor.is_staff:
+        ensure_staff_mfa(actor)
         allowed = actor.branches_for("coins", "view")
         if branch_id is not None:
             actor.ensure_branch("coins", "view", branch_id)
@@ -400,6 +419,9 @@ async def coins_top(db: DB, actor: CurrentActor, group_id: int | None = None, br
                                                                          GroupMember.left_on.is_(None))))
     if branches is not None:
         q = q.where(Student.branch_id.in_(branches))
+    if period:  # coins earned in that month
+        _, _, a, b = month_bounds(period)
+        q = q.where(CoinEntry.at >= a, CoinEntry.at < b)
     staff = actor.is_staff
     return [{"student_id": i if staff else None, "name": n if staff else n.split(" ")[0], "branch_id": b, "coins": int(t)}
             for i, n, b, t in (await db.execute(q)).all()]
@@ -458,6 +480,20 @@ async def update_item(item_id: int, body: ItemIn, db: DB, actor: Actor = require
     return {"id": i.id}
 
 
+@router.post("/shop/items/{item_id}/archive", status_code=204)
+async def archive_item(item_id: int, db: DB, actor: Actor = require("shop", "edit")) -> None:
+    i = await db.get(ShopItem, item_id)
+    if i is None or i.archived_at:
+        raise not_found("Товар")
+    if i.branch_id is None and actor.branches_for("shop", "edit") is not None:
+        raise forbidden("Общие товары сети меняет владелец")
+    if i.branch_id is not None:
+        actor.ensure_branch("shop", "edit", i.branch_id)
+    i.archived_at = now()
+    await write_audit(db, actor_id=actor.id, action="shop.item_archive", entity="shop_item", entity_id=i.id, ip=actor.ip)
+    await db.commit()
+
+
 async def _my_student(db: DB, actor: Actor, student_id: int) -> Student:
     """A student orders for themselves, a parent for their child; staff can't spend a child's coins."""
     return await portal_student(db, actor, student_id, allow_blocked=True)
@@ -499,6 +535,7 @@ async def place_order(body: OrderIn, db: DB, actor: CurrentActor) -> dict:
 
 @router.get("/shop/orders")
 async def orders(db: DB, actor: CurrentActor, status: str | None = None, student_id: int | None = None) -> list[dict]:
+    ensure_staff_mfa(actor)
     q = select(ShopOrder, ShopItem.name, Student.full_name).join(ShopItem, ShopItem.id == ShopOrder.item_id) \
         .join(Student, Student.id == ShopOrder.student_id)
     if actor.is_staff:
@@ -525,6 +562,7 @@ class OrderStatusIn(BaseModel):
 
 @router.post("/shop/orders/{order_id}/status")
 async def order_status(order_id: int, body: OrderStatusIn, db: DB, actor: CurrentActor) -> dict:
+    ensure_staff_mfa(actor)
     o = await db.get(ShopOrder, order_id, with_for_update=True)
     if o is None:
         raise not_found("Заказ")

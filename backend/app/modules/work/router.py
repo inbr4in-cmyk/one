@@ -55,10 +55,30 @@ class TaskOut(BaseModel):
     overdue: bool
     link_type: str | None
     link_id: int | None
+    link_title: str | None = None
     recurrence: str | None
     assignees: list[dict]
     comments: int = 0
     created_at: datetime
+
+
+async def _link_title(db: DB, kind: str | None, ref: int | None) -> str | None:
+    from app.models import Group, Lead, Lesson, Student
+    from app.services.clock import local
+
+    if not kind or not ref:
+        return None
+    if kind == "student":
+        return await db.scalar(select(Student.full_name).where(Student.id == ref))
+    if kind == "lead":
+        return await db.scalar(select(Lead.full_name).where(Lead.id == ref))
+    if kind == "group":
+        return await db.scalar(select(Group.name).where(Group.id == ref))
+    if kind == "lesson":
+        row = (await db.execute(select(Lesson.starts_at, Group.name).outerjoin(Group, Group.id == Lesson.group_id)
+                                .where(Lesson.id == ref))).first()
+        return f"{row[1] or 'Урок'} {local(row[0]).strftime('%d.%m %H:%M')}" if row else None
+    return None
 
 
 async def _out(db: DB, t: Task) -> TaskOut:
@@ -66,11 +86,12 @@ async def _out(db: DB, t: Task) -> TaskOut:
                              .where(TaskAssignee.task_id == t.id))).all()
     creator = await db.get(User, t.creator_id)
     n = await db.scalar(select(func.count()).select_from(TaskComment).where(TaskComment.task_id == t.id))
+    link_title = await _link_title(db, t.link_type, t.link_id)
     return TaskOut(id=t.id, title=t.title, description=t.description, creator_id=t.creator_id,
                    creator_name=creator.full_name if creator else None, branch_id=t.branch_id, priority=t.priority,
                    due_at=t.due_at, status=t.status, done_at=t.done_at,
                    overdue=bool(t.due_at and t.due_at < now() and t.status not in (TaskStatus.DONE, TaskStatus.CANCELLED)),
-                   link_type=t.link_type, link_id=t.link_id, recurrence=t.recurrence,
+                   link_type=t.link_type, link_id=t.link_id, link_title=link_title, recurrence=t.recurrence,
                    assignees=[{"id": i, "full_name": n_} for i, n_ in rows], comments=n or 0, created_at=t.created_at)
 
 

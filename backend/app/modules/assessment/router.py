@@ -11,7 +11,7 @@ from sqlalchemy import select
 
 from app.core.audit import write_audit
 from app.core.config import get_settings
-from app.core.deps import DB, Actor, CurrentActor, require
+from app.core.deps import DB, Actor, CurrentActor, ensure_staff_mfa, require
 from app.core.errors import bad_request, forbidden, not_found
 from app.core.ratelimit import client_ip, hit
 from app.core.schemas import ORM
@@ -395,6 +395,7 @@ async def review(attempt_id: int, body: ReviewIn, db: DB, actor: Actor = require
 
 @router.get("/students/{student_id}/tests", response_model=list[AttemptOut])
 async def student_tests(student_id: int, db: DB, actor: CurrentActor) -> list[AttemptOut]:
+    ensure_staff_mfa(actor)
     if not actor.can("tests", "view") and not actor.can("students", "view"):
         raise forbidden()
     s = await get_student_scoped(db, actor, student_id)

@@ -222,13 +222,17 @@ async def get_pnl(db: DB, actor: Actor = require("finance", "view"), period: str
 
 # ---------- dashboard ----------
 @router.get("/dashboard")
-async def dashboard(db: DB, actor: Actor = require("dashboard", "view"), branch_id: int | None = None) -> dict:
+async def dashboard(db: DB, actor: Actor = require("dashboard", "view"), branch_id: int | None = None,
+                    period: str | None = None) -> dict:
     branches = _branches(actor, "dashboard", "view", branch_id)
 
     def br(col):
         return col.in_(branches) if branches is not None else True
 
     d = today()
+    if period and period != period_of(d):
+        _, end, _, _ = month_bounds(period)
+        d = end - timedelta(days=1)  # a past month: its last day stands in for "today"
     period = period_of(d)
     _, _, m_start, m_end = month_bounds(period)
     day_start = at_local(d, time(0))

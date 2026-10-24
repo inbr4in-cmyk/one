@@ -543,12 +543,16 @@ class Roster(BaseModel):
     rows: list[RosterRow]
 
 
-async def _edit_rights(actor: Actor, lesson: Lesson) -> tuple[bool, bool]:
-    """(can_edit, needs_reason). The teacher marks from the lesson start until the end of that day; later only
+async def _edit_rights(db: DB, actor: Actor, lesson: Lesson) -> tuple[bool, bool]:
+    """(can_edit, needs_reason). The teacher marks from the lesson start until the end of the window — setting
+    «attendance_teacher_window»: "same_day" (default) or a number of hours after the lesson ends; later only
     staff with attendance.edit_past, always with a reason (ТЗ 7.1, 10.5)."""
     t = now()
     is_teacher = actor.id in (lesson.teacher_id, lesson.actual_teacher_id)
-    in_window = lesson.starts_at - timedelta(minutes=15) <= t < end_of_local_day(lesson.starts_at)
+    window = await setting(db, "attendance_teacher_window")
+    closes = (lesson.ends_at + timedelta(hours=int(window)) if str(window).isdigit()
+              else end_of_local_day(lesson.starts_at))
+    in_window = lesson.starts_at - timedelta(minutes=15) <= t < closes
     if actor.can("attendance", "mark") and in_window:
         scope = actor.scope("attendance", "mark")
         if scope != OWN or is_teacher:
@@ -590,7 +594,7 @@ async def roster(lesson_id: int, db: DB, actor: Actor = require("attendance", "v
         rows.append(RosterRow(student_id=None, lead_id=lead.id, full_name=lead.full_name, is_trial=True,
                               status=a.status if a else None, grade=None, comment=a.comment if a else None, stars=0,
                               lessons_left=None))
-    can_edit, needs_reason = await _edit_rights(actor, lesson)
+    can_edit, needs_reason = await _edit_rights(db, actor, lesson)
     return Roster(lesson=(await _lesson_outs(db, [lesson]))[0], can_edit=can_edit, needs_reason=needs_reason, rows=rows)
 
 
@@ -619,7 +623,7 @@ async def mark(lesson_id: int, body: MarksIn, db: DB, actor: Actor = require("at
     lesson = await _get_lesson(db, actor, lesson_id)
     if lesson.status == LessonStatus.CANCELLED:
         raise bad_request("Урок отменён")
-    can_edit, needs_reason = await _edit_rights(actor, lesson)
+    can_edit, needs_reason = await _edit_rights(db, actor, lesson)
     if not can_edit:
         raise forbidden("Отметка закрыта: исправить может администратор с указанием причины")
     if needs_reason and not body.reason:
