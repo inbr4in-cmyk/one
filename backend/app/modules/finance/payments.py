@@ -10,7 +10,6 @@ from app.core.audit import write_audit
 from app.core.deps import DB, Actor, require
 from app.core.errors import bad_request, forbidden, not_found
 from app.core.permissions import NETWORK
-from app.core.query import paginate
 from app.core.schemas import ORM, Page
 from app.models import Attendance, Lead, Lesson, Level, Payment, Refund, Student
 from app.services.reversals import reverse_for_payment
@@ -54,6 +53,7 @@ class PaymentOut(ORM):
     is_first: bool
     note: str | None
     student_name: str | None = None
+    student_lessons_left: int | None = None  # refund form: can't take back more lessons than are left
 
 
 class PaymentQuote(BaseModel):
@@ -158,7 +158,7 @@ async def _sale_facts(db: DB, s: Student, p: Payment, actor: Actor, was_left: bo
 async def list_payments(db: DB, actor: Actor = require("payments", "view"), student_id: int | None = None,
                         branch_id: int | None = None, date_from: datetime | None = None, date_to: datetime | None = None,
                         limit: int = 50, offset: int = 0) -> Page[PaymentOut]:
-    q = select(Payment, Student.full_name).join(Student, Student.id == Payment.student_id)
+    q = select(Payment, Student.full_name, Student.lessons_left).join(Student, Student.id == Payment.student_id)
     if actor.scope("payments", "view") != NETWORK:
         q = q.where(Payment.branch_id.in_(actor.branch_ids or {-1}))
     if student_id:
@@ -172,11 +172,10 @@ async def list_payments(db: DB, actor: Actor = require("payments", "view"), stud
     total = await db.scalar(select(func.count()).select_from(q.subquery()))
     rows = (await db.execute(q.order_by(Payment.id.desc()).limit(min(limit, 200)).offset(offset))).all()
     items = []
-    for p, name in rows:
+    for p, name, left in rows:
         o = PaymentOut.model_validate(p)
-        o.student_name = name
+        o.student_name, o.student_lessons_left = name, left
         items.append(o)
-    _ = paginate  # list uses a join, paginated by hand
     return Page(items=items, total=int(total or 0), limit=limit, offset=offset)
 
 

@@ -6,7 +6,7 @@ from sqlalchemy import func, or_, select, true
 from sqlalchemy.exc import IntegrityError
 
 from app.core.audit import snapshot, write_audit
-from app.core.deps import DB, Actor, require
+from app.core.deps import DB, Actor, require_staff, require
 from app.core.errors import bad_request, conflict, forbidden, not_found
 from app.core.permissions import NETWORK, OWN
 from app.core.schemas import ORM
@@ -268,6 +268,11 @@ async def add_rule(group_id: int, body: RuleIn, db: DB, actor: Actor = require("
     db.add(rule)
     await db.flush()
     created, problems = await sched.generate(db, rule, g)
+    if created == 0 and problems:
+        # Nothing could be scheduled: don't keep a rule that only produces conflicts.
+        await db.delete(rule)
+        await db.commit()
+        raise conflict(f"Все занятия пересекаются с расписанием: {problems[0]}" + (f" и ещё {len(problems) - 1}" if len(problems) > 1 else ""))
     await write_audit(db, actor_id=actor.id, action="schedule.rule_add", entity="group", entity_id=g.id, branch_id=g.branch_id,
                       ip=actor.ip, after={"weekdays": rule.weekdays, "time": f"{body.start_time}-{body.end_time}", "lessons": created})
     await db.commit()
@@ -311,7 +316,9 @@ class LessonOut(ORM):
 
 
 def lesson_filter(actor: Actor):
-    scope = actor.scope("schedule", "view")
+    """Lessons visible through the schedule, or — for attendance-only roles — through attendance."""
+    module = "schedule" if actor.can("schedule", "view") else "attendance"
+    scope = actor.scope(module, "view")
     if scope == NETWORK:
         return true()
     if scope == OWN:
@@ -342,10 +349,12 @@ async def _lesson_outs(db: DB, lessons: list[Lesson]) -> list[LessonOut]:
 
 @router.get("/lessons", response_model=list[LessonOut])
 async def list_lessons(
-    db: DB, actor: Actor = require("schedule", "view"), date_from: date = Query(alias="from"), date_to: date = Query(alias="to"),
+    db: DB, actor: Actor = require_staff(), date_from: date = Query(alias="from"), date_to: date = Query(alias="to"),
     branch_id: int | None = None, room_id: int | None = None, teacher_id: int | None = None, group_id: int | None = None,
     include_cancelled: bool = False,
 ) -> list[LessonOut]:
+    if not (actor.can("schedule", "view") or actor.can("attendance", "view")):
+        raise forbidden()
     if (date_to - date_from).days > 62:
         raise bad_request("Период не больше 2 месяцев")
     from app.services.clock import at_local

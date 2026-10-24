@@ -14,10 +14,13 @@ from app.services.messaging import notify_user
 from app.services.realtime import publish
 
 WINDOW = timedelta(hours=24)
+IG_HUMAN_WINDOW = timedelta(days=7)
 
 
 def in_window(conv: Conversation) -> bool:
-    return conv.last_inbound_at is not None and now() - conv.last_inbound_at < WINDOW
+    """Free-form reply allowed: WhatsApp 24 h; Instagram 7 days when a person answers (HUMAN_AGENT tag)."""
+    window = IG_HUMAN_WINDOW if conv.channel == "instagram" else WINDOW
+    return conv.last_inbound_at is not None and now() - conv.last_inbound_at < window
 
 
 async def _contact(db: AsyncSession, channel: str, external_id: str, name: str | None, username: str | None,

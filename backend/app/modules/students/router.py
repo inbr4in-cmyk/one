@@ -352,3 +352,17 @@ async def is_frozen_on(db: DB, student_id: int, d: date) -> bool:
     f = await db.scalar(select(Freeze.id).where(Freeze.student_id == student_id, Freeze.starts_on <= d,
                                                 func.coalesce(Freeze.ended_early_on, Freeze.ends_on) > d))
     return f is not None
+
+
+@router.get("/{student_id}/attendance")
+async def student_attendance(student_id: int, db: DB, actor: Actor = require("students", "view"), limit: int = 60) -> list[dict]:
+    """Attendance history for the card (dots), newest first."""
+    from app.models import Attendance, Lesson
+
+    s = await get_student_scoped(db, actor, student_id)
+    rows = (await db.execute(
+        select(Attendance, Lesson.starts_at, Group.name).join(Lesson, Lesson.id == Attendance.lesson_id)
+        .outerjoin(Group, Group.id == Lesson.group_id).where(Attendance.student_id == s.id)
+        .order_by(Lesson.starts_at.desc()).limit(min(limit, 300)))).all()
+    return [{"lesson_id": a.lesson_id, "at": at, "group": g, "status": a.status, "charged": a.charged, "grade": a.grade,
+             "comment": a.comment} for a, at, g in rows]

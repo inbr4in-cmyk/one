@@ -1,5 +1,7 @@
 import json
 import logging
+import re
+from datetime import timedelta
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
@@ -13,7 +15,7 @@ from app.core.permissions import NETWORK, OWN
 from app.core.ratelimit import client_ip, hit
 from app.core.schemas import ORM
 from app.core.security import mask_phone
-from app.models import Conversation, ExternalContact, ExternalMessage, Lead, LeadStage
+from app.models import Conversation, ExternalContact, ExternalMessage, Lead, LeadStage, MessageTemplate
 from app.modules.inbox.service import handle_meta_payload, in_window
 from app.services import meta
 from app.services.clock import now
@@ -156,7 +158,8 @@ async def _send(db: DB, actor: Actor, conv: Conversation, text: str, kind: str =
     if conv.channel == "whatsapp":
         res = await meta.wa_send_text(contact.external_id, text)
     else:
-        res = await meta.ig_send_text(contact.external_id, text)
+        late = conv.last_inbound_at is not None and now() - conv.last_inbound_at > timedelta(hours=24)
+        res = await meta.ig_send_text(contact.external_id, text, human_agent=late)
     msg = ExternalMessage(conversation_id=conv.id, at=now(), direction="out", external_message_id=res.external_id, kind=kind,
                           text=text, status="sent" if res.ok else "failed", error=res.error, sender_id=actor.id)
     db.add(msg)
@@ -185,7 +188,9 @@ async def _send(db: DB, actor: Actor, conv: Conversation, text: str, kind: str =
 async def reply(conv_id: int, body: SendIn, db: DB, actor: Actor = require("inbox", "reply")) -> MessageOut:
     conv = await _get(db, actor, conv_id, "reply")
     if not in_window(conv):
-        # Meta only allows free-form replies within 24h of the client's last message.
+        # Meta only allows free-form replies within 24h (Instagram: 7 days for a person) of the client's last message.
+        if conv.channel == "instagram":
+            raise conflict("Прошло больше 7 дней с последнего сообщения клиента — Instagram не даёт ответить первым")
         raise conflict("Прошло больше 24 часов с последнего сообщения клиента — отправьте шаблон")
     msg = await _send(db, actor, conv, body.text)
     await write_audit(db, actor_id=actor.id, action="inbox.reply", entity="conversation", entity_id=conv.id,
@@ -194,9 +199,19 @@ async def reply(conv_id: int, body: SendIn, db: DB, actor: Actor = require("inbo
     return MessageOut.model_validate(msg)
 
 
+@router.get("/message-templates")
+async def templates(db: DB, actor: Actor = require("inbox", "reply")) -> list[dict]:
+    """WhatsApp templates the inbox may send outside the 24 h window, with the variables each one needs."""
+    rows = await db.scalars(select(MessageTemplate).where(MessageTemplate.enabled.is_(True)).order_by(MessageTemplate.code,
+                                                                                                      MessageTemplate.locale))
+    return [{"code": t.code, "locale": t.locale, "body": t.body, "variables": sorted(set(re.findall(r"\{(\w+)\}", t.body)))}
+            for t in rows]
+
+
 class TemplateIn(BaseModel):
     code: str
     variables: dict = {}
+    locale: str = Field(default="ru", pattern="^(ru|kk)$")
 
 
 @router.post("/inbox/conversations/{conv_id}/template", response_model=MessageOut, status_code=201)
@@ -204,12 +219,12 @@ async def send_template(conv_id: int, body: TemplateIn, db: DB, actor: Actor = r
     conv = await _get(db, actor, conv_id, "reply")
     if conv.channel != "whatsapp":
         raise bad_request("Шаблоны есть только в WhatsApp")
-    tpl = await get_template(db, body.code, "ru")
+    tpl = await get_template(db, body.code, body.locale)
     if tpl is None:
         raise not_found("Шаблон")
     text = render(tpl.body, body.variables)
     contact = await db.get(ExternalContact, conv.contact_id)
-    res = await meta.wa_send_template(contact.external_id, tpl.wa_template_name or tpl.code, "ru", list(map(str, body.variables.values())))
+    res = await meta.wa_send_template(contact.external_id, tpl.wa_template_name or tpl.code, tpl.locale, list(map(str, body.variables.values())))
     msg = ExternalMessage(conversation_id=conv.id, at=now(), direction="out", external_message_id=res.external_id, kind="template",
                           text=text, status="sent" if res.ok else "failed", error=res.error, sender_id=actor.id)
     db.add(msg)

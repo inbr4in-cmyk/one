@@ -72,10 +72,13 @@ async def wa_send_template(to_phone: str, name: str, locale: str, params: list[s
     )
 
 
-async def ig_send_text(recipient_id: str, text: str) -> SendResult:
+async def ig_send_text(recipient_id: str, text: str, human_agent: bool = False) -> SendResult:
+    """human_agent: Instagram allows a person (not a bot) to answer up to 7 days after the client's message."""
     s = get_settings()
     if not s.ig_access_token:
         log.info("IG (dev) -> %s: %s", recipient_id, text[:60])
         return SendResult(True)
-    return await _post(f"{GRAPH}/me/messages", s.ig_access_token,
-                       {"recipient": {"id": recipient_id}, "message": {"text": text}})
+    payload: dict = {"recipient": {"id": recipient_id}, "message": {"text": text}}
+    if human_agent:
+        payload |= {"messaging_type": "MESSAGE_TAG", "tag": "HUMAN_AGENT"}
+    return await _post(f"{GRAPH}/me/messages", s.ig_access_token, payload)

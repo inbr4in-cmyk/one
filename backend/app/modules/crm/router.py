@@ -404,5 +404,6 @@ async def analytics(db: DB, actor: Actor = require("crm", "view"), date_from: da
             reasons[x.lost_reason] = reasons.get(x.lost_reason, 0) + 1
     names = dict((await db.execute(select(User.id, User.full_name).where(User.id.in_({x.owner_id for x in leads if x.owner_id})))).all())
     return {"period": [d1, d2], "total": funnel(leads), "by_source": group_by(lambda x: x.source),
-            "by_owner": {names.get(int(k), k) if k != "None" else "—": v for k, v in group_by(lambda x: x.owner_id).items()},
+            "by_owner": [{"user_id": int(k) if k != "None" else None, "name": names.get(int(k)) if k != "None" else None, **v}
+                         for k, v in group_by(lambda x: x.owner_id).items()],
             "by_branch": group_by(lambda x: x.branch_id), "lost_reasons": dict(sorted(reasons.items(), key=lambda kv: -kv[1]))}

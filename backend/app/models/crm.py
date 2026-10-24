@@ -13,7 +13,9 @@ class LeadSource:
     WHATSAPP = "whatsapp"
     REFERRAL = "referral"
     RETURN = "return"  # former student back in the «Возврат» funnel
-    ALL = (SALES, QR, SITE, INSTAGRAM, WHATSAPP, REFERRAL, RETURN)
+    WALK_IN = "walk_in"  # came to the reception
+    IMPORT = "import"
+    ALL = (SALES, QR, SITE, INSTAGRAM, WHATSAPP, REFERRAL, RETURN, WALK_IN, IMPORT)
 
 
 class Pipeline(IdMixin, TimestampMixin, ArchiveMixin, Base):

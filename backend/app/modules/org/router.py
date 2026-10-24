@@ -5,10 +5,11 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.core.audit import diff, snapshot, write_audit
-from app.core.deps import DB, Actor, CurrentActor, require
-from app.core.errors import bad_request, not_found
+from app.core.deps import DB, Actor, CurrentActor, require, require_staff
+from app.core.errors import bad_request, forbidden, not_found
 from app.core.schemas import ORM
-from app.models import Branch, Level, Room
+from app.models import Branch, Level, Role, Room, User, UserBranch, UserRole
+from app.models.identity import UserKind
 
 router = APIRouter(tags=["org"])
 
@@ -186,3 +187,20 @@ async def update_level(level_id: int, body: LevelIn, db: DB, actor: Actor = requ
     await write_audit(db, actor_id=actor.id, action="level.update", entity="level", entity_id=lv.id, ip=actor.ip, before=bb, after=aa)
     await db.commit()
     return LevelOut.model_validate(lv)
+
+
+@router.get("/staff-directory")
+async def staff_directory(db: DB, actor: Actor = require_staff(), role: str | None = None,
+                          branch_id: int | None = None) -> list[dict]:
+    """Light list of colleagues for pickers (teacher, assignee): names and branches only — no phones, no salary."""
+    q = select(User).where(User.kind == UserKind.STAFF, User.is_active.is_(True), User.archived_at.is_(None))
+    if role:
+        q = q.where(User.id.in_(select(UserRole.user_id).join(Role, Role.id == UserRole.role_id).where(Role.code == role)))
+    if branch_id:
+        if not actor.is_owner and branch_id not in actor.branch_ids:
+            raise forbidden("Нет доступа к этому филиалу")
+        q = q.where(User.id.in_(select(UserBranch.user_id).where(UserBranch.branch_id == branch_id)))
+    elif not actor.is_owner:
+        q = q.where(User.id.in_(select(UserBranch.user_id).where(UserBranch.branch_id.in_(actor.branch_ids or {-1}))))
+    return [{"id": u.id, "full_name": u.full_name, "position": u.position, "branch_ids": sorted(b.branch_id for b in u.branches),
+             "roles": sorted(ur.role.code for ur in u.roles)} for u in await db.scalars(q.order_by(User.full_name).limit(500))]

@@ -153,8 +153,23 @@ async def contacts(db: DB, actor: Actor = require("chats", "use"), q: str | None
             continue
         ok, _ = await policy.direct_allowed(db, me, u)
         if ok:
-            out.append({"id": u.id, "full_name": u.full_name, "kind": u.kind, "position": u.position})
-    return out[:200]
+            out.append({"id": u.id, "full_name": u.full_name, "kind": u.kind, "position": u.position,
+                        "subtitle": await _subtitle(db, u)})
+        if len(out) >= 200:
+            break
+    return out
+
+
+async def _subtitle(db: DB, u: User) -> str:
+    """Tells two «Дана» apart in the picker: role plus group or child."""
+    if u.kind == UserKind.STAFF:
+        return u.position or "Сотрудник"
+    kids = await policy._students_of_user(db, u)
+    if u.kind == UserKind.PARENT:
+        return "Родитель: " + ", ".join(k.full_name.split(" ")[0] for k in kids[:3]) if kids else "Родитель"
+    groups = (await db.scalars(select(Group.name).join(GroupMember, GroupMember.group_id == Group.id)
+                               .where(GroupMember.student_id.in_([k.id for k in kids] or [-1]), GroupMember.left_on.is_(None)))).all()
+    return "Ученик" + (f", {', '.join(groups)}" if groups else "")
 
 
 class DirectIn(BaseModel):
@@ -251,10 +266,13 @@ async def send(chat_id: int, body: SendIn, db: DB, actor: Actor = require("chats
     m.last_read_id = msg.id
     await db.commit()
     out = _msg(msg, {actor.id: actor.user})
-    member_ids = (await db.scalars(select(ChatMember.user_id).where(ChatMember.chat_id == chat.id, ChatMember.left_on.is_(None)))).all()
-    for uid in member_ids:
-        await publish(f"user:{uid}", {"type": "chat.message", "chat_id": chat.id, "message": out.model_dump()})
+    await _broadcast(db, chat.id, {"type": "chat.message", "chat_id": chat.id, "message": out.model_dump()})
     return out
+
+
+async def _broadcast(db: DB, chat_id: int, event: dict) -> None:
+    for uid in (await db.scalars(select(ChatMember.user_id).where(ChatMember.chat_id == chat_id, ChatMember.left_on.is_(None)))).all():
+        await publish(f"user:{uid}", event)
 
 
 @router.post("/chats/{chat_id}/read", status_code=204)
@@ -275,7 +293,9 @@ async def pin(message_id: int, db: DB, actor: Actor = require("chats", "pin")) -
         raise forbidden("Закреплять можно в своём групповом чате")
     msg.pinned = not msg.pinned
     await db.commit()
-    return _msg(msg, {u.id: u for u in [await db.get(User, msg.sender_id)] if u})
+    out = _msg(msg, {u.id: u for u in [await db.get(User, msg.sender_id)] if u})
+    await _broadcast(db, chat.id, {"type": "chat.pinned", "chat_id": chat.id, "message": out.model_dump()})
+    return out
 
 
 @router.get("/chats/{chat_id}/pinned", response_model=list[MessageOut])
@@ -295,6 +315,7 @@ async def hide(message_id: int, db: DB, actor: Actor = require("chats", "use")) 
         raise not_found("Сообщение")
     msg.hidden_at = now()
     await db.commit()
+    await _broadcast(db, msg.chat_id, {"type": "chat.hidden", "chat_id": msg.chat_id, "message_id": msg.id})
 
 
 @router.get("/chats/monitor", response_model=list[ChatOut])
@@ -378,6 +399,20 @@ async def counters(db: DB, actor: CurrentActor) -> dict:
         from app.modules.inbox.router import conv_filter
 
         out["inbox"] = await db.scalar(select(func.count()).select_from(Conversation).where(conv_filter(actor), Conversation.unread > 0))
+    if actor.can("crm", "view"):
+        from app.models import Lead, LeadStage
+        from app.modules.crm.service import lead_filter
+
+        # New leads nobody has answered yet: the number sales must bring to zero (ТЗ 9: reply within the hour).
+        out["crm"] = await db.scalar(select(func.count()).select_from(Lead).join(LeadStage, LeadStage.id == Lead.stage_id)
+                                     .where(lead_filter(actor), Lead.archived_at.is_(None), LeadStage.code == "new"))
+    if actor.can("tasks", "view"):
+        from app.models import Task, TaskAssignee
+        from app.models.work import TaskStatus
+
+        out["tasks"] = await db.scalar(select(func.count()).select_from(Task).join(TaskAssignee, TaskAssignee.task_id == Task.id)
+                                       .where(TaskAssignee.user_id == actor.id, Task.archived_at.is_(None),
+                                              Task.status.in_((TaskStatus.NEW, TaskStatus.IN_PROGRESS))))
     return out
 
 

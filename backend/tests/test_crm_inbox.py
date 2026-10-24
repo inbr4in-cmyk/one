@@ -63,7 +63,7 @@ async def test_instagram_lead_and_reply_window(client, db, owner_h):
     st = await db.get(LeadStage, lead.stage_id)
     assert st.code == "contacted" and lead.owner_id is not None  # first responder owns the lead
     conv = await db.get(Conversation, cid)
-    conv.last_inbound_at = now() - timedelta(hours=25)
+    conv.last_inbound_at = now() - timedelta(days=8)  # Instagram: a person may answer for 7 days
     await db.flush()
     r = await client.post(f"/api/inbox/conversations/{cid}/messages", headers=owner_h, json={"text": "Вы тут?"})
     assert r.status_code == 409

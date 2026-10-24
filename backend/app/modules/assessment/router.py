@@ -1,5 +1,6 @@
 """Test builder, public QR placement test (ТЗ 6) and final level tests (ТЗ 5.5)."""
 
+from datetime import datetime
 import hashlib
 import hmac
 
@@ -302,6 +303,10 @@ class AttemptOut(ORM):
     score: int
     status: str
     recommended_level_id: int | None
+    finished_at: datetime | None = None
+    test_title: str | None = None
+    test_kind: str | None = None
+    max_score: int | None = None
 
 
 async def finalize_final(db: DB, a: Attempt, t: Test, actor_id: int | None) -> None:
@@ -393,7 +398,14 @@ async def student_tests(student_id: int, db: DB, actor: CurrentActor) -> list[At
     if not actor.can("tests", "view") and not actor.can("students", "view"):
         raise forbidden()
     s = await get_student_scoped(db, actor, student_id)
-    return [AttemptOut.model_validate(a) for a in await db.scalars(select(Attempt).where(Attempt.student_id == s.id).order_by(Attempt.id.desc()))]
+    rows = (await db.execute(select(Attempt, Test).join(Test, Test.id == Attempt.test_id)
+                             .where(Attempt.student_id == s.id).order_by(Attempt.id.desc()))).all()
+    out = []
+    for a, t in rows:
+        o = AttemptOut.model_validate(a)
+        o.test_title, o.test_kind, o.max_score = t.title, t.kind, t.max_score
+        out.append(o)
+    return out
 
 
 __all__ = ["router", "Lead"]

@@ -173,7 +173,7 @@ async def seed_demo(db: AsyncSession) -> None:
     for i in range(18):
         b = branches["Янги шахар" if i % 3 else "Север"]
         await create_lead(db, full_name=_name(rnd), phone=_phone(3000000 + i), branch_id=b.id,
-                          source=rnd.choice(["instagram", "whatsapp", "qr_test", "referral", "site"]), owner_id=staff[4].id,
+                          source=rnd.choice(["instagram", "whatsapp", "qr", "referral", "site"]), owner_id=staff[4].id,
                           assignee_id=staff[4].id, stage=stages[i % len(stages)], notify=False)
     for i, (ch, text) in enumerate([("instagram", "Здравствуйте! Сколько стоит курс для ребёнка 8 лет?"),
                                     ("whatsapp", "Добрый день, есть ли группа IELTS по вечерам?"),

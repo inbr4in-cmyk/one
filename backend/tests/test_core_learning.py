@@ -50,7 +50,7 @@ async def test_schedule_generation_and_conflicts(db, client, owner_h):
         "name": "PI-3", "branch_id": bid, "level_id": await level_id(db, "PRE"), "teacher_id": t2.id, "capacity": 10})).json()
     r = await client.post(f"/api/groups/{g2['id']}/schedule", headers=owner_h, json={
         "weekdays": [0], "start_time": "17:00", "end_time": "18:00", "room_id": room.id, "valid_from": start.isoformat()})
-    assert r.json()["created"] == 0 and r.json()["conflicts"]
+    assert r.status_code == 409 and "пересекаются" in r.json()["detail"]
     # Same teacher in another room at the same time → conflict too
     other_room = await db.scalar(select(Room).where(Room.branch_id == bid, Room.id != room.id))
     nxt = next(start + timedelta(days=i) for i in range(7) if (start + timedelta(days=i)).weekday() == 0)
