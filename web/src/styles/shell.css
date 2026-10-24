@@ -1,0 +1,98 @@
+/* App shell — sidebar, top bar, menus. Ported from web.html. */
+.app { display: grid; grid-template-columns: var(--side-w) minmax(0, 1fr); min-height: 100vh }
+
+/* Sidebar */
+.side { background: var(--side); color: var(--side-ink); display: flex; flex-direction: column; padding: 18px 14px; gap: 16px; position: sticky; top: 0; height: 100vh; overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.2) transparent }
+.home-link { text-decoration: none; color: inherit; border-radius: 8px }
+.logo { display: flex; align-items: center; gap: 10px; padding: 2px 6px }
+.logo .wm { display: flex; flex-direction: column; line-height: .95 }
+.logo .wm span { font-family: var(--font-wordmark); font-weight: 800; font-size: 17px; letter-spacing: .01em }
+.logo .wm span:nth-child(2) { color: var(--logo-accent) }
+.logo small { display: block; font-size: 7.5px; letter-spacing: .24em; color: var(--side-muted); margin-top: 4px; text-transform: uppercase }
+.branch { background: rgba(255,255,255,.06); border-radius: 10px; padding: 4px; display: grid; grid-template-columns: 1fr 1fr; gap: 4px }
+.branch button { border: 0; background: transparent; color: var(--side-muted); padding: 7px 6px; border-radius: 7px; font-size: 12.5px; font-weight: 500; transition: background-color var(--t-fast) var(--ease-out), color var(--t-fast) var(--ease-out) }
+.branch button:hover { color: var(--side-ink) }
+.branch button.wide { grid-column: 1 / -1 }
+.branch button[aria-pressed="true"] { background: #fff; color: #01225F; font-weight: 600 }
+.side .lbl { font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--side-muted); padding: 0 10px; margin-bottom: -8px }
+.nav { display: flex; flex-direction: column; gap: 2px; position: relative }
+.nav a { display: flex; align-items: center; gap: 12px; padding: 9px 10px; border-radius: 9px; color: var(--side-muted); text-decoration: none; font-weight: 500; position: relative; transition: background-color var(--t-fast) var(--ease-out), color var(--t-fast) var(--ease-out) }
+.nav a:hover { background: var(--side-hover); color: #fff }
+.nav a.on { background: var(--side-active); color: #fff }
+.nav a:focus-visible { outline-color: #fff; outline-offset: -2px }
+.nav .ind { position: absolute; left: -14px; top: 0; width: 3px; height: 22px; border-radius: 0 3px 3px 0; background: var(--side-indicator); transition: transform var(--t-slow) var(--ease-out), opacity var(--t-fast) var(--ease-out); pointer-events: none }
+.nav .cnt { margin-left: auto; background: var(--red); color: #fff; font-size: 11px; font-weight: 600; border-radius: 999px; padding: 1px 7px; min-width: 20px; text-align: center }
+.nav .cnt.soft { background: rgba(255,255,255,.14) }
+.nav .sep { font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--side-muted); padding: 14px 10px 4px }
+.side .foot { margin-top: auto; font-size: 12px; color: var(--side-muted); padding: 10px; border-top: 1px solid rgba(255,255,255,.1) }
+
+/* Main column + top bar */
+.main { min-width: 0; display: flex; flex-direction: column }
+.top { display: flex; align-items: center; gap: 12px; height: var(--top-h); padding: 0 24px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--paper) 88%, transparent); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); position: sticky; top: 0; z-index: 20 }
+.search { flex: 1; max-width: 460px; display: flex; align-items: center; gap: 10px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 0 12px; height: 40px; color: var(--muted); transition: border-color var(--t-fast) var(--ease-out) }
+.search:focus-within { border-color: var(--navy-600) }
+.search input { border: 0; outline: 0; background: transparent; flex: 1; min-width: 0; color: var(--ink) }
+.search input::placeholder { color: var(--muted) }
+.top .sp { flex: 1 }
+.iconbtn { width: 40px; height: 40px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); display: grid; place-items: center; color: var(--ink); position: relative; flex: none; transition: border-color var(--t-fast) var(--ease-out) }
+.iconbtn:hover { border-color: var(--navy-600) }
+.iconbtn .dot { position: absolute; top: 8px; right: 9px; width: 8px; height: 8px; border-radius: 50%; background: var(--red); box-shadow: 0 0 0 2px var(--surface) }
+.me { display: flex; align-items: center; gap: 10px; padding: 4px 10px 4px 4px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); cursor: pointer; text-align: left; transition: border-color var(--t-fast) var(--ease-out) }
+.me:hover { border-color: var(--navy-600) }
+.me .who { line-height: 1.15; min-width: 0 }
+.me .who b { display: block; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px }
+.me .who span { font-size: 12px; color: var(--muted); white-space: nowrap }
+.burger, .search-btn { display: none }
+.top-pop { position: relative }
+
+/* Dropdowns */
+.menu, .notif { position: absolute; right: 0; top: calc(100% + 10px); background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow-pop); z-index: 40; transform-origin: top right }
+.menu { width: 264px; padding: 6px }
+.menu a, .menu button.mi { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 8px; color: var(--ink); text-decoration: none; font-size: 14px; width: 100%; border: 0; background: none; text-align: left }
+.menu a:hover, .menu button.mi:hover, .menu a:focus-visible, .menu button.mi:focus-visible { background: var(--navy-50); outline: 0 }
+.menu .mi.danger { color: var(--red) }
+.menu .mi .chip { margin-left: auto; font-size: 11px }
+.menu hr { border: 0; border-top: 1px solid var(--line); margin: 4px 0 }
+.menu .hd2 { padding: 8px 10px 6px; font-size: 12px; color: var(--muted) }
+.menu .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 10px; font-size: 13px; color: var(--muted) }
+.notif { width: 340px; padding: 8px }
+.notif .nh { display: flex; align-items: center; padding: 6px 10px 8px; font-weight: 600 }
+.notif .it { display: flex; gap: 10px; padding: 10px; border-radius: 8px }
+.notif .it:hover { background: var(--navy-50) }
+.notif .it p { margin: 0; font-size: 13px }
+.notif .it span { font-size: 12px; color: var(--muted) }
+
+/* Page area */
+.screen { padding: 24px; min-width: 0; flex: 1 }
+.ph { display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap; margin-bottom: 20px }
+.ph h1 { font-family: var(--font-display); font-weight: 600; font-size: 24px; margin: 0; letter-spacing: -.02em; line-height: 1.15 }
+.ph p { margin: 4px 0 0; color: var(--muted) }
+.ph .sp { flex: 1 }
+
+/* Scrim + bottom nav (mobile) */
+.scrim { position: fixed; inset: 0; background: var(--scrim); z-index: 55 }
+.bnav { display: none }
+
+@media (max-width: 899.98px) {
+  .app { grid-template-columns: minmax(0, 1fr) }
+  .side { position: fixed; left: 0; top: 0; bottom: 0; width: 280px; z-index: 60; transform: translateX(-100%); visibility: hidden; transition: transform 220ms var(--ease-out), visibility 0s linear 220ms }
+  .side.open { transform: none; box-shadow: 0 0 40px rgba(0,0,0,.35); visibility: visible; transition: transform 220ms var(--ease-out), visibility 0s }
+  .burger { display: grid }
+}
+@media (max-width: 760px) {
+  .top { padding: 0 max(16px, env(safe-area-inset-right, 0px)) 0 max(16px, env(safe-area-inset-left, 0px)); gap: 8px; height: 56px }
+  .search { display: none }
+  .search-btn { display: grid }
+  .me .who { display: none }
+  .me .chev { display: none }
+  .me { padding: 3px; border-radius: 50% }
+  .screen { padding: 16px max(16px, env(safe-area-inset-right, 0px)) 96px max(16px, env(safe-area-inset-left, 0px)) }
+  .ph h1 { font-size: 20px }
+  .menu, .notif { position: fixed; left: 16px; right: 16px; top: 64px; width: auto }
+  .bnav { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; position: fixed; left: 0; right: 0; bottom: 0; z-index: 50; background: var(--surface); border-top: 1px solid var(--line); padding: 6px max(8px, env(safe-area-inset-left, 0px)) calc(6px + env(safe-area-inset-bottom, 0px)) }
+  .bnav a, .bnav button { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 10.5px; color: var(--muted); text-decoration: none; border: 0; background: none; padding: 4px 0; position: relative; min-width: 0 }
+  .bnav a span.t, .bnav button span.t { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+  .bnav a.on { color: var(--red) }
+  .bnav .cnt { position: absolute; top: 0; left: calc(50% + 6px); background: var(--red); color: #fff; font-size: 10px; border-radius: 999px; padding: 0 5px }
+}
+@media (min-width: 900px) { .scrim { display: none } }

@@ -216,6 +216,7 @@ class MeOut(BaseModel):
     branch_ids: list[int]
     permissions: dict[str, str]
     rules_accepted_version: str | None
+    mfa_setup_required: bool = False
 
 
 @router.get("/me", response_model=MeOut)
@@ -227,6 +228,7 @@ async def me(actor: CurrentActor) -> MeOut:
         branch_ids=sorted(actor.branch_ids),
         permissions={f"{m}.{a}": s for (m, a), s in actor.grants.scopes.items()},
         rules_accepted_version=u.rules_accepted_version,
+        mfa_setup_required=actor.is_staff and get_settings().require_staff_2fa and not u.totp_enabled,
     )
 
 
@@ -306,6 +308,13 @@ async def my_sessions(actor: CurrentActor, db: DB) -> list[SessionOut]:
                    mfa_passed=s.mfa_passed, current=s.id == actor.session_id)
         for s in rows
     ]
+
+
+@router.delete("/sessions", status_code=204)
+async def end_other_sessions(actor: CurrentActor, db: DB) -> None:
+    await service.revoke_all(db, actor.id, "user_ended_others", except_id=actor.session_id)
+    await write_audit(db, actor_id=actor.id, action="auth.sessions_ended_others", entity="user", entity_id=actor.id, ip=actor.ip)
+    await db.commit()
 
 
 @router.delete("/sessions/{session_id}", status_code=204)

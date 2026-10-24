@@ -1,0 +1,78 @@
+/* Login and 2FA setup screens */
+.auth { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); min-height: 100vh; background: var(--paper) }
+.brand { position: relative; overflow: hidden; background: var(--side); color: var(--side-ink); padding: 40px 48px; display: flex; flex-direction: column; isolation: isolate }
+.brand .bg { position: absolute; inset: 0; z-index: -1; pointer-events: none }
+.brand .glow { position: absolute; border-radius: 50%; filter: blur(60px); opacity: .55; will-change: transform }
+.brand .glow.a { width: 520px; height: 520px; left: -160px; top: -140px; background: radial-gradient(circle, #1A3F8A 0%, transparent 70%); animation: drift-a 26s ease-in-out infinite alternate }
+.brand .glow.b { width: 440px; height: 440px; right: -160px; bottom: -120px; background: radial-gradient(circle, rgba(187,16,39,.55) 0%, transparent 70%); animation: drift-b 30s ease-in-out infinite alternate }
+.brand .bars { position: absolute; right: -140px; bottom: 12%; width: 360px; opacity: .05 }
+.brand .bars i { display: block; height: 56px; background: #fff; border-radius: 4px; margin-bottom: 22px; animation: slide 18s ease-in-out infinite alternate }
+.brand .bars i:nth-child(2) { width: 84%; animation-delay: -6s }
+.brand .bars i:nth-child(3) { animation-delay: -12s }
+.brand .grid-lines { position: absolute; inset: 0; background-image: linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px); background-size: 48px 48px; mask-image: radial-gradient(ellipse at 30% 40%, #000 0%, transparent 75%); -webkit-mask-image: radial-gradient(ellipse at 30% 40%, #000 0%, transparent 75%) }
+@keyframes drift-a { to { transform: translate(120px, 90px) scale(1.08) } }
+@keyframes drift-b { to { transform: translate(-100px, -70px) scale(1.12) } }
+@keyframes slide { to { transform: translateX(-40px) } }
+
+.brand .mark { display: flex; align-items: center; gap: 14px }
+.brand .hero { margin: auto 0; max-width: 460px; animation: rise var(--t-slow) var(--ease-out) both }
+.brand .wordmark { font-family: var(--font-wordmark); font-weight: 800; font-size: clamp(40px, 5vw, 64px); line-height: .92; letter-spacing: .01em; margin: 0 }
+.brand .wordmark span { display: block }
+.brand .wordmark span:nth-child(2) { color: var(--logo-accent) }
+.brand .tagline { margin: 16px 0 0; font-size: 12px; letter-spacing: .32em; text-transform: uppercase; color: var(--side-muted) }
+.brand .lead { margin: 28px 0 0; font-size: 16px; line-height: 1.5; color: rgba(255,255,255,.82); max-width: 380px }
+.brand .bfoot { font-size: 12.5px; color: var(--side-muted); display: flex; gap: 16px; flex-wrap: wrap }
+
+.auth-form { display: flex; flex-direction: column; padding: 24px 32px; min-width: 0 }
+.auth-form .tools { display: flex; justify-content: flex-end; gap: 8px; align-items: center }
+.auth-form .box { width: 100%; max-width: 400px; margin: auto; padding: 32px 0; animation: rise var(--t-slow) var(--ease-out) both }
+.auth-form h1 { font-family: var(--font-display); font-weight: 600; font-size: 26px; letter-spacing: -.02em; margin: 0 }
+.auth-form .sub { color: var(--muted); margin: 6px 0 22px }
+.auth-form .tabs { margin-bottom: 20px }
+.auth-form .legal { margin-top: 18px; font-size: 12.5px; color: var(--muted); text-align: center }
+.auth-form .back { border: 0; background: none; padding: 0; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; font-size: 13px; margin-bottom: 14px }
+.auth-form .back:hover { color: var(--ink) }
+.auth-form .back .ico { transform: rotate(180deg) }
+.auth-form .resend { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px; color: var(--muted) }
+.auth-form .linkbtn { border: 0; background: none; padding: 0; color: var(--info); font-weight: 500 }
+.auth-form .linkbtn:disabled { color: var(--muted); cursor: default }
+
+/* 2FA setup */
+.setup { min-height: 100vh; display: flex; flex-direction: column; background: var(--paper) }
+.setup .bar { display: flex; align-items: center; gap: 12px; padding: 14px 24px; background: var(--side); color: var(--side-ink) }
+.setup .wrap { width: 100%; max-width: 720px; margin: 0 auto; padding: 32px 16px 64px }
+.steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0 }
+.steps > li { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 14px; padding: 18px 0; border-bottom: 1px solid var(--line) }
+.steps > li:last-child { border-bottom: 0; padding-bottom: 0 }
+.steps > li:first-child { padding-top: 0 }
+.steps .n { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-family: var(--font-display); font-weight: 600; font-size: 13px; background: var(--navy-50); border: 1px solid var(--line); color: var(--accent-ink) }
+.steps b { display: block; font-weight: 600; margin-bottom: 2px }
+.steps p { margin: 0; color: var(--muted); font-size: 13px }
+.qr-wrap { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; margin-top: 12px }
+.qr { width: 184px; height: 184px; padding: 10px; border-radius: 12px; background: var(--qr-bg); border: 1px solid var(--line); display: grid; place-items: center; flex: none }
+.qr img { width: 100%; height: 100%; image-rendering: pixelated }
+.secret { display: flex; flex-direction: column; gap: 8px; min-width: 0 }
+.secret .code { font-size: 14px; padding: 6px 10px; letter-spacing: .08em; white-space: normal; overflow-wrap: anywhere }
+
+@media (max-width: 899.98px) {
+  .auth { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr }
+  .brand { padding: 24px max(16px, env(safe-area-inset-left, 0px)) 28px; min-height: 0 }
+  .brand .hero { margin: 28px 0 0 }
+  .brand .wordmark { font-size: 38px }
+  .brand .lead, .brand .bfoot { display: none }
+  .brand .tagline { margin-top: 10px; font-size: 10.5px }
+  .auth-form { padding: 16px max(16px, env(safe-area-inset-right, 0px)) 32px max(16px, env(safe-area-inset-left, 0px)) }
+  .auth-form .box { margin: 0 auto; padding-top: 20px }
+}
+@media (prefers-reduced-motion: reduce) {
+  .brand .glow, .brand .bars i { animation: none !important }
+}
+.auth-form .step-h h2 { margin: 0; font-size: 17px; font-weight: 600 }
+.auth-form .note { margin: 0; color: var(--muted); font-size: 13.5px }
+.auth-form .step-h .note { margin-top: 4px }
+.auth-form .stack .legal { margin: 0 }
+.setup .bar .btn.on-dark { color: var(--side-ink) }
+.setup .bar .btn.on-dark:hover { background: var(--side-hover) }
+.secret .lb { font-size: 12.5px; color: var(--muted) }
+.code-box { max-width: 280px }
+.auth-form .legal .ico { vertical-align: -3px; margin-right: 4px }

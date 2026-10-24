@@ -1,0 +1,64 @@
+/* Design tokens — ported from docs/design/web.html. Never hardcode colors in components. */
+:root {
+  --navy: #01225F; --navy-700: #0B2E73; --navy-600: #1A3F8A; --navy-100: #E6ECF7; --navy-50: #F3F6FB;
+  --red: #BB1027; --red-600: #9E0D21; --red-100: #FBE7EA;
+  --paper: #FAF6F3; --surface: #FFFFFF; --line: #E3E6EE; --ink: #0F1A33; --muted: #5B6782;
+  --ok: #1E8E5A; --warn: #C98A06; --info: #1A6FD1;
+  --ig: #D6286E; --wa: #1FAF54;
+  --ok-bg: #E5F4EC; --warn-bg: #FBF1DC; --info-bg: #E4EFFB;
+  --side: #01225F; --side-ink: #FFFFFF; --side-muted: rgba(255,255,255,.66); --side-hover: rgba(255,255,255,.08); --side-active: rgba(255,255,255,.14);
+  --side-indicator: #FF4D63; --logo-accent: #FF6B7E;
+  --bubble-in: #FFFFFF; --bubble-out: #01225F; --bubble-out-ink: #FFFFFF;
+  --chart-bar: #01225F; --chart-bar-soft: #9DB0D6; --grid: #ECEEF3;
+  --shadow: 0 1px 2px rgba(15,26,51,.06), 0 4px 16px rgba(15,26,51,.05);
+  --shadow-pop: 0 12px 32px rgba(0,0,0,.14);
+  --scrim: rgba(5,12,30,.45);
+  --lv-beg: #2E9A6E; --lv-ele: #1A6FD1; --lv-pre: #C9631A; --lv-int: #7B52C7; --lv-up: #B08900; --lv-ielts: #C2417F; --lv-kids: #0E8FA8;
+  --av-1: #7B52C7; --av-2: #1A6FD1; --av-3: #2E9A6E; --av-4: #C9631A; --av-5: #C2417F; --av-6: #0E8FA8; --av-7: #01225F; --av-8: #8A6D00;
+  /* Semantic tokens for the few places the prototype switches color in dark mode */
+  --btn-navy: #01225F;       /* .btn.navy, selected pills */
+  --accent-ink: #1A3F8A;     /* tinted icons on light chips */
+  --kpi-ico: #1A3F8A;
+  --on-accent: #FFFFFF;
+  --qr-bg: #FFFFFF; --qr-ink: #01225F;
+
+  --r: 12px; --r-sm: 8px;
+  --font-ui: 'Golos Text', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: 'Unbounded', 'Golos Text', system-ui, sans-serif;
+  --font-wordmark: 'Playfair Display', Georgia, serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Motion: short, ease-out, transform/opacity only */
+  --ease-out: cubic-bezier(.22, .61, .36, 1);
+  --t-fast: 120ms; --t-base: 180ms; --t-slow: 280ms;
+
+  --side-w: 252px;
+  --top-h: 64px;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0A1630; --surface: #111F3D; --line: #22325A; --ink: #EAF0FB; --muted: #9AA8C7;
+    --navy-100: #18295180; --navy-50: #0E1B38; --red: #E0354B; --red-600: #C42A3F; --red-100: #3A1622;
+    --ok: #3DB585; --warn: #E3A82B; --info: #5A9BEA; --ok-bg: #12322A; --warn-bg: #352A12; --info-bg: #132B4D;
+    --side: #07102A; --side-hover: rgba(255,255,255,.06); --side-active: rgba(255,255,255,.11);
+    --bubble-in: #1A2A4D; --bubble-out: #2A4C96; --chart-bar: #7FA2E6; --chart-bar-soft: #3A4F7E; --grid: #1D2C50;
+    --shadow: 0 1px 2px rgba(0,0,0,.3);
+    --shadow-pop: 0 12px 32px rgba(0,0,0,.45);
+    --btn-navy: #2A4C96; --accent-ink: #9DB6EE; --kpi-ico: #7FA2E6;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --paper: #0A1630; --surface: #111F3D; --line: #22325A; --ink: #EAF0FB; --muted: #9AA8C7;
+  --navy-100: #18295180; --navy-50: #0E1B38; --red: #E0354B; --red-600: #C42A3F; --red-100: #3A1622;
+  --ok: #3DB585; --warn: #E3A82B; --info: #5A9BEA; --ok-bg: #12322A; --warn-bg: #352A12; --info-bg: #132B4D;
+  --side: #07102A; --side-hover: rgba(255,255,255,.06); --side-active: rgba(255,255,255,.11);
+  --bubble-in: #1A2A4D; --bubble-out: #2A4C96; --chart-bar: #7FA2E6; --chart-bar-soft: #3A4F7E; --grid: #1D2C50;
+  --shadow: 0 1px 2px rgba(0,0,0,.3);
+  --shadow-pop: 0 12px 32px rgba(0,0,0,.45);
+  --btn-navy: #2A4C96; --accent-ink: #9DB6EE; --kpi-ico: #7FA2E6;
+  color-scheme: dark;
+}
