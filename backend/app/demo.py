@@ -114,6 +114,7 @@ async def seed_demo(db: AsyncSession) -> None:
 
     # Students with parents, payments and attendance for the past lessons.
     k = 0
+    prev_parent = None
     for g in groups:
         for _ in range(rnd.randint(6, 10)):
             k += 1
@@ -127,8 +128,12 @@ async def seed_demo(db: AsyncSession) -> None:
             await db.flush()
             pname = rnd.choice(PARENTS)
             base = last.removesuffix("а").removesuffix("ов")
-            pu = await upsert_portal_user(db, _phone(2000000 + k), f"{pname} {base}{'ов' if pname in MALE_PARENTS else 'ова'}",
-                                          UserKind.PARENT)
+            if k % 6 == 0 and prev_parent is not None:  # siblings: some parents have two children
+                pu = prev_parent
+            else:
+                pu = await upsert_portal_user(db, _phone(2000000 + k), f"{pname} {base}{'ов' if pname in MALE_PARENTS else 'ова'}",
+                                              UserKind.PARENT)
+            prev_parent = pu
             db.add(StudentGuardian(student_id=s.id, user_id=pu.id, relation=rnd.choice(["мама", "папа"])))
             if s.phone:
                 s.user_id = (await upsert_portal_user(db, s.phone, s.full_name, UserKind.STUDENT)).id
