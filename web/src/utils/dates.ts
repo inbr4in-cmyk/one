@@ -77,3 +77,8 @@ export function ageOf(birth: string | null): number | null {
   if (now.getMonth() < b.getMonth() || (now.getMonth() === b.getMonth() && now.getDate() < b.getDate())) a--
   return a
 }
+
+/** "с марта 2025" style month + year. */
+export function shortMonthYear(iso: string, locale: Locale): string {
+  return new Date(iso).toLocaleDateString(intlLocale(locale), { month: 'long', year: 'numeric' })
+}

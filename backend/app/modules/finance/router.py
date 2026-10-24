@@ -289,8 +289,11 @@ def _xlsx(title: str, header: list[str], rows: list[list], filename: str) -> Str
         c.font = Font(bold=True, color="FFFFFF")
         c.fill = PatternFill("solid", fgColor="01225F")
     for r in rows:
-        # Never let a cell start a formula: values come from user input (CSV/Excel injection).
-        ws.append([f"'{v}" if isinstance(v, str) and v[:1] in "=+-@" else v for v in r])
+        ws.append(r)
+        # Values come from user input: a text starting with "=" must stay text, never become a formula.
+        for c in ws[ws.max_row]:
+            if isinstance(c.value, str) and c.value.startswith("="):
+                c.data_type = "s"
     for col in ws.columns:
         ws.column_dimensions[col[0].column_letter].width = min(40, max(10, *(len(str(c.value or "")) + 2 for c in col)))
     buf = io.BytesIO()

@@ -44,3 +44,8 @@ export function caretAfterDigits(formatted: string, n: number): number {
   }
   return formatted.length
 }
+
+/** "+77011234567" -> "+7 701 123 45 67"; masked or foreign numbers are returned as is. */
+export function formatPhone(e164: string): string {
+  return isCompletePhone(e164) ? formatNational(e164.slice(2)) : e164
+}
