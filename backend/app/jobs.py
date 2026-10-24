@@ -10,18 +10,22 @@ import logging
 import sys
 from datetime import datetime, timedelta
 
-from sqlalchemy import exists, func, or_, select
+from sqlalchemy import and_, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit import write_audit
 from app.core.db import SessionLocal
 from app.core.kv import get_kv
-from app.models import BalanceEntry, GroupMember, Lead, LeadStage, Lesson, Student, Task, TaskAssignee
+from app.models import (
+    Attendance, BalanceEntry, Complaint, Expense, GroupMember, Lead, LeadStage, Lesson, Student, Task, TaskAssignee,
+)
+from app.models.learning import AttendanceStatus
 from app.models.work import TaskStatus
 from app.models.learning import LessonStatus, StudentStatus
 from app.modules.academics.schedule import extend_all
 from app.modules.crm.service import create_lead, crm_people
-from app.services.clock import at_local, end_of_local_day, local, now, today
+from app.services.clock import at_local, end_of_local_day, local, now, period_of, today
+from app.services.coins import award_auto
 from app.services.messaging import notify_user, retry_failed
 from app.services.values import setting
 
@@ -102,9 +106,27 @@ async def overdue_tasks(db: AsyncSession) -> int:
     return sent
 
 
+async def complaint_deadlines(db: AsyncSession) -> int:
+    """24 h to acknowledge, then the answer deadline: handlers are pinged once for each breach."""
+    t = now()
+    rows = await db.scalars(select(Complaint).where(Complaint.status.not_in(("answered", "closed")), or_(
+        and_(Complaint.acknowledged_at.is_(None), Complaint.created_at < t - timedelta(hours=24)), Complaint.due_at < t)))
+    sent = 0
+    for c in rows:
+        kind = "ack" if c.acknowledged_at is None and c.due_at >= t else "due"
+        if not await once(f"complaint:{c.id}:{kind}:{int(c.due_at.timestamp())}", 30 * DAY):
+            continue
+        targets = await crm_people(db, c.branch_id, "complaints", "answer") if c.branch_id else []
+        for uid in set(targets) - {c.against_user_id}:
+            await notify_user(db, uid, "complaint", ("Жалоба без подтверждения 24 ч" if kind == "ack" else "Просрочен ответ на жалобу")
+                              + f": {c.subject}", link=f"/complaints/{c.id}")
+            sent += 1
+    return sent
+
+
 async def minutely(db: AsyncSession) -> dict:
     out = {"attendance": await attendance_reminders(db), "stale_leads": await stale_leads(db),
-           "overdue_tasks": await overdue_tasks(db)}
+           "overdue_tasks": await overdue_tasks(db), "complaints": await complaint_deadlines(db)}
     await db.commit()
     out["wa_retried"] = await retry_failed(db)
     await db.commit()
@@ -178,11 +200,56 @@ async def spawn_recurring_tasks(db: AsyncSession) -> int:
     return n
 
 
+async def recurring_expenses(db: AsyncSession) -> int:
+    """Regular expenses (rent, internet…) are booked automatically on their day of the month."""
+    d = today()
+    period = period_of(d)
+    n = 0
+    for tpl in await db.scalars(select(Expense).where(Expense.archived_at.is_(None), Expense.recurring.is_(True),
+                                                      Expense.source_ref.is_(None))):
+        if (tpl.recurring_day or tpl.spent_on.day) > d.day or period_of(tpl.spent_on) == period:
+            continue
+        ref = f"recurring:{tpl.id}:{period}"
+        if await db.scalar(select(Expense.id).where(Expense.source_ref == ref)):
+            continue
+        db.add(Expense(branch_id=tpl.branch_id, category_id=tpl.category_id, amount=tpl.amount, spent_on=d, note=tpl.note,
+                       source_ref=ref, created_by=tpl.created_by))
+        n += 1
+    return n
+
+
+async def auto_coins(db: AsyncSession) -> int:
+    """Birthday coins, and on the 1st — «месяц без пропусков» for the month that just ended."""
+    d = today()
+    n = 0
+    for s in await db.scalars(select(Student).where(
+            Student.archived_at.is_(None), Student.status == StudentStatus.ACTIVE,
+            func.extract("month", Student.birth_date) == d.month, func.extract("day", Student.birth_date) == d.day)):
+        n += await award_auto(db, s.id, "birthday", ("birthday", d.year), "С днём рождения!")
+    if d.day == 1:
+        prev_end = at_local(d, datetime.min.time())
+        first = (d - timedelta(days=1)).replace(day=1)
+        prev_start = at_local(first, datetime.min.time())
+        rows = (await db.execute(
+            select(Attendance.student_id, func.count(),
+                   func.count().filter(Attendance.status.in_((AttendanceStatus.PRESENT, AttendanceStatus.LATE))))
+            .join(Lesson, Lesson.id == Attendance.lesson_id)
+            .where(Lesson.starts_at >= prev_start, Lesson.starts_at < prev_end, Attendance.student_id.is_not(None))
+            .group_by(Attendance.student_id))).all()
+        tag = first.year * 100 + first.month
+        for sid, total, present in rows:
+            if total >= 4 and total == present:
+                n += await award_auto(db, sid, "perfect_month", ("month", tag), "Месяц без пропусков")
+    return n
+
+
 async def nightly(db: AsyncSession) -> dict:
     out = {"lessons": await extend_all(db), "tasks": await spawn_recurring_tasks(db)}
     await db.commit()
     out["left"] = await mark_left(db)
     out["blocked"] = await block_nonpayers(db)
+    out["expenses"] = await recurring_expenses(db)
+    out["coins"] = await auto_coins(db)
     await db.commit()
     return out
 
