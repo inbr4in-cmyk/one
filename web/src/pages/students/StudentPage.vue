@@ -275,7 +275,7 @@ const canRefund = (p: Payment) => auth.can('payments.refund') && p.refunded < p.
       </div>
 
       <UiCard v-else-if="tab === 'ledger'" key="l" flush>
-        <UiTable :columns="ledgerCols" :rows="(ledger ?? []) as unknown as Record<string, unknown>[]" :loading="!ledger">
+        <UiTable :columns="ledgerCols" :rows="ledger ?? []" :loading="!ledger">
           <template #cell-at="{ row }"><span class="num">{{ dmy(row.at as string, loc) }}</span></template>
           <template #cell-kind="{ row }"><b>{{ kindLabel(row.kind as string) }}</b><div v-if="row.note" class="muted" style="font-size: 12px">{{ row.note }}</div></template>
           <template #cell-lessons_delta="{ row }"><span class="num" :class="{ okc: (row.lessons_delta as number) > 0 }">{{ signed(row.lessons_delta as number) }}</span></template>
@@ -286,7 +286,7 @@ const canRefund = (p: Payment) => auth.can('payments.refund') && p.refunded < p.
       </UiCard>
 
       <UiCard v-else-if="tab === 'payments'" key="p" flush>
-        <UiTable :columns="payCols" :rows="(payments ?? []) as unknown as Record<string, unknown>[]" :loading="!payments">
+        <UiTable :columns="payCols" :rows="payments ?? []" :loading="!payments">
           <template #cell-paid_at="{ row }"><span class="num">{{ dmy(row.paid_at as string, loc) }}</span></template>
           <template #cell-amount="{ row }">
             <b class="num">{{ money(row.amount as number, loc) }}</b>
@@ -294,7 +294,7 @@ const canRefund = (p: Payment) => auth.can('payments.refund') && p.refunded < p.
           </template>
           <template #cell-method="{ row }">{{ t(`payments.method.${row.method}`) }}</template>
           <template #cell-actions="{ row }">
-            <UiButton v-if="canRefund(row as unknown as Payment)" size="sm" variant="ghost" icon="history" @click="refundOf = row as unknown as Payment">{{ t('payments.refund') }}</UiButton>
+            <UiButton v-if="canRefund(row)" size="sm" variant="ghost" icon="history" @click="refundOf = row">{{ t('payments.refund') }}</UiButton>
           </template>
           <template #empty><UiEmptyState icon="wallet" :title="t('students.noPayments')" /></template>
         </UiTable>

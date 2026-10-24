@@ -80,7 +80,7 @@ const methodIco = (m: string) => (m === 'kaspi' ? 'K' : m === 'cash' ? '₸' : '
   </div>
 
   <UiCard flush>
-    <UiTable :columns="columns" :rows="rows as unknown as Record<string, unknown>[]" :loading="loading">
+    <UiTable :columns="columns" :rows="rows" :loading="loading">
       <template #cell-paid_at="{ row }"><span class="num">{{ dmy(row.paid_at as string, loc) }}</span> <span class="muted num">{{ hm(row.paid_at as string, loc) }}</span></template>
       <template #cell-student_name="{ row }">
         <RouterLink v-if="auth.can('students.view')" :to="{ name: 'student', params: { id: row.student_id as number } }" class="who2 rowlink">
@@ -102,7 +102,7 @@ const methodIco = (m: string) => (m === 'kaspi' ? 'K' : m === 'cash' ? '₸' : '
       </template>
       <template #cell-branch_id="{ row }"><span class="muted">{{ refs.branchName(row.branch_id as number) }}</span></template>
       <template #cell-actions="{ row }">
-        <UiButton v-if="canRefund(row as unknown as Payment)" size="sm" variant="ghost" icon="history" @click="refundOf = row as unknown as Payment">{{ t('payments.refund') }}</UiButton>
+        <UiButton v-if="canRefund(row)" size="sm" variant="ghost" icon="history" @click="refundOf = row">{{ t('payments.refund') }}</UiButton>
       </template>
       <template #empty><UiEmptyState icon="wallet" :title="t('payments.empty')" /></template>
     </UiTable>

@@ -82,3 +82,13 @@ export function ageOf(birth: string | null): number | null {
 export function shortMonthYear(iso: string, locale: Locale): string {
   return new Date(iso).toLocaleDateString(intlLocale(locale), { month: 'long', year: 'numeric' })
 }
+
+/** Short weekday name; 0 = Monday (backend convention). */
+export function weekdayShort(i: number, locale: Locale): string {
+  return new Date(2024, 0, 1 + i).toLocaleDateString(intlLocale(locale), { weekday: 'short' })
+}
+
+/** "Пн/Ср/Пт 16:00–17:30" from schedule rules. */
+export function ruleSummary(rules: { weekdays: number[]; start: string; end: string }[], locale: Locale): string {
+  return rules.map((r) => `${r.weekdays.map((d) => weekdayShort(d, locale)).join('/')} ${r.start.slice(0, 5)}–${r.end.slice(0, 5)}`).join(', ')
+}
