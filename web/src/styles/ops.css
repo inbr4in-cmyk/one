@@ -186,3 +186,9 @@ button.list-row:hover{background:var(--navy-50)}
 .drop:hover,.drop.over{border-color:var(--btn-navy);background:var(--navy-50)}
 .drop:focus-within{outline:2px solid var(--btn-navy);outline-offset:2px}
 .drop span{font-size:13px}
+/* coin award limit */
+.limit-meter{padding:10px 12px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--paper)}
+.limit-meter .lm-h{display:flex;justify-content:space-between;gap:8px;font-size:13px;color:var(--muted)}
+.limit-meter .lm-h b{color:var(--ink)}
+.limit-meter.red .lm-h b{color:var(--red)}
+.limit-meter.red .bar-track i{background:var(--red)}

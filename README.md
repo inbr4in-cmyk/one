@@ -14,7 +14,7 @@ Requirements: Python 3.13 + [uv](https://docs.astral.sh/uv/), PostgreSQL 16, Red
 ```bash
 # backend
 cd backend
-uv venv && uv pip install -e ".[dev]"
+uv venv && uv pip install -r pyproject.toml --extra dev
 createdb one_english                                  # user/password from OE_DATABASE_URL
 export OE_DATABASE_URL=postgresql+asyncpg://oe:oe@localhost:5432/one_english
 alembic upgrade head

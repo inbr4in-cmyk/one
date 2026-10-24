@@ -752,6 +752,59 @@ async def add_homework(group_id: int, body: HomeworkIn, db: DB, actor: Actor = r
     return HomeworkOut.model_validate(h)
 
 
+class HomeworkPatch(BaseModel):
+    title: str | None = Field(default=None, min_length=2, max_length=255)
+    body: str | None = Field(default=None, max_length=8000)
+    due_at: datetime | None = None
+    lesson_id: int | None = None
+
+
+async def _homework_for(db: DB, actor: Actor, homework_id: int, action: str) -> tuple[Homework, Group]:
+    h = await db.get(Homework, homework_id)
+    if h is None or h.archived_at:
+        raise not_found("Задание")
+    g = await _get_group(db, actor, h.group_id)
+    if actor.scope("homework", action) == OWN and g.teacher_id != actor.id:
+        raise not_found("Задание")
+    return h, g
+
+
+@router.get("/homework/{homework_id}/submissions")
+async def submissions(homework_id: int, db: DB, actor: Actor = require("homework", "view")) -> list[dict]:
+    """One row per active member: the teacher sees who handed in what."""
+    h, g = await _homework_for(db, actor, homework_id, "view")
+    rows = (await db.execute(
+        select(Student.id, Student.full_name, HomeworkSubmission).join(GroupMember, GroupMember.student_id == Student.id)
+        .outerjoin(HomeworkSubmission, (HomeworkSubmission.homework_id == h.id) & (HomeworkSubmission.student_id == Student.id))
+        .where(GroupMember.group_id == g.id, GroupMember.left_on.is_(None)).order_by(Student.full_name))).all()
+    from app.services import files
+
+    return [{"student_id": sid, "full_name": name, "status": sub.status if sub else "assigned",
+             "answer": sub.answer if sub else None, "file_url": files.signed_url(sub.file_url) if sub else None,
+             "grade": sub.grade if sub else None, "teacher_comment": sub.teacher_comment if sub else None,
+             "submitted_at": sub.updated_at if sub else None} for sid, name, sub in rows]
+
+
+@router.patch("/homework/{homework_id}", response_model=HomeworkOut)
+async def edit_homework(homework_id: int, body: HomeworkPatch, db: DB, actor: Actor = require("homework", "manage")) -> HomeworkOut:
+    h, g = await _homework_for(db, actor, homework_id, "manage")
+    for k, v in body.model_dump(exclude_unset=True).items():
+        setattr(h, k, v)
+    await write_audit(db, actor_id=actor.id, action="homework.update", entity="homework", entity_id=h.id, branch_id=g.branch_id,
+                      ip=actor.ip, after=body.model_dump(mode="json", exclude_unset=True))
+    await db.commit()
+    return HomeworkOut.model_validate(h)
+
+
+@router.post("/homework/{homework_id}/archive", status_code=204)
+async def archive_homework(homework_id: int, db: DB, actor: Actor = require("homework", "manage")) -> None:
+    h, g = await _homework_for(db, actor, homework_id, "manage")
+    h.archived_at = now()
+    await write_audit(db, actor_id=actor.id, action="homework.archive", entity="homework", entity_id=h.id, branch_id=g.branch_id,
+                      ip=actor.ip)
+    await db.commit()
+
+
 class CheckIn(BaseModel):
     grade: int | None = Field(default=None, ge=1, le=5)
     comment: str | None = Field(default=None, max_length=1000)

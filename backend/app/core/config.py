@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     wa_access_token: str = ""
     ig_access_token: str = ""
 
+    # Push: Firebase service-account JSON (FCM HTTP v1 serves Android and iOS via APNs). Empty = log only.
+    fcm_credentials_file: str = ""
+
     storage_dir: str = "storage"
     max_upload_mb: int = 25
 

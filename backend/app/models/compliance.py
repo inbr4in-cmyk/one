@@ -100,6 +100,21 @@ class Notification(IdMixin, Base):
     link: Mapped[StrN]
     read_at: Mapped[DTN]
     meta: Mapped[Json]
+    pushed_at: Mapped[DTN]  # sent to the phone (FCM/APNs) by the push worker
+
+
+class DeviceToken(IdMixin, TimestampMixin, Base):
+    """A phone of a user that receives push notifications."""
+
+    __tablename__ = "device_tokens"
+    __table_args__ = (UniqueConstraint("token"),)
+
+    user_id: Mapped[int] = fk("users.id")
+    session_id: Mapped[IntN]  # logout of that session drops the token
+    platform: Mapped[str] = mapped_column(String(8))  # ios | android
+    token: Mapped[str] = mapped_column(String(512))
+    locale: Mapped[str] = mapped_column(String(5), default="ru")
+    last_seen_at: Mapped[DTN]
 
 
 class Setting(IdMixin, TimestampMixin, Base):

@@ -206,6 +206,36 @@ async def logout(actor: CurrentActor, db: DB, response: Response) -> None:
     response.delete_cookie(REFRESH_COOKIE, path="/api/auth")
 
 
+class DeviceIn(BaseModel):
+    platform: str = Field(pattern="^(ios|android)$")
+    token: str = Field(min_length=20, max_length=512)
+    locale: str = Field(default="ru", pattern="^(ru|kk)$")
+
+
+@router.post("/devices", status_code=204)
+async def register_device(body: DeviceIn, actor: CurrentActor, db: DB) -> None:
+    """The mobile app registers its push token after login; it belongs to this session only."""
+    from app.models import DeviceToken
+
+    d = await db.scalar(select(DeviceToken).where(DeviceToken.token == body.token))
+    if d is None:
+        d = DeviceToken(token=body.token, user_id=actor.id, session_id=actor.session_id, platform=body.platform)
+        db.add(d)
+    # A phone handed to another person moves with the new login.
+    d.user_id, d.session_id, d.platform, d.locale, d.last_seen_at = actor.id, actor.session_id, body.platform, body.locale, datetime.now(UTC)
+    await db.commit()
+
+
+@router.delete("/devices/{token}", status_code=204)
+async def unregister_device(token: str, actor: CurrentActor, db: DB) -> None:
+    from app.models import DeviceToken
+
+    d = await db.scalar(select(DeviceToken).where(DeviceToken.token == token, DeviceToken.user_id == actor.id))
+    if d:
+        await db.delete(d)
+        await db.commit()
+
+
 class MeOut(BaseModel):
     id: int
     kind: str

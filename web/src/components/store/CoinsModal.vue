@@ -22,6 +22,8 @@ const amount = ref('')
 const reason = ref('')
 const error = ref<string | null>(null)
 const busy = ref(false)
+const limit = ref<{ limit: number; used: number; left: number } | null>(null)
+const tooMuch = computed(() => kind.value === 'award' && !!limit.value && Math.round(Number(amount.value)) > limit.value.left)
 const kinds = computed(() => [
   ...(auth.can('coins.award') ? [{ value: 'award' as const, label: t('coins.award') }] : []),
   ...(auth.can('coins.writeoff') ? [{ value: 'writeoff' as const, label: t('coins.writeoff') }] : []),
@@ -34,11 +36,13 @@ watch(open, (v) => {
   amount.value = ''
   reason.value = ''
   error.value = null
+  limit.value = null
+  if (auth.can('coins.award')) coinsApi.limit().then((l) => (limit.value = l)).catch(() => {})
 })
 
 async function submit() {
   const n = Math.round(Number(amount.value))
-  error.value = !who.value ? t('coins.pickStudent') : !(n > 0) ? t('coins.amountInvalid') : reason.value.trim().length < 3 ? t('common.reasonRequired') : null
+  error.value = !who.value ? t('coins.pickStudent') : !(n > 0) ? t('coins.amountInvalid') : tooMuch.value ? t('coins.overLimit', { n: limit.value!.left }) : reason.value.trim().length < 3 ? t('common.reasonRequired') : null
   if (error.value || !who.value) return
   busy.value = true
   try {
@@ -46,6 +50,7 @@ async function submit() {
     if (kind.value === 'award') {
       const r = await coinsApi.award(body)
       toast.ok(t('coins.awarded', { n, left: r.limit_left }))
+      if (limit.value) limit.value = { ...limit.value, used: limit.value.used + n, left: r.limit_left }
       emit('done', r.balance)
     } else {
       const r = await coinsApi.writeoff(body)
@@ -73,12 +78,16 @@ async function submit() {
       <StudentPicker v-else @pick="(s) => (who = s)" />
       <UiInput v-model="amount" type="number" :min="1" :label="t('coins.amount')" inputmode="numeric" />
       <UiInput v-model="reason" :label="t('common.reason')" :placeholder="kind === 'award' ? t('coins.reasonPh') : t('coins.writeoffPh')" :maxlength="255" />
+      <div v-if="kind === 'award' && limit" class="limit-meter" :class="{ red: tooMuch || !limit.left }">
+        <div class="lm-h"><span>{{ t('coins.limitLeft') }}</span><b class="num">{{ t('coins.limitOf', { left: limit.left, limit: limit.limit }) }}</b></div>
+        <div class="bar-track" role="progressbar" :aria-valuenow="limit.used" :aria-valuemax="limit.limit" :aria-label="t('coins.limitLeft')"><i :style="{ width: `${limit.limit ? Math.min(100, (limit.used / limit.limit) * 100) : 100}%` }" /></div>
+      </div>
       <p v-if="kind === 'award'" class="form-note">{{ t('coins.limitNote') }}</p>
       <p v-if="error" class="form-err" role="alert">{{ error }}</p>
     </form>
     <template #footer="{ close }">
       <UiButton @click="close">{{ t('common.cancel') }}</UiButton>
-      <UiButton type="submit" form="coins-form" :variant="kind === 'award' ? 'navy' : 'primary'" icon="coin" :loading="busy">{{ kind === 'award' ? t('coins.award') : t('coins.writeoff') }}</UiButton>
+      <UiButton type="submit" form="coins-form" :variant="kind === 'award' ? 'navy' : 'primary'" icon="coin" :loading="busy" :disabled="kind === 'award' && !!limit && !limit.left">{{ kind === 'award' ? t('coins.award') : t('coins.writeoff') }}</UiButton>
     </template>
   </UiModal>
 </template>

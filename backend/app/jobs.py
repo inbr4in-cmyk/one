@@ -8,6 +8,7 @@ Every job is idempotent: running it twice sends nothing twice.
 import asyncio
 import logging
 import sys
+import time
 from datetime import datetime, timedelta
 
 from sqlalchemy import and_, exists, func, or_, select
@@ -260,17 +261,23 @@ async def _run(job) -> dict:
 
 
 async def loop() -> None:
-    last_night = None
+    """Pushes every 5 s (ТЗ: push ≤ 1 min), minutely jobs every 60 s, nightly at 03:00 school time."""
+    from app.services.push import push_pending
+
+    last_night, last_minute = None, 0.0
     while True:
         try:
-            log.info("minutely %s", await _run(minutely))
+            await _run(push_pending)
+            if time.monotonic() - last_minute >= 60:
+                last_minute = time.monotonic()
+                log.info("minutely %s", await _run(minutely))
             t = local(now())
             if t.hour == 3 and last_night != t.date():
                 log.info("nightly %s", await _run(nightly))
                 last_night = t.date()
         except Exception:
             log.exception("job failed")
-        await asyncio.sleep(60)
+        await asyncio.sleep(5)
 
 
 if __name__ == "__main__":

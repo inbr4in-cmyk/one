@@ -2,12 +2,13 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
-import { UiAvatar, UiButton, UiCard, UiDrawer, UiEmptyState, UiPeriod, UiPrompt, UiSkeleton, UiTabs } from '@/components/ui'
+import { UiAvatar, UiButton, UiCard, UiChip, UiDrawer, UiEmptyState, UiPeriod, UiPrompt, UiSkeleton, UiTabs } from '@/components/ui'
 import AdjustModal from '@/components/ops/AdjustModal.vue'
 import { payrollApi, type Accrual, type PayrollPerson, type PayrollSheet, type PeriodStatus } from '@/api/payroll'
 import { ApiError } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
 import { useBranchStore } from '@/stores/branch'
+import { useRefsStore } from '@/stores/refs'
 import { useToastStore } from '@/stores/toast'
 import { dmy, money } from '@/utils/dates'
 import { periodLabel, periodOf } from '@/utils/period'
@@ -16,6 +17,8 @@ import type { Locale } from '@/i18n'
 const { t, te, locale } = useI18n()
 const auth = useAuthStore()
 const branch = useBranchStore()
+const refs = useRefsStore()
+refs.load()
 const toast = useToastStore()
 const route = useRoute()
 const loc = computed(() => locale.value as Locale)
@@ -104,7 +107,14 @@ const signed = (n: number) => (n > 0 ? `+${money(n, loc.value)}` : n < 0 ? `−$
   </div>
 
   <template v-if="tab === 'sheet'">
-    <div v-if="branch.filterId === null" class="alert info"><div class="grow"><span>{{ t('payroll.pickBranch') }}</span></div></div>
+    <div v-if="branch.filterId === null" class="alert info">
+      <div class="grow">
+        <span>{{ t('payroll.pickBranch') }}</span>
+        <div v-if="sheet && Object.keys(sheet.status).length" class="chips-row" style="margin-top: 8px">
+          <UiChip v-for="(st, id) in sheet.status" :key="id" small :tone="st === 'paid' ? 'ok' : st === 'approved' ? 'info' : undefined">{{ refs.branchName(Number(id)) }} · {{ t(`payroll.status.${st}`) }}</UiChip>
+        </div>
+      </div>
+    </div>
     <div v-else-if="sheet && status" class="alert" :class="status === 'paid' ? 'ok' : status === 'approved' ? 'info' : ''">
       <div class="grow">
         <b>{{ t(`payroll.status.${status}`) }} · {{ periodLabel(period, loc) }}</b>

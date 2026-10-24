@@ -2,7 +2,7 @@
 
 Revision ID: 0001
 Revises: 
-Create Date: 2026-10-24 16:27:12.955987
+Create Date: 2026-10-24 18:41:50.354209
 
 """
 from typing import Sequence, Union
@@ -291,6 +291,21 @@ def upgrade() -> None:
     sa.UniqueConstraint('user_id', 'day')
     )
     op.create_index(op.f('ix_daily_reports_user_id'), 'daily_reports', ['user_id'], unique=False)
+    op.create_table('device_tokens',
+    sa.Column('user_id', sa.BigInteger(), nullable=False),
+    sa.Column('session_id', sa.Integer(), nullable=True),
+    sa.Column('platform', sa.String(length=8), nullable=False),
+    sa.Column('token', sa.String(length=512), nullable=False),
+    sa.Column('locale', sa.String(length=5), nullable=False),
+    sa.Column('last_seen_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('id', sa.BigInteger(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='RESTRICT'),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('token')
+    )
+    op.create_index(op.f('ix_device_tokens_user_id'), 'device_tokens', ['user_id'], unique=False)
     op.create_table('expenses',
     sa.Column('branch_id', sa.BigInteger(), nullable=True),
     sa.Column('category_id', sa.BigInteger(), nullable=False),
@@ -338,6 +353,7 @@ def upgrade() -> None:
     sa.Column('link', sa.String(length=255), nullable=True),
     sa.Column('read_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('meta', postgresql.JSONB(astext_type=sa.Text()), nullable=False),
+    sa.Column('pushed_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('id', sa.BigInteger(), nullable=False),
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='RESTRICT'),
     sa.PrimaryKeyConstraint('id')
@@ -1393,6 +1409,8 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_expenses_category_id'), table_name='expenses')
     op.drop_index(op.f('ix_expenses_branch_id'), table_name='expenses')
     op.drop_table('expenses')
+    op.drop_index(op.f('ix_device_tokens_user_id'), table_name='device_tokens')
+    op.drop_table('device_tokens')
     op.drop_index(op.f('ix_daily_reports_user_id'), table_name='daily_reports')
     op.drop_table('daily_reports')
     op.drop_index(op.f('ix_complaints_branch_id'), table_name='complaints')

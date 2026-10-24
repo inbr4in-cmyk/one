@@ -6,6 +6,7 @@ from app.models.compliance import (
     Consent,
     DocumentVersion,
     MessageTemplate,
+    DeviceToken,
     Notification,
     OutboundMessage,
     Setting,

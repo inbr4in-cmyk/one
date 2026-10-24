@@ -56,3 +56,18 @@ async def test_student_homework_submit(db, client, owner_h):
     assert r.json()["status"] == "submitted"
     sb = await _portal_login(db, client, b["user_id"])
     assert (await client.post(f"/api/portal/homework/{h.id}/submit", headers=sb, json={"student_id": a["id"], "answer": "x"})).status_code == 404
+
+
+async def test_teacher_sees_submissions_and_edits_homework(db, client, owner_h):
+    from tests.conftest import login
+
+    _, teacher, g, (a, b) = await _world(db, client, owner_h)
+    th = await login(client, teacher.phone)
+    hw = (await client.post(f"/api/groups/{g['id']}/homework", headers=th, json={"title": "WB p.12"})).json()
+    sa = await _portal_login(db, client, a["user_id"])
+    await client.post(f"/api/portal/homework/{hw['id']}/submit", headers=sa, json={"student_id": a["id"], "answer": "1b 2a"})
+    rows = (await client.get(f"/api/homework/{hw['id']}/submissions", headers=th)).json()
+    assert {r["student_id"]: r["status"] for r in rows} == {a["id"]: "submitted", b["id"]: "assigned"}
+    assert (await client.patch(f"/api/homework/{hw['id']}", headers=th, json={"title": "WB p.13"})).json()["title"] == "WB p.13"
+    assert (await client.post(f"/api/homework/{hw['id']}/archive", headers=th)).status_code == 204
+    assert (await client.get(f"/api/homework/{hw['id']}/submissions", headers=th)).status_code == 404

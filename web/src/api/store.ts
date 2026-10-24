@@ -121,7 +121,9 @@ export const coinsApi = {
   writeoff: (body: { student_id: number; amount: number; reason: string }) =>
     http.post<{ balance: number }>('/coins/writeoff', body, { silent: true }),
   ofStudent: (id: number) => http.get<{ balance: number; items: CoinEntry[] }>(`/students/${id}/coins`, { silent: true }),
-  top: (p: { group_id?: number | null; branch_id?: number | null; limit?: number } = {}) => http.get<LeaderRow[]>(`/coins/top${qs(p)}`),
+  top: (p: { group_id?: number | null; branch_id?: number | null; period?: string | null; limit?: number } = {}) => http.get<LeaderRow[]>(`/coins/top${qs(p)}`),
+  /** My manual-award limit this month */
+  limit: () => http.get<{ limit: number; used: number; left: number }>('/coins/limit', { silent: true }),
 }
 
 export const shopApi = {
@@ -130,5 +132,6 @@ export const shopApi = {
   update: (id: number, body: ShopItemIn) => http.patch<{ id: number }>(`/shop/items/${id}`, body, { silent: true }),
   orders: (p: { status?: OrderStatus | ''; student_id?: number } = {}) => http.get<ShopOrder[]>(`/shop/orders${qs(p)}`),
   order: (student_id: number, item_id: number) => http.post<{ id: number; status: OrderStatus; balance: number }>('/shop/orders', { student_id, item_id }, { silent: true }),
+  archive: (id: number) => http.post<void>(`/shop/items/${id}/archive`),
   setStatus: (id: number, status: 'ready' | 'issued' | 'cancelled') => http.post<{ id: number; status: OrderStatus }>(`/shop/orders/${id}/status`, { status }),
 }
