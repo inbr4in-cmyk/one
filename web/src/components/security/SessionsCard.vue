@@ -32,12 +32,14 @@ async function load() {
   }
 }
 
-async function end(id: number, quiet = false) {
+async function end(id: number) {
   ending.value = new Set(ending.value).add(id)
   try {
     await authApi.endSession(id)
     sessions.value = sessions.value?.filter((s) => s.id !== id) ?? null
-    if (!quiet) toast.ok(t('security.sessionEnded'))
+    toast.ok(t('security.sessionEnded'))
+  } catch {
+    /* toast shown by the API client */
   } finally {
     const next = new Set(ending.value)
     next.delete(id)
@@ -48,8 +50,11 @@ async function end(id: number, quiet = false) {
 async function endOthers() {
   endingAll.value = true
   try {
-    await Promise.allSettled(others.value.map((s) => end(s.id, true)))
-    if (!others.value.length) toast.ok(t('security.sessionsEnded'))
+    await authApi.endOtherSessions()
+    sessions.value = sessions.value?.filter((s) => s.current) ?? null
+    toast.ok(t('security.sessionsEnded'))
+  } catch {
+    /* toast shown by the API client */
   } finally {
     endingAll.value = false
   }

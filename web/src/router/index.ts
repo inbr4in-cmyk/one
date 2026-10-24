@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
-import { NAV, visibleNav } from './nav'
+import { DETAIL_ROUTES, NAV, visibleNav } from './nav'
 import { useAuthStore } from '@/stores/auth'
 import { t } from '@/i18n'
 
@@ -10,16 +10,27 @@ declare module 'vue-router' {
     title?: string
     icon?: string
     perm?: string
+    /** Nav item highlighted for a detail page */
+    parent?: string
+    /** Full-height page without bottom padding (inbox, chats) */
+    flush?: boolean
   }
 }
 
 const StubPage = () => import('@/pages/StubPage.vue')
 
 const moduleRoutes: RouteRecordRaw[] = NAV.map((item) => ({
-  path: item.path.slice(1),
+  path: (item.route ?? item.path).slice(1),
   name: item.key,
   component: item.page ?? StubPage,
-  meta: { title: `nav.${item.key}`, icon: item.icon, perm: item.perm },
+  meta: { title: `nav.${item.key}`, icon: item.icon, perm: item.perm, flush: item.key === 'inbox' || item.key === 'chats' },
+}))
+
+const detailRoutes: RouteRecordRaw[] = DETAIL_ROUTES.map((d) => ({
+  path: d.path.slice(1),
+  name: d.name,
+  component: d.page,
+  meta: { title: `nav.${d.parent}`, perm: d.perm, parent: d.parent },
 }))
 
 const routes: RouteRecordRaw[] = [
@@ -31,6 +42,7 @@ const routes: RouteRecordRaw[] = [
     children: [
       { path: '', name: 'home', component: StubPage },
       ...moduleRoutes,
+      ...detailRoutes,
       { path: ':rest(.*)*', name: 'not-found', component: () => import('@/pages/NotFoundPage.vue'), meta: { title: 'notFound.title' } },
     ],
   },

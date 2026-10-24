@@ -29,7 +29,8 @@ const roleName = computed(() => {
   const code = u.roles[0] ?? u.kind
   return u.position || (te(`roles.${code}`) ? t(`roles.${code}`) : code)
 })
-const subtitle = computed(() => (auth.isStaff ? `${roleName.value} · ${t(`branch.${branch.current.key}`)}` : roleName.value))
+const branchLabel = computed(() => (branch.current.id === null ? t('branch.all') : branch.current.name))
+const subtitle = computed(() => (auth.isStaff && branchLabel.value ? `${roleName.value} · ${branchLabel.value}` : roleName.value))
 
 const themes = computed<{ value: ThemePref; label: string; icon: string; iconOnly: boolean }[]>(() => [
   { value: 'light', label: t('theme.light'), icon: 'sun', iconOnly: true },

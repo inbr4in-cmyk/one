@@ -102,13 +102,14 @@ export function refreshAccess(): Promise<boolean> {
 
 async function send(method: string, path: string, opts: RequestOptions): Promise<Response> {
   const headers: Record<string, string> = { Accept: 'application/json', ...CSRF_HEADER }
-  if (opts.body !== undefined) headers['Content-Type'] = 'application/json'
+  const isForm = opts.body instanceof FormData
+  if (opts.body !== undefined && !isForm) headers['Content-Type'] = 'application/json'
   if (opts.auth !== false && accessToken) headers.Authorization = `Bearer ${accessToken}`
   return fetch(`${BASE}${path}`, {
     method,
     headers,
     credentials: 'include',
-    body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
+    body: opts.body === undefined ? undefined : isForm ? (opts.body as FormData) : JSON.stringify(opts.body),
     signal: opts.signal,
   })
 }
@@ -146,6 +147,17 @@ export async function request<T>(method: string, path: string, opts: RequestOpti
     throw err
   }
   return data as T
+}
+
+/** `?a=1&b=x` from an object; empty, null and false values are skipped. */
+export function qs(params: Record<string, string | number | boolean | null | undefined>): string {
+  const sp = new URLSearchParams()
+  for (const [k, v] of Object.entries(params)) {
+    if (v === undefined || v === null || v === '' || v === false) continue
+    sp.set(k, String(v))
+  }
+  const s = sp.toString()
+  return s ? `?${s}` : ''
 }
 
 export const http = {

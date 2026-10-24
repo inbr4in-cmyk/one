@@ -3,6 +3,8 @@ import { computed, ref } from 'vue'
 import { authApi, type Me, type Scope, type TokenOut } from '@/api/auth'
 import { hasAccessToken, refreshAccess, setAccessToken } from '@/api/http'
 import { readPref, writePref } from '@/utils/storage'
+import { stopRealtime } from '@/composables/useRealtime'
+import { useRefsStore } from './refs'
 
 export type LoginStep =
   | { step: 'done' }
@@ -24,11 +26,12 @@ export const useAuthStore = defineStore('auth', () => {
 
   const isAuthenticated = computed(() => user.value !== null)
   const isStaff = computed(() => user.value?.kind === 'staff')
-  /**
-   * Staff must enable 2FA before using the app (backend `require_staff_2fa`, on by default).
-   * /auth/me does not expose the server flag, so after a reload we derive it from `totp_enabled`.
-   */
-  const mfaSetupRequired = computed(() => user.value?.kind === 'staff' && !user.value.totp_enabled)
+  /** Staff must enable 2FA before using the app; the server decides (`require_staff_2fa`). */
+  const mfaSetupRequired = computed(() => {
+    const u = user.value
+    if (!u) return false
+    return u.mfa_setup_required ?? (u.kind === 'staff' && !u.totp_enabled)
+  })
   const hasNetworkScope = computed(() =>
     Object.values(user.value?.permissions ?? {}).some((s) => s === 'network'),
   )
@@ -98,6 +101,8 @@ export const useAuthStore = defineStore('auth', () => {
 
   /** Forget the session locally (server already ended it, or refresh failed). */
   function clear() {
+    stopRealtime()
+    useRefsStore().reset()
     setAccessToken(null)
     user.value = null
     writePref(HINT, null)

@@ -17,7 +17,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       // Override with API_PROXY=http://host:port npm run dev
-      '/api': { target: process.env.API_PROXY ?? 'http://localhost:8000', changeOrigin: true },
+      '/api': { target: process.env.API_PROXY ?? 'http://localhost:8000', changeOrigin: true, ws: true },
     },
   },
 })

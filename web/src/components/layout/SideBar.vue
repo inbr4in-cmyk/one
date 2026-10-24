@@ -19,6 +19,7 @@ const { t } = useI18n()
 const items = computed(() => visibleNav(auth.can))
 const main = computed(() => items.value.filter((i) => i.group === 'main'))
 const settings = computed(() => items.value.filter((i) => i.group === 'settings'))
+const activeKey = computed(() => (route.meta.parent as string | undefined) ?? (route.name as string | undefined))
 
 // Sliding red indicator next to the active item
 const navEl = ref<HTMLElement | null>(null)
@@ -41,7 +42,7 @@ onMounted(() => {
   if (navEl.value) ro.observe(navEl.value)
 })
 onBeforeUnmount(() => ro?.disconnect())
-watch(() => [route.path, items.value.length, ui.locale], () => nextTick(placeIndicator))
+watch(() => [activeKey.value, items.value.length, ui.locale], () => nextTick(placeIndicator))
 </script>
 
 <template>
@@ -55,13 +56,13 @@ watch(() => [route.path, items.value.length, ui.locale], () => nextTick(placeInd
         aria-hidden="true"
         :style="{ transform: `translateY(${ind.y}px)`, opacity: ind.visible ? 1 : 0, transition: ind.animate ? undefined : 'none' }"
       />
-      <RouterLink v-for="it in main" :key="it.key" :to="it.path" active-class="on">
+      <RouterLink v-for="it in main" :key="it.key" :to="it.path" :class="{ on: activeKey === it.key }" :aria-current="activeKey === it.key ? 'page' : undefined">
         <UiIcon :name="it.icon" />{{ t(`nav.${it.key}`) }}
         <span v-if="counters.get(it.counter)" class="cnt" :class="{ soft: it.soft }">{{ counters.get(it.counter) }}</span>
       </RouterLink>
       <template v-if="settings.length">
         <div class="sep">{{ t('nav.settings') }}</div>
-        <RouterLink v-for="it in settings" :key="it.key" :to="it.path" active-class="on">
+        <RouterLink v-for="it in settings" :key="it.key" :to="it.path" :class="{ on: activeKey === it.key }" :aria-current="activeKey === it.key ? 'page' : undefined">
           <UiIcon :name="it.icon" />{{ t(`nav.${it.key}`) }}
         </RouterLink>
       </template>

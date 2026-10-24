@@ -12,6 +12,7 @@ const props = withDefaults(defineProps<{
   hover?: boolean
 }>(), { rowKey: 'id', skeletonRows: 4 })
 
+const emit = defineEmits<{ rowClick: [row: Row] }>()
 const alignCls = (c: Column) => (c.align === 'right' ? 'r' : c.align === 'center' ? 'c' : undefined)
 </script>
 
@@ -26,7 +27,7 @@ const alignCls = (c: Column) => (c.align === 'right' ? 'r' : c.align === 'center
           <tr v-for="i in skeletonRows" :key="`sk${i}`"><td v-for="c in columns" :key="c.key"><UiSkeleton :width="`${50 + ((i * 17) % 40)}%`" /></td></tr>
         </template>
         <template v-else>
-          <tr v-for="(row, i) in rows" :key="String(row[rowKey] ?? i)">
+          <tr v-for="(row, i) in rows" :key="String(row[rowKey] ?? i)" @click="emit('rowClick', row)">
             <td v-for="c in columns" :key="c.key" :class="alignCls(c)">
               <slot :name="`cell-${c.key}`" :row="row" :value="row[c.key]">{{ row[c.key] }}</slot>
             </td>

@@ -8,12 +8,14 @@ const props = withDefaults(defineProps<{
   label?: string
   hint?: string
   error?: string | null
-  type?: 'text' | 'password' | 'email' | 'search' | 'tel'
+  type?: 'text' | 'password' | 'email' | 'search' | 'tel' | 'date' | 'time' | 'datetime-local' | 'number'
   icon?: string
   placeholder?: string
   autocomplete?: string
   inputmode?: 'text' | 'numeric' | 'tel' | 'email' | 'search'
   maxlength?: number
+  min?: string | number
+  max?: string | number
   disabled?: boolean
   required?: boolean
   autofocus?: boolean
@@ -45,6 +47,8 @@ defineExpose({ focus: () => el.value?.focus(), el })
         :autocomplete="autocomplete"
         :inputmode="inputmode"
         :maxlength="maxlength"
+        :min="min"
+        :max="max"
         :disabled="disabled"
         :required="required"
         :autofocus="autofocus"

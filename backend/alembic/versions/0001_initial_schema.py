@@ -2,7 +2,7 @@
 
 Revision ID: 0001
 Revises: 
-Create Date: 2026-10-24 16:00:56.821795
+Create Date: 2026-10-24 16:27:12.955987
 
 """
 from typing import Sequence, Union
@@ -1019,6 +1019,24 @@ def upgrade() -> None:
     op.create_index(op.f('ix_leads_stage_id'), 'leads', ['stage_id'], unique=False)
     op.create_index(op.f('ix_leads_student_id'), 'leads', ['student_id'], unique=False)
     op.create_index(op.f('ix_leads_trial_lesson_id'), 'leads', ['trial_lesson_id'], unique=False)
+    op.create_table('lesson_ratings',
+    sa.Column('lesson_id', sa.BigInteger(), nullable=False),
+    sa.Column('student_id', sa.BigInteger(), nullable=False),
+    sa.Column('user_id', sa.BigInteger(), nullable=False),
+    sa.Column('stars', sa.Integer(), nullable=False),
+    sa.Column('comment', sa.String(length=255), nullable=True),
+    sa.Column('id', sa.BigInteger(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+    sa.ForeignKeyConstraint(['lesson_id'], ['lessons.id'], ondelete='RESTRICT'),
+    sa.ForeignKeyConstraint(['student_id'], ['students.id'], ondelete='RESTRICT'),
+    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='RESTRICT'),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('lesson_id', 'student_id')
+    )
+    op.create_index(op.f('ix_lesson_ratings_lesson_id'), 'lesson_ratings', ['lesson_id'], unique=False)
+    op.create_index(op.f('ix_lesson_ratings_student_id'), 'lesson_ratings', ['student_id'], unique=False)
+    op.create_index(op.f('ix_lesson_ratings_user_id'), 'lesson_ratings', ['user_id'], unique=False)
     op.create_table('attempts',
     sa.Column('test_id', sa.BigInteger(), nullable=False),
     sa.Column('student_id', sa.BigInteger(), nullable=True),
@@ -1226,6 +1244,10 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_attempts_lead_id'), table_name='attempts')
     op.drop_index(op.f('ix_attempts_branch_id'), table_name='attempts')
     op.drop_table('attempts')
+    op.drop_index(op.f('ix_lesson_ratings_user_id'), table_name='lesson_ratings')
+    op.drop_index(op.f('ix_lesson_ratings_student_id'), table_name='lesson_ratings')
+    op.drop_index(op.f('ix_lesson_ratings_lesson_id'), table_name='lesson_ratings')
+    op.drop_table('lesson_ratings')
     op.drop_index(op.f('ix_leads_trial_lesson_id'), table_name='leads')
     op.drop_index(op.f('ix_leads_student_id'), table_name='leads')
     op.drop_index(op.f('ix_leads_stage_id'), table_name='leads')

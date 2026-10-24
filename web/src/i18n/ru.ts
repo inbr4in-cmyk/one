@@ -47,8 +47,6 @@ const ru = {
   },
   branch: {
     label: 'Филиал',
-    yangi: 'Янги шахар',
-    north: 'Север',
     all: 'Вся сеть',
   },
   top: {

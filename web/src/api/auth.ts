@@ -27,6 +27,8 @@ export interface Me {
   branch_ids: number[]
   permissions: Record<string, Scope>
   rules_accepted_version: string | null
+  /** Staff must enable 2FA before using the app (older backends omit it). */
+  mfa_setup_required?: boolean
 }
 
 export interface SessionOut {
@@ -59,4 +61,5 @@ export const authApi = {
     http.post<null>('/auth/password', { old_password, new_password }),
   sessions: () => http.get<SessionOut[]>('/auth/sessions'),
   endSession: (id: number) => http.delete(`/auth/sessions/${id}`),
+  endOtherSessions: () => http.delete('/auth/sessions'),
 }

@@ -25,3 +25,10 @@ asyncio_default_fixture_loop_scope = "session"
 asyncio_default_test_loop_scope = "session"
 testpaths = ["tests"]
 pythonpath = ["."]
+
+[tool.ruff]
+line-length = 130
+
+[tool.ruff.lint]
+select = ["F", "E9"]
+per-file-ignores = { "app/models/__init__.py" = ["F401"] }

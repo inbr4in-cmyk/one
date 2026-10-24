@@ -10,11 +10,11 @@ from app.core.errors import bad_request, conflict, forbidden, not_found
 from app.core.schemas import ORM
 from app.models import (
     Book, BookMovement, BookStock, Branch, CoinEntry, Expense, ExpenseCategory, GroupMember, Payment, Role, ShopItem,
-    ShopOrder, Student, StudentGuardian, UserRole,
+    ShopOrder, Student, UserRole,
 )
 from app.models.finance import PaymentMethod
-from app.models.identity import UserKind
 from app.modules.finance.router import month_bounds
+from app.modules.portal.access import portal_student
 from app.modules.students.scope import get_student_scoped
 from app.services import coins as coin_svc
 from app.services.clock import now, period_of, today
@@ -437,15 +437,7 @@ async def update_item(item_id: int, body: ItemIn, db: DB, actor: Actor = require
 
 async def _my_student(db: DB, actor: Actor, student_id: int) -> Student:
     """A student orders for themselves, a parent for their child; staff can't spend a child's coins."""
-    s = await db.get(Student, student_id)
-    if s is None or s.archived_at:
-        raise not_found("Ученик")
-    if actor.user.kind == UserKind.STUDENT and s.user_id == actor.id:
-        return s
-    if actor.user.kind == UserKind.PARENT and await db.scalar(select(StudentGuardian).where(
-            StudentGuardian.student_id == s.id, StudentGuardian.user_id == actor.id)):
-        return s
-    raise not_found("Ученик")
+    return await portal_student(db, actor, student_id, allow_blocked=True)
 
 
 class OrderIn(BaseModel):

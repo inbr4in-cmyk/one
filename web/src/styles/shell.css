@@ -96,3 +96,8 @@
   .bnav .cnt { position: absolute; top: 0; left: calc(50% + 6px); background: var(--red); color: #fff; font-size: 10px; border-radius: 999px; padding: 0 5px }
 }
 @media (min-width: 900px) { .scrim { display: none } }
+.notif .notif-list { max-height: min(420px, 70vh); overflow-y: auto }
+.notif button.it { border: 0; background: none; width: 100%; text-align: left; cursor: pointer }
+.notif .it.unread p b { color: var(--ink) }
+.notif .it.unread { background: color-mix(in srgb, var(--info-bg) 60%, transparent) }
+.notif .nh .btn { margin: -6px 0 }

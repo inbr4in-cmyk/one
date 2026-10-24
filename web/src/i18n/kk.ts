@@ -49,8 +49,6 @@ const kk: Messages = {
   },
   branch: {
     label: 'Филиал',
-    yangi: 'Янги шахар',
-    north: 'Север',
     all: 'Бүкіл желі',
   },
   top: {

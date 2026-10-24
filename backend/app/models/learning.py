@@ -221,3 +221,16 @@ class Transfer(IdMixin, Base):
     reason: Mapped[StrN]
 
 
+
+
+class LessonRating(IdMixin, TimestampMixin, Base):
+    """Student/parent rates a held lesson (ТЗ 16.6 «Оценка урока»). Only admins see the comments."""
+
+    __tablename__ = "lesson_ratings"
+    __table_args__ = (UniqueConstraint("lesson_id", "student_id"),)
+
+    lesson_id: Mapped[int] = fk("lessons.id")
+    student_id: Mapped[int] = fk("students.id")
+    user_id: Mapped[int] = fk("users.id")
+    stars: Mapped[int]
+    comment: Mapped[StrN]

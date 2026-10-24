@@ -1,41 +1,37 @@
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import { useAuthStore } from './auth'
+import { useRefsStore } from './refs'
 import { readPref, writePref } from '@/utils/storage'
 
 export interface BranchOption {
   /** null = the whole network */
   id: number | null
-  /** i18n key under `branch.` */
-  key: string
+  name: string
 }
 
-/**
- * Static until the backend exposes GET /api/branches.
- * Ids follow the seed order (1 = Янги шахар, 2 = Север).
- */
-const BRANCHES: BranchOption[] = [
-  { id: 1, key: 'yangi' },
-  { id: 2, key: 'north' },
-]
-const ALL: BranchOption = { id: null, key: 'all' }
 const KEY = 'oe-branch'
 
+/** The branch the screens are filtered by. Options come from GET /api/branches. */
 export const useBranchStore = defineStore('branch', () => {
   const auth = useAuthStore()
+  const refs = useRefsStore()
   const stored = readPref(KEY)
   const selectedId = ref<number | null>(stored === null || stored === 'all' ? null : Number(stored))
 
   const options = computed<BranchOption[]>(() => {
-    if (auth.hasNetworkScope) return [...BRANCHES, ALL]
     const mine = auth.user?.branch_ids ?? []
-    const list = BRANCHES.filter((b) => b.id !== null && mine.includes(b.id))
-    return list.length ? list : BRANCHES
+    const list = refs.branches
+      .filter((b) => auth.hasNetworkScope || mine.includes(b.id))
+      .map((b) => ({ id: b.id, name: b.name }))
+    return auth.hasNetworkScope && list.length > 1 ? [...list, { id: null, name: '' }] : list
   })
 
   const current = computed<BranchOption>(
-    () => options.value.find((o) => o.id === selectedId.value) ?? options.value[0] ?? ALL,
+    () => options.value.find((o) => o.id === selectedId.value) ?? options.value[0] ?? { id: null, name: '' },
   )
+  /** Branch id to send as a filter (null = all branches the user may see). */
+  const filterId = computed(() => current.value.id)
 
   function select(id: number | null) {
     selectedId.value = id
@@ -43,5 +39,5 @@ export const useBranchStore = defineStore('branch', () => {
 
   watch(selectedId, (id) => writePref(KEY, id === null ? 'all' : String(id)))
 
-  return { options, current, select }
+  return { options, current, filterId, select }
 })
