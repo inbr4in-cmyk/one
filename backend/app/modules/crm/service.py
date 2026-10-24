@@ -49,13 +49,13 @@ async def default_branch_id(db: AsyncSession) -> int:
     return await db.scalar(select(Branch.id).where(Branch.archived_at.is_(None)).order_by(Branch.id))
 
 
-async def crm_people(db: AsyncSession, branch_id: int, module: str = "inbox") -> list[int]:
+async def crm_people(db: AsyncSession, branch_id: int, module: str = "inbox", action: str = "view") -> list[int]:
     """Staff of the branch who work with leads — they get notified about new ones."""
     rows = await db.scalars(
         select(UserBranch.user_id).join(UserRole, UserRole.user_id == UserBranch.user_id)
         .join(RolePermission, RolePermission.role_id == UserRole.role_id)
         .join(User, User.id == UserBranch.user_id)
-        .where(UserBranch.branch_id == branch_id, RolePermission.module == module, RolePermission.action == "view",
+        .where(UserBranch.branch_id == branch_id, RolePermission.module == module, RolePermission.action == action,
                User.is_active.is_(True), User.archived_at.is_(None))
         .distinct()
     )
