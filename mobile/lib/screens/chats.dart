@@ -22,16 +22,17 @@ import '../util/format.dart';
 
 /// Names of the children's teachers, to tag them as «учитель» (the API gives only the sender kind).
 Set<String> teacherNames(Session s) => {
-      for (final c in s.children)
-        for (final g in c.groups)
-          if (g.teacher != null) g.teacher!,
-    };
+  for (final c in s.children)
+    for (final g in c.groups)
+      if (g.teacher != null) g.teacher!,
+};
 
 String? roleTag(BuildContext context, {required String? kind, String? name, String? position}) {
   if (kind != 'staff') return null;
   final t = context.t;
-  if (name != null && teacherNames(context.read<Session>()).contains(name)) return t.roleTeacher;
   final p = position?.toLowerCase() ?? '';
+  // The server's job title wins; without it, a teacher of one of our groups is still a teacher.
+  if (p.isEmpty && name != null && teacherNames(context.read<Session>()).contains(name)) return t.roleTeacher;
   if (p.contains('учит') || p.contains('teacher') || p.contains('мұғал')) return t.roleTeacher;
   if (p.contains('менедж') || p.contains('manager')) return t.roleManager;
   if (p.contains('админ')) return t.roleAdmin;
@@ -60,7 +61,10 @@ class RoleTag extends StatelessWidget {
       margin: const EdgeInsets.only(left: 6),
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
       decoration: BoxDecoration(color: mgr ? oe.warn100 : oe.navy100, borderRadius: BorderRadius.circular(6)),
-      child: Text(text, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: mgr ? oe.warn : oe.tint)),
+      child: Text(
+        text,
+        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: mgr ? oe.warn : oe.tint),
+      ),
     );
   }
 }
@@ -129,7 +133,11 @@ class _ChatsScreenState extends State<ChatsScreen> {
     } else if (_chats == null) {
       body = ErrorState(error: _error!, onRetry: _load);
     } else if (chats.isEmpty) {
-      body = ListView(children: [EmptyState(icon: 'chat', title: _q.isEmpty ? t.noChats : t.nothingFound, text: _q.isEmpty ? t.noChatsText : null)]);
+      body = ListView(
+        children: [
+          EmptyState(icon: 'chat', title: _q.isEmpty ? t.noChats : t.nothingFound, text: _q.isEmpty ? t.noChatsText : null),
+        ],
+      );
     } else {
       body = ListView(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 96),
@@ -150,34 +158,56 @@ class _ChatsScreenState extends State<ChatsScreen> {
               icon: OeIcon('compose', color: oe.brandInk),
               label: Text(t.newChat, style: const TextStyle(fontWeight: FontWeight.w600)),
             ),
-      body: Column(children: [
-        TabHeader(t.navChats, actions: [
-          if (ios) HeaderAction('compose', label: t.newChat, onTap: () => context.push('/chats/new')),
-        ]),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: _SearchField(hint: t.search, onChanged: (v) => setState(() => _q = v)),
-        ),
-        Expanded(child: RefreshIndicator.adaptive(onRefresh: _load, child: body)),
-      ]),
+      body: Column(
+        children: [
+          TabHeader(
+            t.navChats,
+            actions: [if (ios) HeaderAction('compose', label: t.newChat, onTap: () => context.push('/chats/new'))],
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: _SearchField(hint: t.search, onChanged: (v) => setState(() => _q = v)),
+          ),
+          Expanded(
+            child: RefreshIndicator.adaptive(onRefresh: _load, child: body),
+          ),
+        ],
+      ),
     );
   }
 
   /// Parents: each chat under the child it is about, so two children's teachers aren't confused (design 11a).
   List<Widget> _grouped(BuildContext context, Session s, List<Chat> chats) {
-    Widget row(Chat c) => _ChatRow(chat: c, onTap: () async {
-          await context.push('/chats/${c.id}');
-          _load();
-        });
+    Widget row(Chat c) => _ChatRow(
+      chat: c,
+      onTap: () async {
+        await context.push('/chats/${c.id}');
+        _load();
+      },
+    );
     if (!s.isParent || s.children.isEmpty) return [for (final c in chats) row(c)];
     final used = <int>{};
     final out = <Widget>[];
     for (final k in s.children) {
-      final groupChats = {for (final g in k.groups) if (g.chatId != null) g.chatId!};
-      final teacherIds = {for (final g in k.groups) if (g.teacherId != null) g.teacherId!};
+      final groupChats = {
+        for (final g in k.groups)
+          if (g.chatId != null) g.chatId!,
+      };
+      final teacherIds = {
+        for (final g in k.groups)
+          if (g.teacherId != null) g.teacherId!,
+      };
+      // The server says which child a chat is about; older chats fall back to group / teacher matching.
       final mine = chats
-          .where((c) => !used.contains(c.id) && (groupChats.contains(c.id) || (c.other != null && teacherIds.contains(c.other!.id)) ||
-              (c.other != null && c.other!.fullName == k.fullName)))
+          .where(
+            (c) =>
+                !used.contains(c.id) &&
+                (c.aboutStudentId != null
+                    ? c.aboutStudentId == k.id
+                    : (groupChats.contains(c.id) ||
+                          (c.other != null && teacherIds.contains(c.other!.id)) ||
+                          (c.other != null && c.other!.fullName == k.fullName))),
+          )
           .toList();
       if (mine.isEmpty) continue;
       used.addAll(mine.map((c) => c.id));
@@ -213,7 +243,10 @@ class _SearchField extends StatelessWidget {
           fillColor: ios ? oe.fill : oe.m3nav,
           isDense: true,
           contentPadding: EdgeInsets.zero,
-          prefixIcon: Padding(padding: const EdgeInsets.all(10), child: OeIcon('search', size: 18, color: oe.muted)),
+          prefixIcon: Padding(
+            padding: const EdgeInsets.all(10),
+            child: OeIcon('search', size: 18, color: oe.muted),
+          ),
           prefixIconConstraints: const BoxConstraints(minWidth: 40),
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(ios ? 12 : 26), borderSide: BorderSide.none),
           enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(ios ? 12 : 26), borderSide: BorderSide.none),
@@ -234,49 +267,78 @@ class _ChatRow extends StatelessWidget {
     final t = context.t;
     final oe = context.oe;
     final c = chat;
-    final tag = c.other == null ? null : roleTag(context, kind: c.other!.kind, name: c.other!.fullName, position: c.other!.position);
+    final tag = c.other == null
+        ? null
+        : roleTag(context, kind: c.other!.kind, name: c.other!.fullName, position: c.other!.position);
     final me = context.read<Session>().me?.fullName;
     final last = c.lastText == null
         ? t.noMessages
         : (c.lastSender == null
-            ? c.lastText!
-            : (c.lastSender == me ? '${t.you}: ${c.lastText}' : (c.isGroup ? '${_short(c.lastSender!)}: ${c.lastText}' : c.lastText!)));
+              ? c.lastText!
+              : (c.lastSender == me
+                    ? '${t.you}: ${c.lastText}'
+                    : (c.isGroup ? '${_short(c.lastSender!)}: ${c.lastText}' : c.lastText!)));
     return InkWell(
       key: Key('chat-${c.id}'),
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 10),
-        decoration: OeStyle.ios ? BoxDecoration(border: Border(bottom: BorderSide(color: oe.line))) : null,
-        child: Row(children: [
-          if (c.isGroup)
-            Container(
-              width: 44,
-              height: 44,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(color: oe.navy100, shape: BoxShape.circle),
-              child: OeIcon('users', size: 22, color: oe.tint),
-            )
-          else
-            Avatar(c.title, size: 44),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                Flexible(
-                    child: Text(c.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600))),
-                if (tag != null) RoleTag(tag),
-              ]),
-              const SizedBox(height: 2),
-              Text(last, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 14, color: oe.muted)),
-            ]),
-          ),
-          const SizedBox(width: 8),
-          Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            if (c.lastAt != null) Text(listTime(context, c.lastAt!), style: TextStyle(fontSize: 12, color: oe.muted)),
-            const SizedBox(height: 6),
-            if (c.unread > 0) CountBadge(c.unread) else const SizedBox(height: 22),
-          ]),
-        ]),
+        decoration: OeStyle.ios
+            ? BoxDecoration(
+                border: Border(bottom: BorderSide(color: oe.line)),
+              )
+            : null,
+        child: Row(
+          children: [
+            if (c.isGroup)
+              Container(
+                width: 44,
+                height: 44,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(color: oe.navy100, shape: BoxShape.circle),
+                child: OeIcon('users', size: 22, color: oe.tint),
+              )
+            else
+              Avatar(c.title, size: 44),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          c.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                      if (tag != null) RoleTag(tag),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    last,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 14, color: oe.muted),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                if (c.lastAt != null) Text(listTime(context, c.lastAt!), style: TextStyle(fontSize: 12, color: oe.muted)),
+                const SizedBox(height: 6),
+                if (c.unread > 0) CountBadge(c.unread) else const SizedBox(height: 22),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -308,6 +370,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   bool _older = true;
   bool _loadingOlder = false;
   bool _sending = false;
+  String? _rejected;
+  String? _rejectedText;
   VoiceRecorder? _rec;
   Timer? _recTick;
   StreamSubscription<dynamic>? _rt;
@@ -427,25 +491,34 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       builder: (c) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              IconTile('shield', size: 44, radius: 14),
-              const SizedBox(width: 12),
-              Text(t.chatRulesTitle, style: display(20, color: oe.brandInk)),
-            ]),
-            const SizedBox(height: 14),
-            for (final (i, s) in [('file', t.chatRule1), ('phone', t.chatRule2), ('flag', t.chatRule3)])
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  OeIcon(i, size: 20, color: oe.tint),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  IconTile('shield', size: 44, radius: 14),
                   const SizedBox(width: 12),
-                  Expanded(child: Text(s, style: const TextStyle(fontSize: 14))),
-                ]),
+                  Text(t.chatRulesTitle, style: display(20, color: oe.brandInk)),
+                ],
               ),
-            const SizedBox(height: 6),
-            OeButton(t.understood, onPressed: () => Navigator.pop(c)),
-          ]),
+              const SizedBox(height: 14),
+              for (final (i, s) in [('file', t.chatRule1), ('phone', t.chatRule2), ('flag', t.chatRule3)])
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      OeIcon(i, size: 20, color: oe.tint),
+                      const SizedBox(width: 12),
+                      Expanded(child: Text(s, style: const TextStyle(fontSize: 14))),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 6),
+              OeButton(t.understood, onPressed: () => Navigator.pop(c)),
+            ],
+          ),
         ),
       ),
     );
@@ -461,6 +534,16 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       final m = await _api.send(widget.id, text: text);
       _text.clear();
       _add(m);
+    } on ApiException catch (e) {
+      // The server's reason (e.g. a phone number from a student) stays above the composer until the text changes.
+      if (mounted && !e.isNetwork && e.status >= 400 && e.status < 500 && e.detail.isNotEmpty) {
+        setState(() {
+          _rejected = e.detail;
+          _rejectedText = text;
+        });
+      } else if (mounted) {
+        toastError(context, e);
+      }
     } catch (e) {
       if (mounted) toastError(context, e);
     } finally {
@@ -481,8 +564,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     try {
       final up = await _api.upload(p.bytes, p.name, p.mime);
       final caption = _text.text.trim();
-      final m = await _api.send(widget.id,
-          fileKey: up.key, fileName: up.name, kind: p.kind, text: p.kind == 'image' && caption.isNotEmpty && !_hasPhone ? caption : null);
+      final m = await _api.send(
+        widget.id,
+        fileKey: up.key,
+        fileName: up.name,
+        kind: p.kind,
+        text: p.kind == 'image' && caption.isNotEmpty && !_hasPhone ? caption : null,
+      );
       if (p.kind == 'image' && caption.isNotEmpty && !_hasPhone) _text.clear();
       _add(m);
     } catch (e) {
@@ -494,11 +582,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
 
   Future<void> _attachMenu() async {
     final t = context.t;
-    final r = await pickAction<String>(context, options: [
-      ('camera', t.camera, 'camera'),
-      ('gallery', t.gallery, 'image'),
-      ('file', t.file, 'clip'),
-    ]);
+    final r = await pickAction<String>(
+      context,
+      options: [('camera', t.camera, 'camera'), ('gallery', t.gallery, 'image'), ('file', t.file, 'clip')],
+    );
     if (r == null) return;
     await _sendFile(r == 'file' ? pickDocument : () => pickPhoto(camera: r == 'camera'));
   }
@@ -540,11 +627,15 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   Future<void> _messageMenu(ChatMessage m) async {
     final t = context.t;
     final mine = m.senderId == context.read<Session>().me?.id;
-    final r = await pickAction<String>(context, options: [
-      if (m.text != null) ('copy', t.copy, 'copy'),
-      if (mine) ('hide', t.hideMessage, 'x'),
-      if (!mine) ('report', t.report, 'flag'),
-    ], message: mine ? null : t.reportHint);
+    final r = await pickAction<String>(
+      context,
+      options: [
+        if (m.text != null) ('copy', t.copy, 'copy'),
+        if (mine) ('hide', t.hideMessage, 'x'),
+        if (!mine) ('report', t.report, 'flag'),
+      ],
+      message: mine ? null : t.reportHint,
+    );
     if (!mounted || r == null) return;
     if (r == 'copy') {
       await Clipboard.setData(ClipboardData(text: m.text ?? ''));
@@ -565,12 +656,16 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   /// 15c — a complaint about a message goes to the branch administration with the context; the author isn't told who.
   Future<void> _report(ChatMessage m) async {
     final t = context.t;
-    final reason = await pickAction<String>(context, title: t.reportWhy, options: [
-      (t.reasonInsult, t.reasonInsult, null),
-      (t.reasonSpam, t.reasonSpam, null),
-      (t.reasonPersonal, t.reasonPersonal, null),
-      (t.reasonOther, t.reasonOther, null),
-    ]);
+    final reason = await pickAction<String>(
+      context,
+      title: t.reportWhy,
+      options: [
+        (t.reasonInsult, t.reasonInsult, null),
+        (t.reasonSpam, t.reasonSpam, null),
+        (t.reasonPersonal, t.reasonPersonal, null),
+        (t.reasonOther, t.reasonOther, null),
+      ],
+    );
     if (reason == null || !mounted) return;
     try {
       final c = await _api.fileComplaint(
@@ -591,16 +686,18 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     final subtitle = c == null
         ? null
         : (c.isGroup
-            ? t.membersN(c.members)
-            : roleTag(context, kind: c.other?.kind, name: c.other?.fullName, position: c.other?.position));
+              ? t.membersN(c.members)
+              : roleTag(context, kind: c.other?.kind, name: c.other?.fullName, position: c.other?.position));
     return Scaffold(
       appBar: NavBar(backLabel: t.navChats, title: c?.title ?? t.chat, subtitle: subtitle),
-      body: Column(children: [
-        NoticeBar(t.chatNotice),
-        if (_pinned.isNotEmpty) _PinnedBar(pinned: _pinned),
-        Expanded(child: _list(context)),
-        _composer(context),
-      ]),
+      body: Column(
+        children: [
+          NoticeBar(t.chatNotice),
+          if (_pinned.isNotEmpty) _PinnedBar(pinned: _pinned),
+          Expanded(child: _list(context)),
+          _composer(context),
+        ],
+      ),
     );
   }
 
@@ -635,97 +732,153 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     final rec = _rec;
     final hasText = _text.text.trim().isNotEmpty;
     final phone = _hasPhone;
+    final rejected = _rejected != null && _rejectedText == _text.text.trim() ? _rejected : null;
     return Container(
       color: ios ? oe.surface : oe.paper,
       child: SafeArea(
         top: false,
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          // Keys keep the text field (and the keyboard) alive when the warning appears above it.
-          if (phone)
-            Container(
-              key: const ValueKey('phone-warning'),
-              margin: const EdgeInsets.fromLTRB(10, 8, 10, 0),
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: oe.warn100, borderRadius: BorderRadius.circular(16)),
-              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                OeIcon('alert', color: oe.warn),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(t.phoneBlockedTitle, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                    Text(t.phoneBlockedText, style: const TextStyle(fontSize: 13)),
-                    const SizedBox(height: 8),
-                    OeButton(t.removeNumber, small: true, expand: false, onPressed: () {
-                      _text.text = _text.text.replaceAll(phonePattern, '').replaceAll(RegExp(r'\s{2,}'), ' ').trim();
-                    }),
-                  ]),
-                ),
-              ]),
-            ),
-          Container(
-            key: const ValueKey('composer-bar'),
-            decoration: ios ? BoxDecoration(border: Border(top: BorderSide(color: oe.line))) : null,
-            padding: const EdgeInsets.fromLTRB(6, 8, 10, 8),
-            child: rec != null
-                ? Row(children: [
-                    IconButton(
-                        tooltip: t.cancel, onPressed: () => _stopVoice(send: false), icon: OeIcon('x', color: oe.muted)),
-                    Container(width: 10, height: 10, decoration: BoxDecoration(color: oe.red, shape: BoxShape.circle)),
-                    const SizedBox(width: 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Keys keep the text field (and the keyboard) alive when the warning appears above it.
+            if (phone || rejected != null)
+              Container(
+                key: const ValueKey('phone-warning'),
+                margin: const EdgeInsets.fromLTRB(10, 8, 10, 0),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(color: oe.warn100, borderRadius: BorderRadius.circular(16)),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    OeIcon('alert', color: oe.warn),
+                    const SizedBox(width: 10),
                     Expanded(
-                      child: Text(
-                          t.recording('${rec.elapsed.inMinutes}:${(rec.elapsed.inSeconds % 60).toString().padLeft(2, '0')}'),
-                          style: const TextStyle(fontWeight: FontWeight.w500)),
-                    ),
-                    _RoundBtn(icon: 'send', label: t.send, onTap: () => _stopVoice(send: true), primary: true),
-                  ])
-                : Row(children: [
-                    IconButton(
-                        key: const Key('attach'),
-                        tooltip: t.attach,
-                        onPressed: _sending ? null : _attachMenu,
-                        icon: OeIcon('clip', color: oe.muted)),
-                    Expanded(
-                      child: TextField(
-                        key: const Key('composer'),
-                        controller: _text,
-                        minLines: 1,
-                        maxLines: 5,
-                        maxLength: 4000,
-                        textCapitalization: TextCapitalization.sentences,
-                        decoration: InputDecoration(
-                          hintText: t.message,
-                          counterText: '',
-                          isDense: true,
-                          filled: true,
-                          fillColor: ios ? oe.paper : oe.m3nav,
-                          contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: ios ? 9 : 13),
-                          border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(ios ? 19 : 24),
-                              borderSide: ios ? BorderSide(color: oe.line) : BorderSide.none),
-                          enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(ios ? 19 : 24),
-                              borderSide: ios ? BorderSide(color: oe.line) : BorderSide.none),
-                          focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(ios ? 19 : 24), borderSide: BorderSide(color: oe.tint)),
-                        ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            phone ? t.phoneBlockedTitle : t.messageNotSent,
+                            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                          ),
+                          Text(
+                            phone ? t.phoneBlockedText : rejected!,
+                            key: const Key('send-rejected'),
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                          if (phone || phonePattern.hasMatch(_text.text)) ...[
+                            const SizedBox(height: 8),
+                            OeButton(
+                              t.removeNumber,
+                              small: true,
+                              expand: false,
+                              onPressed: () {
+                                _text.text = _text.text.replaceAll(phonePattern, '').replaceAll(RegExp(r'\s{2,}'), ' ').trim();
+                              },
+                            ),
+                          ],
+                        ],
                       ),
                     ),
-                    const SizedBox(width: 6),
-                    if (!hasText)
-                      IconButton(
-                          tooltip: t.camera,
-                          onPressed: _sending ? null : () => _sendFile(() => pickPhoto(camera: true)),
-                          icon: OeIcon('camera', color: oe.muted)),
-                    if (_sending)
-                      const SizedBox(width: 40, height: 40, child: Padding(padding: EdgeInsets.all(10), child: CircularProgressIndicator(strokeWidth: 2)))
-                    else if (hasText)
-                      _RoundBtn(key: const Key('send'), icon: 'send', label: t.send, onTap: phone ? null : _sendText, primary: !phone)
-                    else
-                      _RoundBtn(key: const Key('mic'), icon: 'mic', label: t.recordVoice, onTap: _startVoice, primary: true),
-                  ]),
-          ),
-        ]),
+                  ],
+                ),
+              ),
+            Container(
+              key: const ValueKey('composer-bar'),
+              decoration: ios
+                  ? BoxDecoration(
+                      border: Border(top: BorderSide(color: oe.line)),
+                    )
+                  : null,
+              padding: const EdgeInsets.fromLTRB(6, 8, 10, 8),
+              child: rec != null
+                  ? Row(
+                      children: [
+                        IconButton(
+                          tooltip: t.cancel,
+                          onPressed: () => _stopVoice(send: false),
+                          icon: OeIcon('x', color: oe.muted),
+                        ),
+                        Container(
+                          width: 10,
+                          height: 10,
+                          decoration: BoxDecoration(color: oe.red, shape: BoxShape.circle),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            t.recording('${rec.elapsed.inMinutes}:${(rec.elapsed.inSeconds % 60).toString().padLeft(2, '0')}'),
+                            style: const TextStyle(fontWeight: FontWeight.w500),
+                          ),
+                        ),
+                        _RoundBtn(icon: 'send', label: t.send, onTap: () => _stopVoice(send: true), primary: true),
+                      ],
+                    )
+                  : Row(
+                      children: [
+                        IconButton(
+                          key: const Key('attach'),
+                          tooltip: t.attach,
+                          onPressed: _sending ? null : _attachMenu,
+                          icon: OeIcon('clip', color: oe.muted),
+                        ),
+                        Expanded(
+                          child: TextField(
+                            key: const Key('composer'),
+                            controller: _text,
+                            minLines: 1,
+                            maxLines: 5,
+                            maxLength: 4000,
+                            textCapitalization: TextCapitalization.sentences,
+                            decoration: InputDecoration(
+                              hintText: t.message,
+                              counterText: '',
+                              isDense: true,
+                              filled: true,
+                              fillColor: ios ? oe.paper : oe.m3nav,
+                              contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: ios ? 9 : 13),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(ios ? 19 : 24),
+                                borderSide: ios ? BorderSide(color: oe.line) : BorderSide.none,
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(ios ? 19 : 24),
+                                borderSide: ios ? BorderSide(color: oe.line) : BorderSide.none,
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(ios ? 19 : 24),
+                                borderSide: BorderSide(color: oe.tint),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        if (!hasText)
+                          IconButton(
+                            tooltip: t.camera,
+                            onPressed: _sending ? null : () => _sendFile(() => pickPhoto(camera: true)),
+                            icon: OeIcon('camera', color: oe.muted),
+                          ),
+                        if (_sending)
+                          const SizedBox(
+                            width: 40,
+                            height: 40,
+                            child: Padding(padding: EdgeInsets.all(10), child: CircularProgressIndicator(strokeWidth: 2)),
+                          )
+                        else if (hasText)
+                          _RoundBtn(
+                            key: const Key('send'),
+                            icon: 'send',
+                            label: t.send,
+                            onTap: phone ? null : _sendText,
+                            primary: !phone,
+                          )
+                        else
+                          _RoundBtn(key: const Key('mic'), icon: 'mic', label: t.recordVoice, onTap: _startVoice, primary: true),
+                      ],
+                    ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -755,7 +908,11 @@ class _RoundBtn extends StatelessWidget {
         child: InkWell(
           customBorder: const CircleBorder(),
           onTap: onTap,
-          child: SizedBox(width: 40, height: 40, child: Center(child: OeIcon(icon, size: 20, color: primary ? oe.onPrimary : oe.muted))),
+          child: SizedBox(
+            width: 40,
+            height: 40,
+            child: Center(child: OeIcon(icon, size: 20, color: primary ? oe.onPrimary : oe.muted)),
+          ),
         ),
       ),
     );
@@ -777,41 +934,70 @@ class _PinnedBar extends StatelessWidget {
         showDragHandle: true,
         backgroundColor: oe.surface,
         builder: (c) => SafeArea(
-          child: ListView(shrinkWrap: true, padding: const EdgeInsets.fromLTRB(16, 0, 16, 16), children: [
-            Text(t.pinnedN(pinned.length), style: display(16, color: oe.brandInk)),
-            const SizedBox(height: 10),
-            for (final p in pinned)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: OeCard(
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('${p.senderName ?? ''} · ${dmy(p.at)} ${hm(p.at)}', style: TextStyle(fontSize: 12, color: oe.muted)),
-                    if (p.text != null) SelectableText(p.text!),
-                    if (p.fileUrl != null) Padding(padding: const EdgeInsets.only(top: 8), child: Attachment(url: p.fileUrl!, name: p.fileName, kind: p.kind)),
-                  ]),
+          child: ListView(
+            shrinkWrap: true,
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            children: [
+              Text(t.pinnedN(pinned.length), style: display(16, color: oe.brandInk)),
+              const SizedBox(height: 10),
+              for (final p in pinned)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: OeCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('${p.senderName ?? ''} · ${dmy(p.at)} ${hm(p.at)}', style: TextStyle(fontSize: 12, color: oe.muted)),
+                        if (p.text != null) SelectableText(p.text!),
+                        if (p.fileUrl != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Attachment(url: p.fileUrl!, name: p.fileName, kind: p.kind),
+                          ),
+                      ],
+                    ),
+                  ),
                 ),
-              ),
-          ]),
+            ],
+          ),
         ),
       ),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        decoration: BoxDecoration(color: oe.surface, border: Border(bottom: BorderSide(color: oe.line))),
+        decoration: BoxDecoration(
+          color: oe.surface,
+          border: Border(bottom: BorderSide(color: oe.line)),
+        ),
         child: IntrinsicHeight(
-          child: Row(children: [
-            Container(width: 3, decoration: BoxDecoration(color: oe.red, borderRadius: BorderRadius.circular(2))),
-            const SizedBox(width: 10),
-            OeIcon('pushpin', size: 18, color: oe.red),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(pinned.length > 1 ? t.pinnedN(pinned.length) : t.pinned,
-                    style: TextStyle(fontSize: 12, color: oe.red, fontWeight: FontWeight.w600)),
-                Text(m.text ?? m.fileName ?? t.file, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13.5)),
-              ]),
-            ),
-            OeIcon('chev-r', size: 20, color: oe.muted),
-          ]),
+          child: Row(
+            children: [
+              Container(
+                width: 3,
+                decoration: BoxDecoration(color: oe.red, borderRadius: BorderRadius.circular(2)),
+              ),
+              const SizedBox(width: 10),
+              OeIcon('pushpin', size: 18, color: oe.red),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      pinned.length > 1 ? t.pinnedN(pinned.length) : t.pinned,
+                      style: TextStyle(fontSize: 12, color: oe.red, fontWeight: FontWeight.w600),
+                    ),
+                    Text(
+                      m.text ?? m.fileName ?? t.file,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 13.5),
+                    ),
+                  ],
+                ),
+              ),
+              OeIcon('chev-r', size: 20, color: oe.muted),
+            ],
+          ),
         ),
       ),
     );
@@ -834,7 +1020,10 @@ class _DaySep extends StatelessWidget {
         margin: const EdgeInsets.symmetric(vertical: 8),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
         decoration: BoxDecoration(color: oe.fill, borderRadius: BorderRadius.circular(999)),
-        child: Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: oe.muted)),
+        child: Text(
+          label,
+          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: oe.muted),
+        ),
       ),
     );
   }
@@ -852,21 +1041,28 @@ class _Bubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.t;
     final oe = context.oe;
-    final tag = showName ? roleTag(context, kind: m.senderKind, name: m.senderName) : null;
+    final tag = showName ? roleTag(context, kind: m.senderKind, name: m.senderName, position: m.senderPosition) : null;
     final fg = out ? oe.onPrimary : oe.ink;
     final time = Text(hm(m.at), style: TextStyle(fontSize: 11, color: out ? oe.onHero2 : oe.muted));
     Widget content;
     if (m.hidden) {
-      content = Text(t.messageHidden, style: TextStyle(fontStyle: FontStyle.italic, color: out ? oe.onHero2 : oe.muted));
+      content = Text(
+        t.messageHidden,
+        style: TextStyle(fontStyle: FontStyle.italic, color: out ? oe.onHero2 : oe.muted),
+      );
     } else {
-      content = Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-        if (m.fileUrl != null)
-          Padding(
-            padding: EdgeInsets.only(bottom: m.text != null ? 6 : 0),
-            child: Attachment(url: m.fileUrl!, name: m.fileName, kind: m.kind, onDark: out),
-          ),
-        if (m.text != null) Text(m.text!, style: TextStyle(fontSize: 15, color: fg, height: 1.35)),
-      ]);
+      content = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (m.fileUrl != null)
+            Padding(
+              padding: EdgeInsets.only(bottom: m.text != null ? 6 : 0),
+              child: Attachment(url: m.fileUrl!, name: m.fileName, kind: m.kind, onDark: out),
+            ),
+          if (m.text != null) Text(m.text!, style: TextStyle(fontSize: 15, color: fg, height: 1.35)),
+        ],
+      );
     }
     final bubble = Container(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
@@ -880,25 +1076,34 @@ class _Bubble extends StatelessWidget {
           bottomRight: Radius.circular(out ? 6 : 18),
         ),
       ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-        if (showName)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 2),
-            child: Text([m.senderName ?? '', ?tag].join(' · '),
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: m.senderKind == 'staff' ? oe.tint : oe.info)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (showName)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 2),
+              child: Text(
+                [m.senderName ?? '', ?tag].join(' · '),
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: m.senderKind == 'staff' ? oe.tint : oe.info),
+              ),
+            ),
+          content,
+          const SizedBox(height: 2),
+          Align(
+            alignment: Alignment.centerRight,
+            widthFactor: 1,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (m.pinned) ...[OeIcon('pushpin', size: 12, color: out ? oe.onHero2 : oe.red), const SizedBox(width: 4)],
+                time,
+                if (out) ...[const SizedBox(width: 3), OeIcon('check', size: 13, color: oe.onHero2, strokeWidth: 2)],
+              ],
+            ),
           ),
-        content,
-        const SizedBox(height: 2),
-        Align(
-          alignment: Alignment.centerRight,
-          widthFactor: 1,
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            if (m.pinned) ...[OeIcon('pushpin', size: 12, color: out ? oe.onHero2 : oe.red), const SizedBox(width: 4)],
-            time,
-            if (out) ...[const SizedBox(width: 3), OeIcon('check', size: 13, color: oe.onHero2, strokeWidth: 2)],
-          ]),
-        ),
-      ]),
+        ],
+      ),
     );
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -907,15 +1112,16 @@ class _Bubble extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           if (!out) ...[
-            showName || !group
-                ? Avatar(m.senderName ?? '·', size: 32)
-                : const SizedBox(width: 32),
+            showName || !group ? Avatar(m.senderName ?? '·', size: 32) : const SizedBox(width: 32),
             const SizedBox(width: 8),
           ],
           Flexible(
             child: ConstrainedBox(
               constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * .78),
-              child: GestureDetector(onLongPress: onLongPress, child: Semantics(label: m.senderName, child: bubble)),
+              child: GestureDetector(
+                onLongPress: onLongPress,
+                child: Semantics(label: m.senderName, child: bubble),
+              ),
             ),
           ),
         ],
@@ -958,34 +1164,46 @@ class _NewChatScreenState extends State<NewChatScreen> {
     final oe = context.oe;
     return Scaffold(
       appBar: NavBar(backLabel: t.navChats, title: t.newChat),
-      body: Column(children: [
-        Padding(padding: const EdgeInsets.fromLTRB(16, 4, 16, 8), child: _SearchField(hint: t.searchPeople, onChanged: (v) => setState(() => _q = v))),
-        Expanded(
-          child: Loader<List<ChatUser>>(
-            load: () => context.read<OeApi>().contacts(),
-            builder: (context, all, reload) {
-              final list = all.where((u) => _q.isEmpty || u.fullName.toLowerCase().contains(_q.toLowerCase())).toList();
-              if (list.isEmpty) return EmptyState(icon: 'users', title: _q.isEmpty ? t.noContacts : t.nothingFound);
-              return PageList(onRefresh: reload, children: [
-                Text(t.contactsHint, style: TextStyle(fontSize: 13, color: oe.muted)),
-                OeList(children: [
-                  for (final u in list)
-                    OeRow(
-                      key: Key('contact-${u.id}'),
-                      leading: Avatar(u.fullName, size: 40),
-                      title: u.fullName,
-                      titleStyle: const TextStyle(fontWeight: FontWeight.w600),
-                      subtitle: u.subtitle ?? u.position,
-                      trailing: _opening == u.id ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : null,
-                      chevron: _opening != u.id,
-                      onTap: _opening == null ? () => _open(u) : null,
-                    ),
-                ]),
-              ]);
-            },
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+            child: _SearchField(hint: t.searchPeople, onChanged: (v) => setState(() => _q = v)),
           ),
-        ),
-      ]),
+          Expanded(
+            child: Loader<List<ChatUser>>(
+              load: () => context.read<OeApi>().contacts(),
+              builder: (context, all, reload) {
+                final list = all.where((u) => _q.isEmpty || u.fullName.toLowerCase().contains(_q.toLowerCase())).toList();
+                if (list.isEmpty) return EmptyState(icon: 'users', title: _q.isEmpty ? t.noContacts : t.nothingFound);
+                return PageList(
+                  onRefresh: reload,
+                  children: [
+                    Text(t.contactsHint, style: TextStyle(fontSize: 13, color: oe.muted)),
+                    OeList(
+                      children: [
+                        for (final u in list)
+                          OeRow(
+                            key: Key('contact-${u.id}'),
+                            leading: Avatar(u.fullName, size: 40),
+                            title: u.fullName,
+                            titleStyle: const TextStyle(fontWeight: FontWeight.w600),
+                            subtitle: u.subtitle ?? u.position,
+                            trailing: _opening == u.id
+                                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                                : null,
+                            chevron: _opening != u.id,
+                            onTap: _opening == null ? () => _open(u) : null,
+                          ),
+                      ],
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

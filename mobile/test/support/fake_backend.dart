@@ -48,7 +48,14 @@ class FakeBackend {
     bodies.add(body);
     final path = r.url.path.replaceFirst('/api', '');
     final key = '${r.method} $path';
-    if (overrides.containsKey(key)) return _json(overrides[key]!(r));
+    if (overrides.containsKey(key)) {
+      try {
+        return _json(overrides[key]!(r));
+      } on Exception catch (e) {
+        if (e.runtimeType.toString() == '_Reject') return _json({'detail': 'Нельзя отправлять номера телефонов'}, 400);
+        rethrow;
+      }
+    }
 
     if (key == 'POST /auth/refresh') {
       refreshCalls++;

@@ -48,6 +48,9 @@ class OeApi {
   Future<Payments> payments(int studentId) async =>
       Payments.fromJson((await client.get('/portal/students/$studentId/payments')) as Json);
 
+  Future<StudentBooks> books(int studentId) async =>
+      StudentBooks.fromJson((await client.get('/students/$studentId/books')) as Json);
+
   Future<List<TestResult>> tests(int studentId) async =>
       parseList(await client.get('/portal/students/$studentId/tests'), TestResult.fromJson);
 

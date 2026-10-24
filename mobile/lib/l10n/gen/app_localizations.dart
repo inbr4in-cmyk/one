@@ -1394,6 +1394,30 @@ abstract class AppLocalizations {
   /// **'Здесь появятся учебники, купленные в школе'**
   String get noBooksText;
 
+  /// No description provided for @booksOwned.
+  ///
+  /// In ru, this message translates to:
+  /// **'Уже есть'**
+  String get booksOwned;
+
+  /// No description provided for @booksNeeded.
+  ///
+  /// In ru, this message translates to:
+  /// **'Нужны для уровня'**
+  String get booksNeeded;
+
+  /// No description provided for @booksNeededHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'Купить можно у администратора филиала'**
+  String get booksNeededHint;
+
+  /// No description provided for @qtyN.
+  ///
+  /// In ru, this message translates to:
+  /// **'{n} шт.'**
+  String qtyN(int n);
+
   /// No description provided for @booksLevel.
   ///
   /// In ru, this message translates to:
@@ -1513,6 +1537,12 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Закреплённые · {n}'**
   String pinnedN(int n);
+
+  /// No description provided for @messageNotSent.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сообщение не отправлено'**
+  String get messageNotSent;
 
   /// No description provided for @messageHidden.
   ///

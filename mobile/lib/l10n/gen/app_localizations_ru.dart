@@ -822,6 +822,20 @@ class AppLocalizationsRu extends AppLocalizations {
   String get noBooksText => 'Здесь появятся учебники, купленные в школе';
 
   @override
+  String get booksOwned => 'Уже есть';
+
+  @override
+  String get booksNeeded => 'Нужны для уровня';
+
+  @override
+  String get booksNeededHint => 'Купить можно у администратора филиала';
+
+  @override
+  String qtyN(int n) {
+    return '$n шт.';
+  }
+
+  @override
   String booksLevel(String level) {
     return 'Уровень $level';
   }
@@ -900,6 +914,9 @@ class AppLocalizationsRu extends AppLocalizations {
   String pinnedN(int n) {
     return 'Закреплённые · $n';
   }
+
+  @override
+  String get messageNotSent => 'Сообщение не отправлено';
 
   @override
   String get messageHidden => 'Сообщение скрыто';

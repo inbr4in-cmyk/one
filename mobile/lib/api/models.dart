@@ -290,7 +290,7 @@ class ChatUser {
 
 class Chat {
   Chat({required this.id, required this.kind, required this.title, required this.unread, this.groupId,
-      this.lastText, this.lastAt, this.lastSender, this.other, this.members = 0});
+      this.lastText, this.lastAt, this.lastSender, this.other, this.members = 0, this.aboutStudentId});
   factory Chat.fromJson(Json j) {
     final lm = (j['last_message'] as Map?)?.cast<String, dynamic>();
     final ou = (j['other_user'] as Map?)?.cast<String, dynamic>();
@@ -305,6 +305,7 @@ class Chat {
       lastSender: _s(lm?['sender']),
       other: ou == null ? null : ChatUser.fromJson(ou),
       members: _i(j['members']),
+      aboutStudentId: _in(j['about_student_id']),
     );
   }
   final int id;
@@ -318,12 +319,15 @@ class Chat {
   final ChatUser? other;
   final int members;
 
+  /// The child the chat is about (parents; filled by the server where it can tell).
+  final int? aboutStudentId;
+
   bool get isGroup => kind == 'group';
 }
 
 class ChatMessage {
   ChatMessage({required this.id, required this.chatId, required this.senderId, required this.at, required this.kind,
-      this.senderName, this.senderKind, this.text, this.fileUrl, this.fileName, this.pinned = false,
+      this.senderName, this.senderKind, this.senderPosition, this.text, this.fileUrl, this.fileName, this.pinned = false,
       this.edited = false, this.hidden = false});
   factory ChatMessage.fromJson(Json j) => ChatMessage(
         id: _i(j['id']),
@@ -331,6 +335,7 @@ class ChatMessage {
         senderId: _i(j['sender_id']),
         senderName: _s(j['sender_name']),
         senderKind: _s(j['sender_kind']),
+        senderPosition: _s(j['sender_position']),
         at: _dt(j['at']) ?? DateTime.now(),
         kind: _s(j['kind']) ?? 'text',
         text: _s(j['text']),
@@ -345,6 +350,9 @@ class ChatMessage {
   final int senderId;
   final String? senderName;
   final String? senderKind;
+
+  /// Staff job title («Преподаватель», «Менеджер»…); null for students and parents.
+  final String? senderPosition;
   final DateTime at;
   final String kind;
   String? text;
@@ -545,3 +553,33 @@ class SessionInfo {
 }
 
 List<T> parseList<T>(Object? data, T Function(Json) f) => _list(data).map(f).toList();
+
+int _money(Object? v) => v is num ? v.round() : (v is String ? (double.tryParse(v)?.round() ?? 0) : 0);
+
+class OwnedBook {
+  OwnedBook({required this.bookId, required this.title, required this.qty, required this.price, this.at});
+  factory OwnedBook.fromJson(Json j) =>
+      OwnedBook(bookId: _i(j['book_id']), title: _s(j['title']) ?? '', qty: _i(j['qty'], 1), price: _money(j['price']), at: _dt(j['at']));
+  final int bookId;
+  final String title;
+  final int qty;
+  final int price;
+  final DateTime? at;
+}
+
+class NeededBook {
+  NeededBook({required this.id, required this.title, required this.price});
+  factory NeededBook.fromJson(Json j) => NeededBook(id: _i(j['id']), title: _s(j['title']) ?? '', price: _money(j['price']));
+  final int id;
+  final String title;
+  final int price;
+}
+
+/// GET /students/{id}/books: what the student got, and what their level still needs.
+class StudentBooks {
+  StudentBooks({required this.items, required this.needed});
+  factory StudentBooks.fromJson(Json j) => StudentBooks(
+      items: _list(j['items']).map(OwnedBook.fromJson).toList(), needed: _list(j['needed']).map(NeededBook.fromJson).toList());
+  final List<OwnedBook> items;
+  final List<NeededBook> needed;
+}

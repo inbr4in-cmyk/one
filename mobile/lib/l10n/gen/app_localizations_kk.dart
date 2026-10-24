@@ -754,6 +754,20 @@ class AppLocalizationsKk extends AppLocalizations {
   String get noBooksText => 'Мұнда мектептен сатып алынған оқулықтар көрінеді';
 
   @override
+  String get booksOwned => 'Бар оқулықтар';
+
+  @override
+  String get booksNeeded => 'Деңгейге қажет';
+
+  @override
+  String get booksNeededHint => 'Филиал әкімшісінен сатып алуға болады';
+
+  @override
+  String qtyN(int n) {
+    return '$n дана';
+  }
+
+  @override
   String booksLevel(String level) {
     return '$level деңгейі';
   }
@@ -824,6 +838,9 @@ class AppLocalizationsKk extends AppLocalizations {
   String pinnedN(int n) {
     return 'Бекітілген · $n';
   }
+
+  @override
+  String get messageNotSent => 'Хабарлама жіберілмеді';
 
   @override
   String get messageHidden => 'Хабарлама жасырылды';

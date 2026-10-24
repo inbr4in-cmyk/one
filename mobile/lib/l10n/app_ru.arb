@@ -490,6 +490,17 @@
   "myBooks": "Учебники",
   "noBooks": "Учебников пока нет",
   "noBooksText": "Здесь появятся учебники, купленные в школе",
+  "booksOwned": "Уже есть",
+  "booksNeeded": "Нужны для уровня",
+  "booksNeededHint": "Купить можно у администратора филиала",
+  "qtyN": "{n} шт.",
+  "@qtyN": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
   "booksLevel": "Уровень {level}",
   "@booksLevel": {
     "placeholders": {
@@ -531,6 +542,7 @@
       }
     }
   },
+  "messageNotSent": "Сообщение не отправлено",
   "messageHidden": "Сообщение скрыто",
   "hideMessage": "Скрыть",
   "hideTitle": "Скрыть сообщение?",
