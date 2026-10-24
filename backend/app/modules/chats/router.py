@@ -35,6 +35,7 @@ class ChatOut(BaseModel):
     last_message: dict | None
     other_user: dict | None = None
     members: int = 0
+    about_student_id: int | None = None
 
 
 class MessageOut(BaseModel):
@@ -43,6 +44,7 @@ class MessageOut(BaseModel):
     sender_id: int
     sender_name: str | None
     sender_kind: str | None
+    sender_position: str | None = None
     at: str
     kind: str
     text: str | None
@@ -57,7 +59,8 @@ def _msg(m: ChatMessage, users: dict[int, User], show_hidden: bool = False) -> M
     u = users.get(m.sender_id)
     hidden = m.hidden_at is not None
     return MessageOut(id=m.id, chat_id=m.chat_id, sender_id=m.sender_id, sender_name=u.full_name if u else None,
-                      sender_kind=u.kind if u else None, at=m.at.isoformat(), kind=m.kind,
+                      sender_kind=u.kind if u else None,
+                      sender_position=u.position if u and u.kind == UserKind.STAFF else None, at=m.at.isoformat(), kind=m.kind,
                       text=None if hidden and not show_hidden else m.text,
                       file_url=None if hidden and not show_hidden else files.signed_url(m.file_url),
                       file_name=m.file_name, pinned=m.pinned, edited=m.edited_at is not None, hidden=hidden)
@@ -94,7 +97,7 @@ async def _chat_out(db: DB, chat: Chat, me: int, member: ChatMember | None) -> C
                                                                                    ChatMember.left_on.is_(None)))
     sender = await db.get(User, last.sender_id) if last else None
     return ChatOut(id=chat.id, kind=chat.kind, title=title, group_id=chat.group_id, unread=unread, other_user=other,
-                   members=members,
+                   members=members, about_student_id=chat.about_student_id,
                    last_message={"text": last.text or ("Файл" if last.file_url else ""), "at": last.at.isoformat(),
                                  "sender": sender.full_name if sender else None} if last else None)
 
@@ -106,7 +109,20 @@ async def my_chats(db: DB, actor: Actor = require("chats", "use")) -> list[ChatO
         .where(ChatMember.user_id == actor.id, ChatMember.left_on.is_(None))
         .order_by(Chat.last_message_at.desc().nulls_last()).limit(300)
     )).all()
-    return [await _chat_out(db, c, actor.id, m) for c, m in rows]
+    out = [await _chat_out(db, c, actor.id, m) for c, m in rows]
+    if actor.user.kind == UserKind.PARENT:
+        # A parent with several children: a direct chat without a child is about the one child this person teaches.
+        kids = list((await db.scalars(select(StudentGuardian.student_id).where(StudentGuardian.user_id == actor.id))).all())
+        for c in out:
+            if c.about_student_id is None and c.other_user and c.other_user["kind"] == UserKind.STAFF and len(kids) > 1:
+                taught = set((await db.scalars(select(GroupMember.student_id).join(Group, Group.id == GroupMember.group_id).where(
+                    Group.teacher_id == c.other_user["id"], GroupMember.student_id.in_(kids),
+                    GroupMember.left_on.is_(None)))).all())
+                if len(taught) == 1:
+                    c.about_student_id = taught.pop()
+            elif c.about_student_id is None and len(kids) == 1:
+                c.about_student_id = kids[0]
+    return out
 
 
 @router.get("/chats/contacts")
@@ -250,6 +266,8 @@ async def send(chat_id: int, body: SendIn, db: DB, actor: Actor = require("chats
         raise bad_request("Пустое сообщение")
     if body.file_key and not files.path_of(body.file_key):
         raise bad_request("Файл не найден")
+    if actor.user.kind == UserKind.STUDENT and policy.has_phone(body.text):
+        raise bad_request("Ученики не отправляют номера телефонов в чатах (правила школы)")
     await hit(f"chat-send:{actor.id}", 60, 60)
     if chat.kind == "direct":
         # Rules can change (a student leaves a group): re-check on every send.

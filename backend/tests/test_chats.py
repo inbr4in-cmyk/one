@@ -111,3 +111,26 @@ async def test_file_upload_checks_type_and_signature(db, client, owner_h, tmp_pa
     assert (await client.get(url.replace("sig=", "sig=0"))).status_code == 403
     key = r.json()["key"]
     assert (await client.get(f"/api/files/{key}?exp=9999999999&sig=deadbeef")).status_code == 403
+
+
+def test_phone_detector():
+    from app.services.chats import has_phone
+    for t in ("+7 701 234 56 78", "87012345678", "мой номер 8(701)234-56-78", "+7 7Д01 234 56 78", "7О1 234 5б 78 99"):
+        assert has_phone(t), t
+    for t in (None, "", "Домашка на стр. 12, упр. 3 и 4", "Урок в 15:30, кабинет 2", "оооооооооооооо", "2024 2025 года"):
+        assert not has_phone(t), t
+
+
+async def test_student_cannot_send_phone_and_chat_metadata(db, client, owner_h):
+    _, teacher, g, (a, b) = await _world(db, client, owner_h)
+    th = await login(client, teacher.phone)
+    group_chat = next(c for c in (await client.get("/api/chats", headers=th)).json() if c["kind"] == "group")
+    sa = await _portal_login(db, client, a["user_id"])
+    r = await client.post(f"/api/chats/{group_chat['id']}/messages", headers=sa, json={"text": "пиши мне +7 7Д01 234 56 78"})
+    assert r.status_code == 400
+    msg = (await client.post(f"/api/chats/{group_chat['id']}/messages", headers=th, json={"text": "Звоните 87012345678"})).json()
+    assert msg["sender_position"] == teacher.position
+    pa = await _portal_login(db, client, a["guardians"][0]["user_id"])
+    chat = (await client.post("/api/chats/direct", headers=pa, json={"user_id": teacher.id})).json()
+    mine = (await client.get("/api/chats", headers=pa)).json()
+    assert next(c for c in mine if c["id"] == chat["id"])["about_student_id"] == a["id"]

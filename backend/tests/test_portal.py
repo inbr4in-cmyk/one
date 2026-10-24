@@ -71,3 +71,11 @@ async def test_teacher_sees_submissions_and_edits_homework(db, client, owner_h):
     assert (await client.patch(f"/api/homework/{hw['id']}", headers=th, json={"title": "WB p.13"})).json()["title"] == "WB p.13"
     assert (await client.post(f"/api/homework/{hw['id']}/archive", headers=th)).status_code == 204
     assert (await client.get(f"/api/homework/{hw['id']}/submissions", headers=th)).status_code == 404
+
+
+async def test_portal_books(db, client, owner_h):
+    _, teacher, g, (a, b) = await _world(db, client, owner_h)
+    pa = await _portal_login(db, client, a["guardians"][0]["user_id"])
+    r = await client.get(f"/api/students/{a['id']}/books", headers=pa)
+    assert r.status_code == 200 and r.json()["items"] == []
+    assert (await client.get(f"/api/students/{b['id']}/books", headers=pa)).status_code == 404

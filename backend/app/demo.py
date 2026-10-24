@@ -170,6 +170,11 @@ async def seed_demo(db: AsyncSession) -> None:
         await accrue_lesson(db, teacher_id=lesson.teacher_id, lesson_id=lesson.id, n=n, on=local(lesson.starts_at).date(),
                             branch_id=lesson.branch_id, group_name=g.name, actor_id=None)
 
+    # One student blocked for non-payment, to show the cabinet's blocked state.
+    blocked = await db.scalar(select(Student).where(Student.user_id.is_not(None)).order_by(Student.lessons_left, Student.id).limit(1))
+    if blocked:
+        blocked.access_blocked_at = now()
+
     # CRM: leads across the funnel, and real-looking inbound DMs.
     stages = ["new", "new", "contacted", "contacted", "trial_booked", "trial_done", "lost"]
     for i in range(18):

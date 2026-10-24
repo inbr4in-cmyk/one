@@ -105,6 +105,22 @@ async def add_member(db: AsyncSession, chat_id: int, user_id: int) -> None:
         m.joined_on = today()
 
 
+
+_LOOKALIKE = set("OoОоDДдlIі|ЗзбБ")
+
+
+def has_phone(text: str | None) -> bool:
+    """Platform rule: students don't post phone numbers in chats. Catches mangled numbers too
+    ("+7 7Д01 234 56 78"): a look-alike letter next to a digit counts as a digit; 10 digits within 20 characters,
+    at least 7 of them real, is a number."""
+    if not text:
+        return False
+    pos = [i for i, ch in enumerate(text) if ch.isdigit() or (
+        ch in _LOOKALIKE and any(0 <= j < len(text) and text[j].isdigit() for j in (i - 1, i + 1)))]
+    return any(pos[i + 9] - pos[i] < 20 and sum(text[j].isdigit() for j in pos[i:i + 10]) >= 7
+               for i in range(len(pos) - 9))
+
+
 async def remove_member(db: AsyncSession, chat_id: int, user_id: int) -> None:
     m = await db.scalar(select(ChatMember).where(ChatMember.chat_id == chat_id, ChatMember.user_id == user_id))
     if m is not None and m.left_on is None:

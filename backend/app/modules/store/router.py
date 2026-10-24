@@ -268,9 +268,16 @@ async def sell(body: SaleIn, db: DB, actor: Actor = require("books", "sell")) ->
 
 
 @router.get("/students/{student_id}/books")
-async def student_books(student_id: int, db: DB, actor: Actor = require("students", "view")) -> dict:
-    """Books the student got, and the one they still need for their current level."""
-    s = await get_student_scoped(db, actor, student_id, "students", "view")
+async def student_books(student_id: int, db: DB, actor: CurrentActor) -> dict:
+    """Books the student got, and the one they still need for their current level. Staff with students.view,
+    or the student / their parent (from the cabinet)."""
+    if actor.is_staff:
+        ensure_staff_mfa(actor)
+        if not actor.can("students", "view"):
+            raise forbidden()
+        s = await get_student_scoped(db, actor, student_id, "students", "view")
+    else:
+        s = await portal_student(db, actor, student_id, allow_blocked=True)
     rows = (await db.execute(select(BookMovement, Book.title).join(Book, Book.id == BookMovement.book_id)
                              .where(BookMovement.student_id == s.id, BookMovement.kind == "sale").order_by(BookMovement.at))).all()
     owned = {m.book_id for m, _ in rows}
