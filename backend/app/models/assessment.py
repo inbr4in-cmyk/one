@@ -9,6 +9,7 @@ from app.models._types import DT, DTN, Int, IntN, Json, StrN, TextN, fk
 
 class Test(IdMixin, TimestampMixin, ArchiveMixin, Base):
     __tablename__ = "tests"
+    __test__ = False  # not a pytest class
 
     kind: Mapped[str] = mapped_column(String(16))  # placement | final | training
     title: Mapped[str] = mapped_column(String(255))
