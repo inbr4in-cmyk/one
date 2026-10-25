@@ -23,6 +23,14 @@ Firebase files are not in the repo. Without them the app works, push is simply o
 
 After sign-in the app sends `POST /api/auth/devices {platform, token, locale}`; tapping a notification opens its `link` inside the app (`lib/push/links.dart`).
 
+## Offline demo
+
+`lib/main_demo.dart` is the same app over an in-memory backend (`lib/demo/`): responses recorded from the real API (one parent with two children, one student), dates moved to today, and the main actions (chat, homework, ratings, shop orders, consents, complaints, notifications) applied in memory. Sign in as parent or student from the first screen, or with any phone and code `111111`. No socket, no push, no network.
+
+```sh
+tool/build_demo.sh   # → build/web: a static site that works from any sub-path, no external requests
+```
+
 ## Checks
 
 ```sh
