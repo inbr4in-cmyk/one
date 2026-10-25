@@ -1,4 +1,4 @@
-import { createRouter, createWebHistory, type RouteMeta, type RouteRecordRaw } from 'vue-router'
+import { createRouter, createWebHashHistory, createWebHistory, type RouteMeta, type RouteRecordRaw } from 'vue-router'
 import { allowed, DETAIL_ROUTES, NAV, visibleNav } from './nav'
 import { useAuthStore } from '@/stores/auth'
 import { t } from '@/i18n'
@@ -75,7 +75,8 @@ const routes: RouteRecordRaw[] = [
 ]
 
 export const router = createRouter({
-  history: createWebHistory(),
+  // The offline demo is a static page that can sit under any path, so it routes by hash.
+  history: import.meta.env.VITE_DEMO === '1' ? createWebHashHistory() : createWebHistory(),
   routes,
   scrollBehavior: (_to, _from, saved) => saved ?? { top: 0 },
 })

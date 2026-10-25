@@ -1,0 +1,16 @@
+/* Demo build only: the small "Демо" badge. */
+.demo-badge {
+  position: fixed; z-index: 90; left: 12px; bottom: 12px;
+  padding: 3px 9px; border-radius: 999px;
+  font: 600 11px/1.4 var(--font-ui); letter-spacing: .02em; text-transform: uppercase;
+  color: var(--muted); background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow);
+  opacity: .85; pointer-events: none; user-select: none;
+}
+/* Wide screens: in the empty middle of the top bar, clear of the sidebar and sticky save bars. */
+@media (min-width: 1200px) {
+  .demo-badge { left: 50%; bottom: auto; top: 22px; transform: translateX(-50%) }
+}
+/* Phones: just above the bottom navigation. */
+@media (max-width: 899.98px) {
+  .demo-badge { left: 8px; bottom: calc(env(safe-area-inset-bottom) + 70px); opacity: .7 }
+}

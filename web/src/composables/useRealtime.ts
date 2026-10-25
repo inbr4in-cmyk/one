@@ -90,6 +90,8 @@ function wake() {
 }
 
 export function startRealtime() {
+  // The offline demo has no server to listen to.
+  if (import.meta.env.VITE_DEMO === '1') return
   if (!stopped) return
   stopped = false
   window.addEventListener('online', wake)

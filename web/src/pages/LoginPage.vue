@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, type Component } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import AuthBrandPanel from '@/components/auth/AuthBrandPanel.vue'
@@ -12,6 +12,9 @@ import type { LoginStep } from '@/stores/auth'
 import { homePath } from '@/router'
 
 type Mode = 'staff' | 'client'
+
+/** Offline demo build only: role buttons instead of credentials (installed by src/demo/entry.ts). */
+const DemoLogin = import.meta.env.VITE_DEMO === '1' ? ((globalThis as { __oeDemoLogin?: Component }).__oeDemoLogin ?? null) : null
 
 const { t } = useI18n()
 const route = useRoute()
@@ -42,8 +45,9 @@ function onDone(step: LoginStep) {
       <div class="box">
         <h1>{{ t('login.title') }}</h1>
         <p class="sub">{{ t('login.subtitle') }}</p>
-        <UiTabs v-model="mode" :items="tabs" :label="t('login.title')" />
-        <Transition name="swap" mode="out-in">
+        <component :is="DemoLogin" v-if="DemoLogin" @done="onDone" />
+        <UiTabs v-else v-model="mode" :items="tabs" :label="t('login.title')" />
+        <Transition v-if="!DemoLogin" name="swap" mode="out-in">
           <StaffLoginForm v-if="mode === 'staff'" key="staff" @done="onDone" />
           <OtpLoginForm v-else key="client" @done="onDone" />
         </Transition>

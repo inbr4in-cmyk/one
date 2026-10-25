@@ -9,6 +9,18 @@
  */
 
 const BASE = '/api'
+
+/**
+ * Offline demo build only (`npm run build:demo`): src/demo/entry.ts installs these hooks before the app
+ * starts and requests are answered in the browser from fixtures. The regular build never has them.
+ */
+export interface DemoHooks {
+  request: (method: string, path: string, opts: RequestOptions) => Promise<unknown>
+  restore: () => Promise<boolean>
+  download: () => void
+}
+const demo = (): DemoHooks | undefined =>
+  import.meta.env.VITE_DEMO === '1' ? (globalThis as { __oeDemo?: DemoHooks }).__oeDemo : undefined
 const CSRF_HEADER = { 'X-Requested-With': 'one-english' }
 
 let accessToken: string | null = null
@@ -84,6 +96,13 @@ async function parseBody(res: Response): Promise<unknown> {
 
 /** Exchange the refresh cookie for a new access token. Shared by concurrent callers. */
 export function refreshAccess(): Promise<boolean> {
+  const d = demo()
+  if (d) {
+    return d.restore().then((ok) => {
+      setAccessToken(ok ? 'demo-access-token' : null)
+      return ok
+    })
+  }
   if (!refreshing) {
     refreshing = (async () => {
       try {
@@ -121,6 +140,16 @@ async function send(method: string, path: string, opts: RequestOptions): Promise
 }
 
 export async function request<T>(method: string, path: string, opts: RequestOptions = {}): Promise<T> {
+  const d = demo()
+  if (d) {
+    try {
+      return (await d.request(method, path, opts)) as T
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401 && opts.auth !== false) onAuthLost?.()
+      else if (e instanceof ApiError && !opts.silent) onError?.(e)
+      throw e
+    }
+  }
   let res: Response
   try {
     res = await send(method, path, opts)
@@ -164,6 +193,8 @@ export async function request<T>(method: string, path: string, opts: RequestOpti
  * so we fetch the bytes and hand the browser a blob URL. Errors go through the same handler as JSON calls.
  */
 export async function download(path: string, fallbackName: string): Promise<void> {
+  const d = demo()
+  if (d) return d.download()
   let res: Response
   try {
     res = await send('GET', path, {})
