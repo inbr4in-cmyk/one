@@ -191,6 +191,18 @@ async def main() -> None:
     async with SessionLocal() as db:
         await seed_base(db)
         await seed_branches(db)
+        if "--owner" in sys.argv:
+            # python -m app.seed --owner +77010000001 "Имя Фамилия" — the password is typed, never passed in argv.
+            import getpass
+
+            i = sys.argv.index("--owner")
+            phone, name = sys.argv[i + 1], sys.argv[i + 2]
+            if await db.scalar(select(User).where(User.phone == phone)):
+                sys.exit(f"user {phone} already exists")
+            pw = getpass.getpass("Пароль владельца (от 10 символов): ")
+            if len(pw) < 10 or pw != getpass.getpass("Ещё раз: "):
+                sys.exit("пароли не совпадают или короче 10 символов")
+            await create_owner(db, phone, name, pw)
         if "--demo" in sys.argv:
             from app.demo import seed_demo
 
