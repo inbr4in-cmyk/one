@@ -5,8 +5,8 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd); cd "$ROOT"
 (cd web && npm run build)
 TMP=$(mktemp -d); git worktree add -q --detach "$TMP"
-trap 'git worktree remove --force "$TMP"' EXIT
-cd "$TMP"; git checkout -q --orphan release-tmp; git rm -rqf .
+trap 'git worktree remove --force "$TMP"; git -C "$ROOT" branch -D "release-$$" >/dev/null 2>&1 || true' EXIT
+cd "$TMP"; git checkout -q --orphan "release-$$"; git rm -rqf .
 git -C "$ROOT" archive HEAD backend deploy | tar -x; rm -rf backend/tests
 cp -r "$ROOT/web/dist" web
 git add -A; git commit -qm "Release $(git -C "$ROOT" rev-parse --short HEAD)"
