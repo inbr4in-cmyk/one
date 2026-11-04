@@ -1,7 +1,10 @@
 import pyotp
 from sqlalchemy import text
 
+from httpx import ASGITransport, AsyncClient
+
 from app.core.kv import get_kv
+from app.main import app
 from tests.conftest import PASSWORD, login
 
 
@@ -16,12 +19,55 @@ async def test_login_me_logout(client, owner):
     assert (await client.get("/api/auth/me", headers=h)).status_code == 401
 
 
-async def test_wrong_password_locks_after_five(client, owner):
+async def test_wrong_passwords_slow_down_unknown_ip_but_never_lock_known_one(client, owner):
+    """QA B-4: five wrong passwords make that phone + IP wait; they don't lock the account."""
     for _ in range(5):
         r = await client.post("/api/auth/login", json={"phone": owner.phone, "password": "nope"})
         assert r.status_code == 401
+    # This IP never had a session for the owner: even the right password waits (no oracle for the attacker).
     r = await client.post("/api/auth/login", json={"phone": owner.phone, "password": PASSWORD})
-    assert r.status_code == 423
+    assert r.status_code == 429 and int(r.headers["Retry-After"]) > 0
+    # The owner from another IP is not affected at all.
+    async with AsyncClient(transport=ASGITransport(app=app, client=("10.0.0.7", 1234)), base_url="http://test") as other:
+        r = await other.post("/api/auth/login", json={"phone": owner.phone, "password": PASSWORD})
+        assert r.status_code == 200, r.text
+        device = r.cookies.get("oe_device")
+    assert device
+    # A device that signed in before gets in with the right password even from the throttled IP.
+    client.cookies.set("oe_device", device, path="/api/auth")
+    r = await client.post("/api/auth/login", json={"phone": owner.phone, "password": PASSWORD})
+    assert r.status_code == 200, r.text
+
+
+async def test_known_ip_gets_in_after_failures_and_owners_hear_of_burst(client, db, owner):
+    from sqlalchemy import select
+
+    from app.models import Notification
+
+    await login(client, owner.phone)  # this IP is now known for the owner
+    client.cookies.clear()
+    for _ in range(10):
+        await client.post("/api/auth/login", json={"phone": owner.phone, "password": "nope"})
+    r = await client.post("/api/auth/login", json={"phone": owner.phone, "password": PASSWORD})
+    assert r.status_code == 200, r.text
+    alerts = (await db.scalars(select(Notification).where(Notification.user_id == owner.id, Notification.kind == "security"))).all()
+    assert len(alerts) == 1
+
+
+async def test_refresh_reuse_within_grace_returns_same_pair(client, owner):
+    """QA C-6: two tabs refreshing with one token both stay signed in."""
+    r = await client.post("/api/auth/login", json={"phone": owner.phone, "password": PASSWORD}, headers={"X-Client": "mobile"})
+    first = r.json()["refresh_token"]
+    a = await client.post("/api/auth/refresh", json={"refresh_token": first}, headers={"X-Client": "mobile"})
+    b = await client.post("/api/auth/refresh", json={"refresh_token": first}, headers={"X-Client": "mobile"})
+    assert a.status_code == b.status_code == 200
+    assert a.json()["refresh_token"] == b.json()["refresh_token"]
+    me = await client.get("/api/auth/me", headers={"Authorization": f"Bearer {b.json()['access_token']}"})
+    assert me.status_code == 200
+    # After the grace window the old token is theft again: the session is revoked.
+    get_kv().clear()
+    c = await client.post("/api/auth/refresh", json={"refresh_token": first}, headers={"X-Client": "mobile"})
+    assert c.status_code == 401
 
 
 async def test_unknown_user_same_error(client, owner):
@@ -38,7 +84,8 @@ async def test_refresh_rotation_and_reuse_detection(client, owner):
     assert r2.status_code == 200
     second = r2.json()["refresh_token"]
     assert second != first
-    # Replaying the old token kills the session: the new token stops working too.
+    # Replaying the old token after the short grace window kills the session: the new token stops working too.
+    get_kv().clear()
     assert (await client.post("/api/auth/refresh", json={"refresh_token": first}, headers={"X-Client": "mobile"})).status_code == 401
     assert (await client.post("/api/auth/refresh", json={"refresh_token": second}, headers={"X-Client": "mobile"})).status_code == 401
 
@@ -51,12 +98,17 @@ async def test_cookie_refresh_requires_csrf_header(client, owner):
     assert r.status_code == 200 and r.json()["access_token"]
 
 
-async def test_totp_flow(client, owner):
+async def test_totp_flow(client, db, owner):
     h = await login(client, owner.phone)
-    setup = (await client.post("/api/auth/2fa/setup", headers=h)).json()
+    # QA H-5: the password is asked again before an authenticator is attached.
+    assert (await client.post("/api/auth/2fa/setup", headers=h)).status_code == 400
+    assert (await client.post("/api/auth/2fa/setup", headers=h, json={"password": "wrong-pass-1"})).status_code == 400
+    setup = (await client.post("/api/auth/2fa/setup", headers=h, json={"password": PASSWORD})).json()
     code = pyotp.TOTP(setup["secret"]).now()
     r = await client.post("/api/auth/2fa/enable", json={"code": code}, headers=h)
     assert r.status_code == 200
+    stored = (await db.execute(text("SELECT totp_secret FROM users WHERE id = :i"), {"i": owner.id})).scalar()
+    assert stored.startswith("enc1:") and setup["secret"] not in stored
     # Old session revoked after enabling 2FA
     assert (await client.get("/api/auth/me", headers=h)).status_code == 401
     r = await client.post("/api/auth/login", json={"phone": owner.phone, "password": PASSWORD})

@@ -4,6 +4,7 @@ from app.core.deps import DB, Actor
 from app.core.errors import forbidden, not_found
 from app.models import Student, StudentGuardian
 from app.models.identity import UserKind
+from app.services.access import BLOCKED_MSG, is_blocked
 
 
 async def my_students(db: DB, actor: Actor) -> list[Student]:
@@ -22,6 +23,6 @@ async def portal_student(db: DB, actor: Actor, student_id: int, allow_blocked: b
     s = next((x for x in await my_students(db, actor) if x.id == student_id), None)
     if s is None:
         raise not_found("Ученик")
-    if s.access_blocked_at and not allow_blocked:
-        raise forbidden("Доступ приостановлен до оплаты")
+    if is_blocked(s) and not allow_blocked:
+        raise forbidden(BLOCKED_MSG)
     return s

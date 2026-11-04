@@ -7,13 +7,14 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import or_, select, true
 
+from app.core.query import icontains
 from app.core.audit import write_audit
 from app.core.config import get_settings
 from app.core.deps import DB, Actor, require
 from app.core.errors import bad_request, conflict, not_found
 from app.core.permissions import NETWORK, OWN
 from app.core.ratelimit import client_ip, hit
-from app.core.schemas import ORM
+from app.core.schemas import In, ORM
 from app.core.security import mask_phone
 from app.models import Conversation, ExternalContact, ExternalMessage, Lead, LeadStage, MessageTemplate
 from app.modules.inbox.service import handle_meta_payload, in_window
@@ -46,7 +47,8 @@ async def webhook(request: Request, db: DB) -> dict:
     try:
         payload = json.loads(body)
     except ValueError:
-        raise HTTPException(400, "Некорректный JSON") from None
+        log.warning("Meta webhook: body is not JSON")
+        return {"ok": True, "stored": 0}  # signed by Meta, so retrying won't fix it: acknowledge (QA C-9)
     n = await handle_meta_payload(db, payload)
     await db.commit()
     return {"ok": True, "stored": n}
@@ -113,7 +115,7 @@ async def _get(db: DB, actor: Actor, conv_id: int, action: str = "view") -> Conv
 @router.get("/inbox/conversations", response_model=list[ConversationOut])
 async def conversations(db: DB, actor: Actor = require("inbox", "view"), channel: str | None = None,
                         status: str | None = "open", unread: bool = False, mine: bool = False, q: str | None = None,
-                        limit: int = 100) -> list[ConversationOut]:
+                        limit: int = Query(100, ge=1, le=300)) -> list[ConversationOut]:
     stmt = select(Conversation).where(conv_filter(actor))
     if channel:
         stmt = stmt.where(Conversation.channel == channel)
@@ -125,7 +127,7 @@ async def conversations(db: DB, actor: Actor = require("inbox", "view"), channel
         stmt = stmt.where(Conversation.assignee_id == actor.id)
     if q:
         stmt = stmt.join(ExternalContact, ExternalContact.id == Conversation.contact_id).where(
-            or_(ExternalContact.display_name.ilike(f"%{q}%"), ExternalContact.username.ilike(f"%{q}%")))
+            or_(icontains(ExternalContact.display_name, q), icontains(ExternalContact.username, q)))
     rows = await db.scalars(stmt.order_by(Conversation.last_message_at.desc().nulls_last()).limit(min(limit, 200)))
     return [await _out(db, actor, c) for c in rows]
 
@@ -137,7 +139,7 @@ async def conversation(conv_id: int, db: DB, actor: Actor = require("inbox", "vi
 
 @router.get("/inbox/conversations/{conv_id}/messages", response_model=list[MessageOut])
 async def messages(conv_id: int, db: DB, actor: Actor = require("inbox", "view"), before_id: int | None = None,
-                   limit: int = 50) -> list[MessageOut]:
+                   limit: int = Query(50, ge=1, le=200)) -> list[MessageOut]:
     conv = await _get(db, actor, conv_id)
     q = select(ExternalMessage).where(ExternalMessage.conversation_id == conv.id)
     if before_id:
@@ -149,7 +151,7 @@ async def messages(conv_id: int, db: DB, actor: Actor = require("inbox", "view")
     return [MessageOut.model_validate(m) for m in reversed(rows)]
 
 
-class SendIn(BaseModel):
+class SendIn(In):
     text: str = Field(min_length=1, max_length=4096)
 
 
@@ -208,8 +210,8 @@ async def templates(db: DB, actor: Actor = require("inbox", "reply")) -> list[di
             for t in rows]
 
 
-class TemplateIn(BaseModel):
-    code: str
+class TemplateIn(In):
+    code: str = Field(max_length=255)
     variables: dict = {}
     locale: str = Field(default="ru", pattern="^(ru|kk)$")
 
@@ -233,7 +235,7 @@ async def send_template(conv_id: int, body: TemplateIn, db: DB, actor: Actor = r
     return MessageOut.model_validate(msg)
 
 
-class ConvPatch(BaseModel):
+class ConvPatch(In):
     assignee_id: int | None = None
     status: str | None = Field(default=None, pattern="^(open|closed)$")
     branch_id: int | None = None

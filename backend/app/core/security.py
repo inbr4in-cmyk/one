@@ -25,11 +25,34 @@ def verify_password(password: str, hashed: str | None) -> bool:
         return False
 
 
+PASSWORD_MIN = 10
+PASSWORD_MAX = 256
+# The most common passwords and keyboard walks that pass the length rule (QA C-8). Compared case-insensitively,
+# also with trailing digits/punctuation stripped («Qwerty12345!» → «qwerty»).
+COMMON_PASSWORDS = frozenset("""
+password passw0rd qwerty qwertyuiop qwerty123 qwerty1234 qwertyuiop123 asdfghjkl zxcvbnm 1q2w3e4r5t 1q2w3e4r1q2w3e4r
+q1w2e3r4t5 1qaz2wsx3edc qazwsxedc qazwsx zaq12wsx iloveyou letmein welcome admin administrator adminadmin
+changeme secret monkey dragon football baseball superman batman princess sunshine starwars master trustno1
+abc123 abcdef abcdefgh abcd1234 a1b2c3d4e5 password1 password123 p@ssw0rd p@ssword пароль йцукен йцукенгшщз
+oneenglish one-english englishschool english school shymkent kazakhstan almaty astana
+""".split())
+
+
+def _core(password: str) -> str:
+    p = password.lower().strip()
+    return p.rstrip("0123456789!@#$%^&*()_-+=.?,;:")
+
+
 def validate_password_strength(password: str) -> str | None:
-    if len(password) < 10:
-        return "Пароль должен быть не короче 10 символов"
+    if len(password) < PASSWORD_MIN:
+        return f"Пароль должен быть не короче {PASSWORD_MIN} символов"
+    if len(password) > PASSWORD_MAX:
+        return f"Пароль должен быть не длиннее {PASSWORD_MAX} символов"
     if password.isdigit() or password.isalpha():
         return "Пароль должен содержать буквы и цифры"
+    low = password.lower()
+    if low in COMMON_PASSWORDS or _core(password) in COMMON_PASSWORDS or len(set(low)) < 4:
+        return "Этот пароль слишком простой и часто встречается — придумайте другой"
     return None
 
 
@@ -68,8 +91,36 @@ def new_totp_secret() -> str:
     return pyotp.random_base32()
 
 
-def verify_totp(secret: str, code: str) -> bool:
-    return pyotp.TOTP(secret).verify(code, valid_window=1)
+_ENC = "enc1:"
+
+
+def _fernet():
+    import base64
+
+    from cryptography.fernet import Fernet
+
+    s = get_settings()
+    # OE_TOTP_KEY (Fernet key) when set; otherwise a key derived from OE_JWT_SECRET for this purpose only.
+    key = s.totp_key or base64.urlsafe_b64encode(hashlib.sha256(f"totp-secret:{s.jwt_secret}".encode()).digest()).decode()
+    return Fernet(key)
+
+
+def seal_totp_secret(secret: str) -> str:
+    """2FA secrets are stored encrypted (QA H-5): a database dump alone can't produce codes."""
+    return _ENC + _fernet().encrypt(secret.encode()).decode()
+
+
+def open_totp_secret(stored: str | None) -> str | None:
+    if not stored:
+        return None
+    if stored.startswith(_ENC):
+        return _fernet().decrypt(stored[len(_ENC):].encode()).decode()
+    return stored  # stored before encryption was added; re-sealed on the next successful sign-in
+
+
+def verify_totp(secret: str | None, code: str) -> bool:
+    secret = open_totp_secret(secret) if secret and secret.startswith(_ENC) else secret
+    return bool(secret) and pyotp.TOTP(secret).verify(code, valid_window=1)
 
 
 def totp_uri(secret: str, account: str) -> str:

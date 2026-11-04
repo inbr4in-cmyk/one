@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, String, UniqueConstraint
+from sqlalchemy import Boolean, Index, String, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import ArchiveMixin, Base, IdMixin, TimestampMixin
@@ -42,6 +42,12 @@ class LeadStage(IdMixin, TimestampMixin, ArchiveMixin, Base):
 
 class Lead(IdMixin, TimestampMixin, ArchiveMixin, Base):
     __tablename__ = "leads"
+    # QA H-15: one open lead per phone in a branch, even under parallel requests. A lead stops counting once it is
+    # archived or became a student (the «Возврат» funnel then opens a new card for the same phone).
+    __table_args__ = (
+        Index("leads_open_phone_uq", "branch_id", "phone", unique=True,
+              postgresql_where=text("archived_at IS NULL AND student_id IS NULL AND phone IS NOT NULL")),
+    )
 
     full_name: Mapped[str] = mapped_column(String(255))
     phone: Mapped[StrN] = mapped_column(String(32), index=True, default=None)

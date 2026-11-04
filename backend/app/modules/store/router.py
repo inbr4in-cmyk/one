@@ -1,15 +1,15 @@
 """Books warehouse and sales (ТЗ 12), coins and the coin shop (ТЗ 14)."""
 
-from fastapi import APIRouter
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Query
+from pydantic import Field
 from sqlalchemy import func, select
 
 from app.core.audit import write_audit
 from app.core.deps import DB, Actor, CurrentActor, ensure_staff_mfa, require
 from app.core.errors import bad_request, conflict, forbidden, not_found
-from app.core.schemas import ORM
+from app.core.schemas import In, ORM
 from app.models import (
-    Book, BookMovement, BookStock, Branch, CoinEntry, Expense, ExpenseCategory, GroupMember, Payment, Role, ShopItem,
+    Book, BookMovement, BookStock, Branch, CoinEntry, Expense, ExpenseCategory, Group, GroupMember, Payment, Role, ShopItem,
     ShopOrder, Student, User, UserRole,
 )
 from app.models.finance import PaymentMethod
@@ -47,7 +47,7 @@ async def _low_stock_alert(db: DB, st: BookStock, book: Book) -> None:
 
 
 # ---------- catalog ----------
-class BookIn(BaseModel):
+class BookIn(In):
     title: str = Field(min_length=2, max_length=255)
     level_id: int | None = None
     sale_price: int = Field(ge=0)
@@ -114,7 +114,7 @@ async def update_book(book_id: int, body: BookIn, db: DB, actor: Actor = require
 
 
 # ---------- movements ----------
-class StockIn(BaseModel):
+class StockIn(In):
     branch_id: int
     book_id: int
     qty: int = Field(gt=0, le=10000)
@@ -144,7 +144,7 @@ async def receive(body: StockIn, db: DB, actor: Actor = require("books", "stock"
     return {"id": m.id, "qty": st.qty}
 
 
-class TransferIn(BaseModel):
+class TransferIn(In):
     from_branch_id: int
     to_branch_id: int
     book_id: int
@@ -204,7 +204,7 @@ async def confirm_transfer(movement_id: int, db: DB, actor: Actor = require("boo
     return {"qty": st.qty}
 
 
-class WriteoffIn(BaseModel):
+class WriteoffIn(In):
     branch_id: int
     book_id: int
     qty: int = Field(gt=0, le=10000)
@@ -229,10 +229,10 @@ async def writeoff(body: WriteoffIn, db: DB, actor: Actor = require("books", "st
     return {"qty": st.qty}
 
 
-class SaleIn(BaseModel):
+class SaleIn(In):
     student_id: int
     book_id: int
-    method: str
+    method: str = Field(max_length=255)
     qty: int = Field(default=1, ge=1, le=20)
 
 
@@ -341,7 +341,7 @@ async def coin_limit(db: DB, actor: Actor = require("coins", "award")) -> dict:
     return await _limit_state(db, actor)
 
 
-class AwardIn(BaseModel):
+class AwardIn(In):
     student_id: int
     amount: int = Field(gt=0, le=10000)
     reason: str = Field(min_length=3, max_length=255)
@@ -397,14 +397,20 @@ async def student_coins(student_id: int, db: DB, actor: CurrentActor) -> dict:
 
 @router.get("/coins/top")
 async def coins_top(db: DB, actor: CurrentActor, group_id: int | None = None, branch_id: int | None = None,
-                    period: str | None = None, limit: int = 20) -> list[dict]:
+                    period: str | None = Query(None, pattern=r"^\d{4}-(0[1-9]|1[0-2])$"), limit: int = Query(20, ge=1, le=100)) -> list[dict]:
     """Leaderboard (ТЗ 14.3). Staff see their scope; students and parents see their group or branch, first names only."""
+    own_groups = None
     if actor.is_staff:
         ensure_staff_mfa(actor)
         allowed = actor.branches_for("coins", "view")
         if branch_id is not None:
             actor.ensure_branch("coins", "view", branch_id)
         branches = {branch_id} if branch_id is not None else allowed
+        if actor.is_own_scope("coins", "view"):
+            # QA H-4: «own» scope (a teacher) ranks only the students of their own groups.
+            own_groups = select(Group.id).where(Group.teacher_id == actor.id, Group.archived_at.is_(None))
+            if group_id is not None and not await db.scalar(select(Group.id).where(Group.id == group_id, Group.teacher_id == actor.id)):
+                raise forbidden()
     else:
         kids = await my_students(db, actor)
         if not kids:
@@ -426,6 +432,9 @@ async def coins_top(db: DB, actor: CurrentActor, group_id: int | None = None, br
                                                                          GroupMember.left_on.is_(None))))
     if branches is not None:
         q = q.where(Student.branch_id.in_(branches))
+    if own_groups is not None:
+        q = q.where(Student.id.in_(select(GroupMember.student_id).where(GroupMember.group_id.in_(own_groups),
+                                                                         GroupMember.left_on.is_(None))))
     if period:  # coins earned in that month
         _, _, a, b = month_bounds(period)
         q = q.where(CoinEntry.at >= a, CoinEntry.at < b)
@@ -435,7 +444,7 @@ async def coins_top(db: DB, actor: CurrentActor, group_id: int | None = None, br
 
 
 # ---------- shop ----------
-class ItemIn(BaseModel):
+class ItemIn(In):
     name: str = Field(min_length=2, max_length=255)
     photo_url: str | None = Field(default=None, max_length=255)
     icon: str | None = Field(default=None, max_length=32)
@@ -446,9 +455,16 @@ class ItemIn(BaseModel):
 
 
 @router.get("/shop/items")
-async def shop_items(db: DB, actor: CurrentActor, branch_id: int | None = None) -> list[dict]:
+async def shop_items(db: DB, actor: CurrentActor, branch_id: int | None = Query(None, ge=1)) -> list[dict]:
     q = select(ShopItem).where(ShopItem.archived_at.is_(None))
-    if branch_id:
+    if not actor.is_staff:
+        # QA H-2: a student or parent sees the network-wide items and their own branch's, nothing else.
+        kid_branches = {k.branch_id for k in await my_students(db, actor)}
+        if branch_id is not None and branch_id not in kid_branches:
+            raise forbidden()
+        allowed = {branch_id} if branch_id is not None else kid_branches
+        q = q.where(ShopItem.branch_id.in_(allowed or {-1}) | ShopItem.branch_id.is_(None))
+    elif branch_id:
         q = q.where((ShopItem.branch_id == branch_id) | ShopItem.branch_id.is_(None))
     show_cost = actor.can("shop", "edit")
     return [{"id": i.id, "name": i.name, "photo_url": i.photo_url, "icon": i.icon, "price_coins": i.price_coins,
@@ -506,18 +522,16 @@ async def _my_student(db: DB, actor: Actor, student_id: int) -> Student:
     return await portal_student(db, actor, student_id, allow_blocked=True)
 
 
-class OrderIn(BaseModel):
+class OrderIn(In):
     student_id: int
     item_id: int
 
 
 @router.post("/shop/orders", status_code=201)
 async def place_order(body: OrderIn, db: DB, actor: CurrentActor) -> dict:
-    s = await _my_student(db, actor, body.student_id)
-    if s.access_blocked_at:
-        raise forbidden("Доступ приостановлен до оплаты")
+    s = await portal_student(db, actor, body.student_id)  # blocked students can't spend coins
     item = await db.get(ShopItem, body.item_id, with_for_update=True)
-    if item is None or item.archived_at:
+    if item is None or item.archived_at or item.branch_id not in (None, s.branch_id):
         raise not_found("Товар")
     if item.stock <= 0:
         raise conflict("Товар закончился")
@@ -563,7 +577,7 @@ async def orders(db: DB, actor: CurrentActor, status: str | None = None, student
             for o, i, n in (await db.execute(q.order_by(ShopOrder.id.desc()).limit(300))).all()]
 
 
-class OrderStatusIn(BaseModel):
+class OrderStatusIn(In):
     status: str = Field(pattern="^(ready|issued|cancelled)$")
 
 

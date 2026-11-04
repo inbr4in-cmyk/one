@@ -5,14 +5,14 @@ from datetime import date, time, timedelta
 
 from fastapi import APIRouter, Query
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import Field
 from sqlalchemy import func, select
 
 from app.core.audit import write_audit
 from app.core.deps import DB, Actor, require
 from app.core.errors import bad_request, not_found
 from app.core.query import paginate
-from app.core.schemas import ORM, Page
+from app.core.schemas import In, ORM, Page
 from app.models import (
     Accrual, Attendance, Branch, Expense, ExpenseCategory, Lead, LeadStage, Lesson, Payment, Refund, Student, User,
 )
@@ -48,7 +48,7 @@ class CategoryOut(ORM):
     name: str
 
 
-class CategoryIn(BaseModel):
+class CategoryIn(In):
     name: str = Field(min_length=2, max_length=120)
     code: str = Field(pattern=r"^[a-z0-9_]{2,32}$")
 
@@ -71,7 +71,7 @@ async def create_category(body: CategoryIn, db: DB, actor: Actor = require("fina
     return c
 
 
-class ExpenseIn(BaseModel):
+class ExpenseIn(In):
     branch_id: int | None = None  # None = shared network expense
     category_id: int
     amount: int = Field(gt=0, le=1_000_000_000)
@@ -107,7 +107,7 @@ def _check_expense_branch(actor: Actor, branch_id: int | None) -> None:
 @router.get("/expenses", response_model=Page[ExpenseOut])
 async def list_expenses(db: DB, actor: Actor = require("finance", "view"), period: str | None = None,
                         branch_id: int | None = None, category_id: int | None = None,
-                        limit: int = 50, offset: int = 0) -> Page:
+                        limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0)) -> Page:
     q = select(Expense).where(Expense.archived_at.is_(None))
     branches = _branches(actor, "finance", "view", branch_id)
     if branches is not None:

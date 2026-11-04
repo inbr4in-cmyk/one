@@ -2,12 +2,13 @@
 
 from datetime import date, datetime, time, timedelta
 
-from fastapi import APIRouter
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Query
+from pydantic import Field
 from sqlalchemy import func, select
 
 from app.core.deps import DB, CurrentActor
 from app.core.errors import bad_request, conflict, forbidden, not_found
+from app.core.schemas import In
 from app.models import (
     Attempt, Attendance, Branch, Group, GroupMember, Homework, HomeworkSubmission, Lesson, LessonRating, Level, Payment,
     Room, Test, User,
@@ -71,7 +72,7 @@ async def schedule(student_id: int, db: DB, actor: CurrentActor, start: date | N
 
 
 @router.get("/students/{student_id}/attendance")
-async def attendance(student_id: int, db: DB, actor: CurrentActor, limit: int = 50) -> dict:
+async def attendance(student_id: int, db: DB, actor: CurrentActor, limit: int = Query(50, ge=1, le=300)) -> dict:
     s = await portal_student(db, actor, student_id)
     rows = (await db.execute(
         select(Attendance, Lesson.starts_at, Group.name, LessonRating.stars).join(Lesson, Lesson.id == Attendance.lesson_id)
@@ -102,10 +103,10 @@ async def homework(student_id: int, db: DB, actor: CurrentActor) -> list[dict]:
              "file_url": files.signed_url(sub.file_url) if sub else None} for h, sub in rows]
 
 
-class SubmitIn(BaseModel):
+class SubmitIn(In):
     student_id: int
     answer: str | None = Field(default=None, max_length=8000)
-    file_key: str | None = None
+    file_key: str | None = Field(default=None, max_length=255)
 
 
 @router.post("/homework/{homework_id}/submit")
@@ -157,7 +158,7 @@ async def tests(student_id: int, db: DB, actor: CurrentActor) -> list[dict]:
             for a, t, k, m in rows]
 
 
-class RateIn(BaseModel):
+class RateIn(In):
     student_id: int
     stars: int = Field(ge=1, le=5)
     comment: str | None = Field(default=None, max_length=1000)

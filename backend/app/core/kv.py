@@ -39,12 +39,24 @@ class MemoryKV:
     def clear(self) -> None:
         self._data.clear()
 
+    async def ping(self) -> bool:
+        return True
+
 
 class RedisKV:
     def __init__(self, url: str) -> None:
         import redis.asyncio as redis
+        from redis.backoff import ExponentialBackoff
+        from redis.exceptions import ConnectionError, TimeoutError
+        from redis.retry import Retry
 
-        self._r = redis.from_url(url, decode_responses=True)
+        # Survive a Redis restart or a dropped idle connection (QA C-12): retry, and check idle connections.
+        self._r = redis.from_url(url, decode_responses=True, health_check_interval=30, socket_connect_timeout=3,
+                                 socket_timeout=5, retry=Retry(ExponentialBackoff(cap=1, base=0.05), 3),
+                                 retry_on_error=[ConnectionError, TimeoutError])
+
+    async def ping(self) -> bool:
+        return bool(await self._r.ping())
 
     async def get(self, key: str) -> str | None:
         return await self._r.get(key)

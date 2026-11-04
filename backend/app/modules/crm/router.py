@@ -1,14 +1,15 @@
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
+from app.core.query import icontains
 from app.core.audit import diff, snapshot, write_audit
 from app.core.deps import DB, Actor, require
 from app.core.errors import bad_request, conflict, forbidden, not_found
 from app.core.permissions import NETWORK
-from app.core.schemas import ORM
+from app.core.schemas import In, ORM
 from app.core.security import mask_phone, normalize_phone
 from app.models import Attempt, Conversation, ExternalContact, GroupMember, Lead, LeadEvent, LeadStage, Lesson, Pipeline, Room, Student, User
 from app.models.crm import LeadSource
@@ -17,7 +18,7 @@ from app.modules.crm.service import create_lead, find_by_phone, get_lead_scoped,
 from app.modules.students.router import add_guardian, upsert_portal_user
 from app.modules.students.schemas import GuardianIn
 from app.services import crm as crm_svc
-from app.services.clock import at_local, local, now
+from app.services.clock import local, local_range, now, today
 from app.services.messaging import send_whatsapp_text
 from app.services.values import setting
 
@@ -41,28 +42,28 @@ class PipelineOut(ORM):
     stages: list[StageOut] = []
 
 
-class LeadIn(BaseModel):
+class LeadIn(In):
     full_name: str = Field(min_length=2, max_length=255)
-    phone: str | None = None
+    phone: str | None = Field(default=None, max_length=32)
     branch_id: int
     source: str = LeadSource.SALES
     age: int | None = Field(default=None, ge=2, le=99)
-    parent_name: str | None = None
-    parent_phone: str | None = None
+    parent_name: str | None = Field(default=None, max_length=255)
+    parent_phone: str | None = Field(default=None, max_length=32)
     level_id: int | None = None
     notes: str | None = Field(default=None, max_length=4000)
     next_action_at: datetime | None = None
     assignee_id: int | None = None
 
 
-class LeadPatch(BaseModel):
-    full_name: str | None = None
-    phone: str | None = None
+class LeadPatch(In):
+    full_name: str | None = Field(default=None, max_length=255)
+    phone: str | None = Field(default=None, max_length=32)
     age: int | None = None
-    parent_name: str | None = None
-    parent_phone: str | None = None
+    parent_name: str | None = Field(default=None, max_length=255)
+    parent_phone: str | None = Field(default=None, max_length=32)
     level_id: int | None = None
-    notes: str | None = None
+    notes: str | None = Field(default=None, max_length=4000)
     next_action_at: datetime | None = None
     assignee_id: int | None = None
     is_hot: bool | None = None
@@ -174,7 +175,7 @@ async def board(db: DB, actor: Actor = require("crm", "view"), pipeline: str = "
     if owner_id:
         stmt = stmt.where(Lead.owner_id == owner_id)
     if q:
-        stmt = stmt.where(Lead.full_name.ilike(f"%{q}%"))
+        stmt = stmt.where(icontains(Lead.full_name, q))
     # Closed columns only show the last 30 days.
     stages = list(await db.scalars(select(LeadStage).where(LeadStage.pipeline_id == p.id, LeadStage.archived_at.is_(None))
                                    .order_by(LeadStage.order)))
@@ -238,7 +239,7 @@ async def patch_lead(lead_id: int, body: LeadPatch, db: DB, actor: Actor = requi
     return (await _cards(db, actor, [lead]))[0]
 
 
-class StageIn(BaseModel):
+class StageIn(In):
     stage_id: int
     lost_reason: str | None = Field(default=None, max_length=255)
 
@@ -263,7 +264,7 @@ async def change_stage(lead_id: int, body: StageIn, db: DB, actor: Actor = requi
     return (await _cards(db, actor, [lead]))[0]
 
 
-class EventIn(BaseModel):
+class EventIn(In):
     kind: str = Field(pattern="^(call|note|meeting)$")
     text: str = Field(min_length=1, max_length=4000)
     result: str | None = Field(default=None, pattern="^(booked|thinking|no_answer|refused|callback)$")
@@ -287,7 +288,7 @@ async def add_event(lead_id: int, body: EventIn, db: DB, actor: Actor = require(
     return EventOut.model_validate(e)
 
 
-class TrialIn(BaseModel):
+class TrialIn(In):
     lesson_id: int
     notify: bool = True
 
@@ -321,7 +322,7 @@ async def book_trial(lead_id: int, body: TrialIn, db: DB, actor: Actor = require
     return (await _cards(db, actor, [lead]))[0]
 
 
-class ConvertIn(BaseModel):
+class ConvertIn(In):
     birth_date: date | None = None
     create_account: bool = True
     guardian: GuardianIn | None = None
@@ -367,10 +368,10 @@ async def archive_lead(lead_id: int, db: DB, actor: Actor = require("crm", "arch
 async def analytics(db: DB, actor: Actor = require("crm", "view"), date_from: date | None = None, date_to: date | None = None,
                     branch_id: int | None = None) -> dict:
     """ТЗ 9.4: conversion by stage, source, owner and branch; loss reasons."""
-    d1 = date_from or (date.today() - timedelta(days=30))
-    d2 = date_to or date.today()
-    q = select(Lead).where(lead_filter(actor), Lead.created_at >= at_local(d1, time(0)),
-                           Lead.created_at < at_local(d2 + timedelta(days=1), time(0)))
+    d1 = date_from or (today() - timedelta(days=30))
+    d2 = date_to or today()
+    start, end = local_range(d1, d2)
+    q = select(Lead).where(lead_filter(actor), Lead.created_at >= start, Lead.created_at < end)
     if branch_id:
         q = q.where(Lead.branch_id == branch_id)
     leads = list(await db.scalars(q))

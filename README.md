@@ -9,7 +9,8 @@ A Flutter app for iOS/Android comes next and uses the same API (`/api/portal/*`,
 
 ## Run locally
 
-Requirements: Python 3.13 + [uv](https://docs.astral.sh/uv/), PostgreSQL 16, Redis (optional in dev), Node 22.
+Requirements: Python 3.13 + [uv](https://docs.astral.sh/uv/), PostgreSQL 16, Redis 6+ (required: sign-in limits, one-time codes,
+WebSocket events; only the test suite runs without it), Node 22.
 
 ```bash
 # backend
@@ -31,7 +32,7 @@ Demo owner: `+77010000001` / `Demo-pass-2026` (only when loaded with `--demo`; n
 ## Tests
 
 ```bash
-cd backend && pytest -q          # uses database one_english_test
+cd backend && pytest -q          # uses database one_english_test (or OE_TEST_DATABASE_URL)
 ruff check app tests
 cd web && npm run build          # type check + build
 ```
@@ -46,3 +47,8 @@ cd web && npm run build          # type check + build
 | `OE_REQUIRE_STAFF_2FA` | staff must use 2FA for finance, payroll, roles, security, audit (default on) |
 | `OE_META_*` | WhatsApp Cloud API / Instagram tokens and webhook secret; without them messages are only logged |
 | `OE_STORAGE_DIR` | where uploaded files are kept |
+| `OE_MAX_UPLOAD_MB` | upload size limit, default 25 (nginx allows 27 MB for multipart overhead) |
+| `OE_TOTP_KEY` | optional Fernet key for 2FA secrets at rest; empty = derived from `OE_JWT_SECRET` |
+
+`GET /api/health` answers `200 {"ok": true, "db": true, "redis": true}` only when PostgreSQL and Redis both respond,
+otherwise `503` with the failing part set to `false`.

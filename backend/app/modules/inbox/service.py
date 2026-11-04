@@ -1,5 +1,6 @@
 """Unified Instagram + WhatsApp inbox. Every new person who writes becomes a lead (DECISIONS.md №5)."""
 
+import logging
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
@@ -13,6 +14,7 @@ from app.services.clock import now
 from app.services.messaging import notify_user
 from app.services.realtime import publish
 
+log = logging.getLogger("inbox")
 WINDOW = timedelta(hours=24)
 IG_HUMAN_WINDOW = timedelta(days=7)
 
@@ -51,6 +53,12 @@ async def _link_lead(db: AsyncSession, contact: ExternalContact, branch_id: int)
         if not stale_lost:
             contact.lead_id = existing.id
             return existing
+        if existing.branch_id == branch_id and existing.phone == contact.phone and existing.student_id is None:
+            # A refusal older than 30 days is closed for good; the person writing again starts a fresh card.
+            existing.archived_at = now()
+            db.add(LeadEvent(lead_id=existing.id, at=now(), kind="note", text="Архив: клиент написал снова, создан новый лид",
+                             actor_id=None, meta={}))
+            await db.flush()
     source = LeadSource.WHATSAPP if contact.channel == "whatsapp" else LeadSource.INSTAGRAM
     name = contact.display_name or (f"@{contact.username}" if contact.username else "Без имени")
     lead = await create_lead(db, full_name=name, phone=contact.phone, branch_id=branch_id, source=source, owner_id=None,
@@ -105,42 +113,79 @@ def _ts(v) -> datetime | None:
         return None
 
 
-async def handle_meta_payload(db: AsyncSession, payload: dict) -> int:
-    """Parse a Meta webhook: WhatsApp Cloud API (`whatsapp_business_account`) or Instagram (`instagram`)."""
+async def _one(db: AsyncSession, what: str, coro) -> bool:
+    """Run one webhook item in its own savepoint: a broken item is logged and skipped, the rest are stored (QA C-9)."""
+    try:
+        async with db.begin_nested():
+            return bool(await coro)
+    except Exception:  # noqa: BLE001 — Meta sends what it sends; one odd item must not lose the batch
+        log.warning("Meta webhook: skipped %s", what, exc_info=True)
+        return False
+
+
+def _dicts(value) -> list[dict]:
+    return [x for x in value if isinstance(x, dict)] if isinstance(value, list) else []
+
+
+async def _wa_message(db: AsyncSession, m: dict, names: dict) -> bool:
+    kind = m.get("type", "text")
+    body = m.get(kind) if isinstance(m.get(kind), dict) else {}
+    text = body.get("body") if kind == "text" else body.get("caption")
+    mapped = {"image": "image", "audio": "audio", "voice": "audio", "document": "file", "video": "file"}.get(kind, "text")
+    wa_id = m.get("from")
+    if not isinstance(wa_id, str) or not isinstance(m.get("id"), str):
+        raise ValueError("message without sender or id")
+    return await receive(db, channel="whatsapp", external_id=wa_id, message_id=m["id"],
+                         text=str(text)[:4000] if text is not None else None, kind=mapped,
+                         media_url=body.get("id") if kind != "text" else None, name=names.get(wa_id), phone=wa_id,
+                         at=_ts(m.get("timestamp"))) is not None
+
+
+async def _wa_status(db: AsyncSession, st: dict) -> bool:
+    msg = await db.scalar(select(ExternalMessage).where(ExternalMessage.external_message_id == st.get("id")))
+    if msg and st.get("status") in ("sent", "delivered", "read", "failed"):
+        msg.status = st["status"]
+        if st["status"] == "failed":
+            msg.error = str((_dicts(st.get("errors")) or [{}])[0].get("title", ""))[:250]
+    return False
+
+
+async def _ig_event(db: AsyncSession, ev: dict) -> bool:
+    m = ev.get("message") if isinstance(ev.get("message"), dict) else {}
+    if not m or m.get("is_echo"):
+        return False
+    att = (_dicts(m.get("attachments")) or [{}])[0]
+    kind = {"image": "image", "audio": "audio", "file": "file", "video": "file"}.get(att.get("type"), "text")
+    if (m.get("reply_to") or {}).get("story"):
+        kind = "story_reply"
+    sender = (ev.get("sender") or {}).get("id")
+    if not isinstance(sender, str) or not isinstance(m.get("mid"), str):
+        raise ValueError("event without sender or id")
+    return await receive(db, channel="instagram", external_id=sender, message_id=m["mid"], text=m.get("text"), kind=kind,
+                         media_url=(att.get("payload") or {}).get("url"), at=_ts(ev.get("timestamp"))) is not None
+
+
+async def handle_meta_payload(db: AsyncSession, payload) -> int:
+    """Parse a Meta webhook: WhatsApp Cloud API (`whatsapp_business_account`) or Instagram (`instagram`).
+    Each entry, message and status is handled on its own; whatever is malformed is logged and skipped."""
+    if not isinstance(payload, dict):
+        log.warning("Meta webhook: payload is %s, not an object — ignored", type(payload).__name__)
+        return 0
     n = 0
     obj = payload.get("object")
-    for entry in payload.get("entry", []) or []:
+    for entry in payload.get("entry") if isinstance(payload.get("entry"), list) else []:
+        if not isinstance(entry, dict):
+            log.warning("Meta webhook: skipped entry %r", entry)
+            continue
         if obj == "whatsapp_business_account":
-            for change in entry.get("changes", []) or []:
-                value = change.get("value") or {}
-                names = {c.get("wa_id"): (c.get("profile") or {}).get("name") for c in value.get("contacts", []) or []}
-                for m in value.get("messages", []) or []:
-                    kind = m.get("type", "text")
-                    body = m.get(kind) if isinstance(m.get(kind), dict) else {}
-                    text = body.get("body") if kind == "text" else body.get("caption")
-                    mapped = {"image": "image", "audio": "audio", "voice": "audio", "document": "file", "video": "file"}.get(kind, "text")
-                    wa_id = m.get("from")
-                    if await receive(db, channel="whatsapp", external_id=wa_id, message_id=m.get("id"), text=text, kind=mapped,
-                                     media_url=body.get("id") if kind != "text" else None,
-                                     name=names.get(wa_id), phone=wa_id, at=_ts(m.get("timestamp"))):
-                        n += 1
-                for st in value.get("statuses", []) or []:
-                    msg = await db.scalar(select(ExternalMessage).where(ExternalMessage.external_message_id == st.get("id")))
-                    if msg and st.get("status") in ("sent", "delivered", "read", "failed"):
-                        msg.status = st["status"]
-                        if st["status"] == "failed":
-                            msg.error = str((st.get("errors") or [{}])[0].get("title", ""))[:250]
+            for change in _dicts(entry.get("changes")):
+                value = change.get("value") if isinstance(change.get("value"), dict) else {}
+                names = {c.get("wa_id"): (c.get("profile") or {}).get("name") for c in _dicts(value.get("contacts"))}
+                for m in _dicts(value.get("messages")):
+                    n += await _one(db, f"message {m.get('id')}", _wa_message(db, m, names))
+                for st in _dicts(value.get("statuses")):
+                    await _one(db, f"status {st.get('id')}", _wa_status(db, st))
         elif obj == "instagram":
-            for ev in entry.get("messaging", []) or []:
-                m = ev.get("message") or {}
-                if not m or m.get("is_echo"):
-                    continue
-                att = (m.get("attachments") or [{}])[0]
-                kind = {"image": "image", "audio": "audio", "file": "file", "video": "file"}.get(att.get("type"), "text")
-                if m.get("reply_to", {}).get("story"):
-                    kind = "story_reply"
-                if await receive(db, channel="instagram", external_id=(ev.get("sender") or {}).get("id"), message_id=m.get("mid"),
-                                 text=m.get("text"), kind=kind, media_url=(att.get("payload") or {}).get("url"),
-                                 at=_ts(ev.get("timestamp"))):
-                    n += 1
+            for ev in _dicts(entry.get("messaging")):
+                n += await _one(db, f"event {ev.get('timestamp')}", _ig_event(db, ev))
     return n

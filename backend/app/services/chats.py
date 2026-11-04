@@ -8,6 +8,9 @@ Everything else is decided by the staff member's chats.* permissions and their d
 a student or parent may write to a staff member exactly when that staff member may write to them.
 """
 
+import re
+import unicodedata
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -107,14 +110,47 @@ async def add_member(db: AsyncSession, chat_id: int, user_id: int) -> None:
 
 
 _LOOKALIKE = set("OoОоDДдlIі|ЗзбБ")
+_LOOKALIKE_DIGIT = {"o": "0", "о": "0", "d": "0", "д": "0", "l": "1", "i": "1", "і": "1", "|": "1", "з": "3", "б": "6"}
+# Digits spelled out in Russian, Kazakh and English (QA C-10).
+_WORD_DIGITS = {
+    "ноль": "0", "нуль": "0", "один": "1", "одна": "1", "два": "2", "две": "2", "три": "3", "четыре": "4", "пять": "5",
+    "шесть": "6", "семь": "7", "восемь": "8", "девять": "9",
+    "нөл": "0", "бір": "1", "екі": "2", "үш": "3", "төрт": "4", "бес": "5", "алты": "6", "жеті": "7", "сегіз": "8", "тоғыз": "9",
+    "zero": "0", "one": "1", "two": "2", "three": "3", "four": "4", "five": "5", "six": "6", "seven": "7", "eight": "8",
+    "nine": "9",
+}
+_WORD_RE = re.compile(r"[^\W\d_]+", re.UNICODE)
+# Between digits of one number people put spaces, dots, dashes, brackets, slashes, commas, plus signs, underscores.
+_SEPARATORS = re.compile(r"(?<=\d)[\s.\-()/\\,+_*~·•]+(?=\d)")
+# Kazakhstan mobile: (+7 | 8)? 7XX XXX XX XX.
+_KZ_MOBILE = re.compile(r"(?:[78]?7\d{9})")
+_INVISIBLE = dict.fromkeys(map(ord, "\u200b\u200c\u200d\u2060\ufeff\u00ad"), None)
+
+
+def normalize_for_phone_check(text: str) -> str:
+    """Brings the ways people hide a number to plain digits: other digit scripts, spelled-out digits,
+    look-alike letters next to digits, invisible characters and separators inside the number."""
+    t = unicodedata.normalize("NFKC", text).translate(_INVISIBLE).lower()
+    t = "".join(str(unicodedata.digit(ch)) if ch.isdigit() else ch for ch in t)
+    t = _WORD_RE.sub(lambda m: _WORD_DIGITS.get(m.group(0), m.group(0)), t)
+    chars = list(t)
+    for i, ch in enumerate(chars):
+        if ch in _LOOKALIKE_DIGIT and any(0 <= j < len(chars) and chars[j].isdigit() for j in (i - 1, i + 1)):
+            chars[i] = _LOOKALIKE_DIGIT[ch]
+    t = "".join(chars)
+    for _ in range(2):  # «8 7 0 1» → «8701»; twice so single-digit groups also join
+        t = _SEPARATORS.sub("", t)
+    return t
 
 
 def has_phone(text: str | None) -> bool:
     """Platform rule: students don't post phone numbers in chats. Catches mangled numbers too
-    ("+7 7Д01 234 56 78"): a look-alike letter next to a digit counts as a digit; 10 digits within 20 characters,
-    at least 7 of them real, is a number."""
+    ("+7 7Д01 234 56 78", "8 7 0 1 2 3 4 5 6 7 8", "восемь семь ноль один…"): after normalization a Kazakhstan
+    mobile number, or 10 digits within 20 characters (at least 7 of them real), is a number."""
     if not text:
         return False
+    if _KZ_MOBILE.search(normalize_for_phone_check(text)):
+        return True
     pos = [i for i, ch in enumerate(text) if ch.isdigit() or (
         ch in _LOOKALIKE and any(0 <= j < len(text) and text[j].isdigit() for j in (i - 1, i + 1)))]
     return any(pos[i + 9] - pos[i] < 20 and sum(text[j].isdigit() for j in pos[i:i + 10]) >= 7

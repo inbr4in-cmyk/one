@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, String
+from sqlalchemy import Boolean, Index, String, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import ArchiveMixin, Base, IdMixin, TimestampMixin
@@ -34,6 +34,12 @@ class Payment(IdMixin, TimestampMixin, Base):
     # First paid course payment after a trial = "sale" (KPI for office manager).
     is_first: Mapped[bool] = mapped_column(Boolean, default=False)
     note: Mapped[StrN]
+    # Idempotency-Key of the request that created it: a retried request returns this payment (QA C-1).
+    idempotency_key: Mapped[str | None] = mapped_column(String(64), default=None)
+
+    __table_args__ = (
+        Index("payments_idempotency_key_uq", "idempotency_key", unique=True, postgresql_where=text("idempotency_key IS NOT NULL")),
+    )
 
 
 class Refund(IdMixin, TimestampMixin, Base):

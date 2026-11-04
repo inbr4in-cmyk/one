@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     refresh_ttl_days: int = 30
     # Staff without 2FA confirmed get a short session and are pushed to set it up.
     require_staff_2fa: bool = True
+    # Fernet key for 2FA secrets at rest. Empty = derived from OE_JWT_SECRET (then rotating that secret resets 2FA).
+    totp_key: str = ""
 
     cors_origins: list[str] = ["http://localhost:5173"]
     cookie_secure: bool = False
@@ -36,6 +38,7 @@ class Settings(BaseSettings):
 
     storage_dir: str = "storage"
     max_upload_mb: int = 25
+    import_max_mb: int = 10
 
     login_rate_per_minute: int = 10
     otp_rate_per_hour: int = 5

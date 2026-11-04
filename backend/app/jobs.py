@@ -18,7 +18,7 @@ from app.core.audit import write_audit
 from app.core.db import SessionLocal
 from app.core.kv import get_kv
 from app.models import (
-    Attendance, BalanceEntry, Complaint, Expense, GroupMember, Lead, LeadStage, Lesson, Student, Task, TaskAssignee,
+    Attendance, BalanceEntry, Complaint, Expense, Freeze, GroupMember, Lead, LeadStage, Lesson, Student, Task, TaskAssignee,
 )
 from app.models.learning import AttendanceStatus
 from app.models.work import TaskStatus
@@ -177,6 +177,28 @@ async def block_nonpayers(db: AsyncSession) -> int:
     return n
 
 
+async def sync_freezes(db: AsyncSession) -> dict:
+    """Status follows the freeze dates (QA B-5): a freeze that has started → «заморожен»; one that has ended or was
+    cancelled → back to «учится». ends_on is the first day back."""
+    d = today()
+    running = and_(Freeze.student_id == Student.id, Freeze.starts_on <= d,
+                   func.coalesce(Freeze.ended_early_on, Freeze.ends_on) > d)
+    out = {"frozen": 0, "unfrozen": 0}
+    for s in await db.scalars(select(Student).where(Student.archived_at.is_(None), Student.status == StudentStatus.ACTIVE,
+                                                    exists().where(running)).with_for_update(skip_locked=True)):
+        s.status = StudentStatus.FROZEN
+        await write_audit(db, actor_id=None, action="student.freeze_started", entity="student", entity_id=s.id,
+                          branch_id=s.branch_id)
+        out["frozen"] += 1
+    for s in await db.scalars(select(Student).where(Student.status == StudentStatus.FROZEN, ~exists().where(running))
+                              .with_for_update(skip_locked=True)):
+        s.status = StudentStatus.ACTIVE
+        await write_audit(db, actor_id=None, action="student.freeze_ended", entity="student", entity_id=s.id,
+                          branch_id=s.branch_id, note="Заморозка закончилась")
+        out["unfrozen"] += 1
+    return out
+
+
 async def spawn_recurring_tasks(db: AsyncSession) -> int:
     """A recurring task is a template: each day (or its weekday) a fresh copy goes to the same people."""
     d = today()
@@ -247,6 +269,7 @@ async def auto_coins(db: AsyncSession) -> int:
 async def nightly(db: AsyncSession) -> dict:
     out = {"lessons": await extend_all(db), "tasks": await spawn_recurring_tasks(db)}
     await db.commit()
+    out["freezes"] = await sync_freezes(db)
     out["left"] = await mark_left(db)
     out["blocked"] = await block_nonpayers(db)
     out["expenses"] = await recurring_expenses(db)

@@ -1,24 +1,24 @@
 from datetime import UTC, datetime
 
 from fastapi import APIRouter
-from pydantic import BaseModel, Field
+from pydantic import Field
 from sqlalchemy import select
 
 from app.core.audit import diff, snapshot, write_audit
 from app.core.deps import DB, Actor, CurrentActor, require, require_staff
 from app.core.errors import bad_request, forbidden, not_found
-from app.core.schemas import ORM
+from app.core.schemas import In, ORM
 from app.models import Branch, Level, Role, Room, User, UserBranch, UserRole
 from app.models.identity import UserKind
 
 router = APIRouter(tags=["org"])
 
 
-class BranchIn(BaseModel):
+class BranchIn(In):
     name: str = Field(min_length=2, max_length=120)
-    address: str | None = None
-    phone: str | None = None
-    hours: str | None = None
+    address: str | None = Field(default=None, max_length=255)
+    phone: str | None = Field(default=None, max_length=32)
+    hours: str | None = Field(default=None, max_length=255)
     admin_id: int | None = None
 
 
@@ -32,10 +32,10 @@ class BranchOut(ORM):
     archived_at: datetime | None
 
 
-class RoomIn(BaseModel):
+class RoomIn(In):
     name: str = Field(min_length=1, max_length=64)
     capacity: int = Field(ge=1, le=200)
-    equipment: str | None = None
+    equipment: str | None = Field(default=None, max_length=255)
     status: str = Field(default="active", pattern="^(active|repair)$")
 
 
@@ -49,8 +49,8 @@ class RoomOut(ORM):
     archived_at: datetime | None
 
 
-class LevelIn(BaseModel):
-    name: str
+class LevelIn(In):
+    name: str = Field(max_length=255)
     code: str = Field(pattern=r"^[A-Z0-9_-]{2,32}$")
     color: str = Field(default="#1A6FD1", pattern=r"^#[0-9A-Fa-f]{6}$")
     lesson_price: int = Field(ge=0)

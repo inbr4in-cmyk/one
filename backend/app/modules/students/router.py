@@ -1,12 +1,12 @@
 from datetime import date
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from sqlalchemy import func, select
 
 from app.core.audit import diff, snapshot, write_audit
 from app.core.deps import DB, Actor, require
 from app.core.errors import bad_request, conflict, forbidden, not_found
-from app.core.query import paginate
+from app.core.query import contains_digits, icontains, paginate
 from app.core.schemas import Page
 from app.core.security import mask_phone, normalize_phone
 from app.models import (
@@ -38,7 +38,9 @@ from app.modules.students.schemas import (
 )
 from app.modules.students.scope import get_student_scoped, student_filter
 from app.services import balance as bal
+from app.modules.auth.service import revoke_all
 from app.services import chats
+from app.services.realtime import sessions_ended
 from app.services.clock import now, today
 from app.services.coins import balance as coin_balance
 from app.services.values import setting
@@ -137,13 +139,13 @@ async def card(db: DB, s: Student, actor: Actor) -> StudentOut:
 async def list_students(
     db: DB, actor: Actor = require("students", "view"), q: str | None = None, branch_id: int | None = None,
     status: str | None = None, level_id: int | None = None, group_id: int | None = None, debt: bool = False,
-    archived: bool = False, limit: int = 50, offset: int = 0,
+    archived: bool = False, limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0),
 ) -> Page[StudentListOut]:
     stmt = select(Student).where(student_filter(actor))
     stmt = stmt.where(Student.archived_at.is_not(None) if archived else Student.archived_at.is_(None))
     if q:
         digits = "".join(c for c in q if c.isdigit())
-        stmt = stmt.where(Student.full_name.ilike(f"%{q}%") | (Student.phone.contains(digits) if len(digits) >= 4 and actor.can("students", "view_contacts") else False))
+        stmt = stmt.where(icontains(Student.full_name, q) | (contains_digits(Student.phone, digits) if len(digits) >= 4 and actor.can("students", "view_contacts") else False))
     if branch_id:
         stmt = stmt.where(Student.branch_id == branch_id)
     if status:
@@ -225,9 +227,15 @@ async def archive_student(student_id: int, db: DB, actor: Actor = require("stude
                                                                                GroupMember.left_on.is_(None)))).all():
         m.left_on = today()
         await chats.sync_student_in_group_chat(db, g, s, False)
+    # The student's own account signs out everywhere, open chat sockets included (QA C-5).
+    portal = await db.get(User, s.user_id) if s.user_id else None
+    if portal is not None and portal.kind == UserKind.STUDENT:
+        await revoke_all(db, portal.id, "archived")
     await write_audit(db, actor_id=actor.id, action="student.archive", entity="student", entity_id=s.id,
                       branch_id=s.branch_id, ip=actor.ip)
     await db.commit()
+    if portal is not None and portal.kind == UserKind.STUDENT:
+        await sessions_ended(portal.id)
 
 
 @router.get("/{student_id}/ledger", response_model=list[LedgerOut])
@@ -310,22 +318,43 @@ async def transfer(student_id: int, body: TransferIn, db: DB, actor: Actor = req
 
 
 # ---------- freezes ----------
+def _current_freeze(student_id: int, d: date):
+    return select(Freeze).where(Freeze.student_id == student_id, Freeze.starts_on <= d,
+                                func.coalesce(Freeze.ended_early_on, Freeze.ends_on) > d)
+
+
 @router.post("/{student_id}/freeze", response_model=StudentOut)
 async def freeze(student_id: int, body: FreezeIn, db: DB, actor: Actor = require("students", "transfer")) -> StudentOut:
-    s = await get_student_scoped(db, actor, student_id, "students", "transfer")
+    """Rules p.362: by request, at most a month per course, and only with a month prepaid. ends_on is the first day back."""
+    s = await get_student_scoped(db, actor, student_id, "students", "transfer", lock=True)
+    d = today()
+    if body.starts_on < d:
+        raise bad_request("Заморозка не может начинаться в прошлом")
     if body.ends_on <= body.starts_on:
         raise bad_request("Дата окончания должна быть позже начала")
+    if s.status not in (StudentStatus.ACTIVE,):
+        raise bad_request("Заморозить можно только ученика со статусом «учится»")
     max_days = int(await setting(db, "freeze_max_days") or 31)
     if (body.ends_on - body.starts_on).days > max_days:
         raise bad_request(f"Заморозка не дольше {max_days} дней")
+    overlap = await db.scalar(select(Freeze.id).where(
+        Freeze.student_id == s.id, Freeze.starts_on < body.ends_on,
+        func.coalesce(Freeze.ended_early_on, Freeze.ends_on) > body.starts_on,
+        func.coalesce(Freeze.ended_early_on, Freeze.ends_on) > Freeze.starts_on))
+    if overlap:
+        raise conflict("На эти даты уже есть заморозка")
     max_count = int(await setting(db, "freeze_max_per_course") or 1)
     used = await db.scalar(select(func.count()).select_from(Freeze).where(Freeze.student_id == s.id,
                                                                           Freeze.created_at >= s.created_at))
     if used >= max_count and not actor.is_owner:
         raise forbidden(f"Лимит заморозок за курс: {max_count}")
+    # «При условии предоплаты за месяц»: a month of lessons must already be paid and waiting on the balance.
+    prepaid = int(await setting(db, "freeze_prepaid_lessons") or 0)
+    if s.lessons_left < prepaid:
+        raise bad_request(f"Заморозка — только при предоплате за месяц: нужно {prepaid} ур. на балансе, сейчас {s.lessons_left}")
     f = Freeze(student_id=s.id, starts_on=body.starts_on, ends_on=body.ends_on, reason=body.reason, created_by=actor.id)
     db.add(f)
-    if body.starts_on <= today():
+    if body.starts_on <= d:
         s.status = StudentStatus.FROZEN
     await write_audit(db, actor_id=actor.id, action="student.freeze", entity="student", entity_id=s.id,
                       branch_id=s.branch_id, ip=actor.ip, after={"from": body.starts_on.isoformat(), "to": body.ends_on.isoformat()})
@@ -335,27 +364,30 @@ async def freeze(student_id: int, body: FreezeIn, db: DB, actor: Actor = require
 
 @router.post("/{student_id}/unfreeze", response_model=StudentOut)
 async def unfreeze(student_id: int, db: DB, actor: Actor = require("students", "transfer")) -> StudentOut:
-    s = await get_student_scoped(db, actor, student_id, "students", "transfer")
-    f = await db.scalar(select(Freeze).where(Freeze.student_id == s.id, Freeze.ends_on >= today(),
-                                             Freeze.ended_early_on.is_(None)).order_by(Freeze.id.desc()))
-    if f is None:
+    """Ends the current freeze today, or cancels one that hasn't started. A student still marked «заморожен»
+    after the freeze ran out (QA B-5) is always unfrozen."""
+    s = await get_student_scoped(db, actor, student_id, "students", "transfer", lock=True)
+    d = today()
+    f = await db.scalar(select(Freeze).where(Freeze.student_id == s.id, Freeze.ended_early_on.is_(None), Freeze.ends_on > d)
+                        .order_by(Freeze.starts_on))
+    if f is None and s.status != StudentStatus.FROZEN:
         raise bad_request("Активной заморозки нет")
-    f.ended_early_on = today()
-    s.status = StudentStatus.ACTIVE
+    if f is not None:
+        f.ended_early_on = max(d, f.starts_on)  # a future freeze is cancelled: zero days long
+    if s.status == StudentStatus.FROZEN:
+        s.status = StudentStatus.ACTIVE
     await write_audit(db, actor_id=actor.id, action="student.unfreeze", entity="student", entity_id=s.id,
-                      branch_id=s.branch_id, ip=actor.ip)
+                      branch_id=s.branch_id, ip=actor.ip, after={"freeze_id": f.id if f else None})
     await db.commit()
     return await card(db, s, actor)
 
 
 async def is_frozen_on(db: DB, student_id: int, d: date) -> bool:
-    f = await db.scalar(select(Freeze.id).where(Freeze.student_id == student_id, Freeze.starts_on <= d,
-                                                func.coalesce(Freeze.ended_early_on, Freeze.ends_on) > d))
-    return f is not None
+    return await db.scalar(_current_freeze(student_id, d).with_only_columns(Freeze.id).limit(1)) is not None
 
 
 @router.get("/{student_id}/attendance")
-async def student_attendance(student_id: int, db: DB, actor: Actor = require("students", "view"), limit: int = 60) -> list[dict]:
+async def student_attendance(student_id: int, db: DB, actor: Actor = require("students", "view"), limit: int = Query(60, ge=1, le=300)) -> list[dict]:
     """Attendance history for the card (dots), newest first."""
     from app.models import Attendance, Lesson
 

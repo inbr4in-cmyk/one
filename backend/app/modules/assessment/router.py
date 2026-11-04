@@ -1,12 +1,13 @@
 """Test builder, public QR placement test (ТЗ 6) and final level tests (ТЗ 5.5)."""
 
-from datetime import datetime
 import hashlib
 import hmac
+from datetime import datetime, timedelta
+from typing import Annotated
 
 import jwt
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints, field_validator, model_validator
 from sqlalchemy import select
 
 from app.core.audit import write_audit
@@ -14,19 +15,29 @@ from app.core.config import get_settings
 from app.core.deps import DB, Actor, CurrentActor, ensure_staff_mfa, require
 from app.core.errors import bad_request, forbidden, not_found
 from app.core.ratelimit import client_ip, hit
-from app.core.schemas import ORM
+from app.core.schemas import In, ORM
 from app.core.security import create_purpose_token, decode_purpose_token, normalize_phone
 from app.models import Attempt, Branch, Group, GroupMember, Lead, LeadEvent, Level, Question, Student, Test
 from app.models.crm import LeadSource
 from app.modules.crm.service import create_lead, crm_people, find_by_phone
 from app.modules.students.scope import get_student_scoped
-from app.services.clock import now
+from app.services.clock import now, today
 from app.services.coins import award_auto
 from app.services.messaging import notify_user
 from app.services.payroll import accrue_once
 from app.services.values import rate
 
 router = APIRouter(tags=["tests"])
+
+
+# ---------- answers ----------
+# QA C-2: answers are {question_id: option index | [option indexes] | "text"}, nothing else, and bounded in size.
+QuestionKey = Annotated[str, StringConstraints(pattern=r"^[0-9]{1,9}$")]
+OptionIndex = Annotated[int, Field(ge=0, le=99)]
+Answer = OptionIndex | Annotated[list[OptionIndex], Field(max_length=20)] | Annotated[str, Field(max_length=2000)]
+Answers = Annotated[dict[QuestionKey, Answer], Field(max_length=300)]
+# The page may submit a little after the timer ends (network, slow phone).
+SUBMIT_GRACE = timedelta(minutes=2)
 
 
 # ---------- scoring ----------
@@ -38,7 +49,7 @@ def score(questions: list[Question], answers: dict) -> tuple[int, bool]:
         if q.kind == "text":
             manual = manual or bool(a)
             continue
-        picked = sorted(set(a)) if isinstance(a, list) else ([a] if isinstance(a, int) else [])
+        picked = sorted({x for x in a if isinstance(x, int)}) if isinstance(a, list) else ([a] if isinstance(a, int) else [])
         if picked and picked == sorted(set(q.correct or [])):
             total += q.points
     return total, manual
@@ -53,15 +64,28 @@ def recommend(test: Test, value: int) -> int | None:
 
 
 # ---------- builder ----------
-class TestIn(BaseModel):
+class ScaleRow(In):
+    min: int = Field(ge=0, le=1000)
+    level_id: int = Field(ge=1)
+
+
+class TestIn(In):
     kind: str = Field(pattern="^(placement|final|training)$")
     title: str = Field(min_length=2, max_length=255)
-    level_id: int | None = None
+    level_id: int | None = Field(default=None, ge=1)
     max_score: int = Field(default=150, ge=1, le=1000)
-    pass_score: int | None = None
+    pass_score: int | None = Field(default=None, ge=0, le=1000)
     time_limit_min: int | None = Field(default=None, ge=1, le=300)
-    scale: list[dict] = []
+    scale: list[ScaleRow] = Field(default=[], max_length=30)
     is_published: bool = False
+
+    @model_validator(mode="after")
+    def _limits(self):
+        if self.pass_score is not None and self.pass_score > self.max_score:
+            raise ValueError("Проходной балл больше максимума")
+        if any(r.min > self.max_score for r in self.scale):
+            raise ValueError("Порог шкалы больше максимума")
+        return self
 
 
 class TestOut(ORM):
@@ -77,12 +101,12 @@ class TestOut(ORM):
     questions: int = 0
 
 
-class QuestionIn(BaseModel):
+class QuestionIn(In):
     order: int = 0
     kind: str = Field(default="single", pattern="^(single|multi|text)$")
     text: str = Field(min_length=1, max_length=2000)
-    options: list[str] = []
-    correct: list[int] = []
+    options: list[Annotated[str, Field(max_length=500)]] = Field(default=[], max_length=20)
+    correct: list[OptionIndex] = Field(default=[], max_length=20)
     points: int = Field(default=1, ge=0, le=150)
 
 
@@ -217,7 +241,7 @@ async def public_test(token: str, db: DB) -> dict:
             "questions": [PublicQuestion(id=q.id, kind=q.kind, text=q.text, options=q.options or []).model_dump() for q in qs]}
 
 
-class StartIn(BaseModel):
+class StartIn(In):
     name: str = Field(min_length=2, max_length=120)
     phone: str = Field(min_length=10, max_length=20)
     age: int | None = Field(default=None, ge=3, le=99)
@@ -244,9 +268,14 @@ async def start(token: str, body: StartIn, request: Request, db: DB) -> dict:
     return {"attempt_id": a.id, "attempt_token": create_purpose_token(a.id, "attempt", minutes=90)}
 
 
-class SubmitIn(BaseModel):
-    attempt_token: str
-    answers: dict
+class SubmitIn(In):
+    attempt_token: str = Field(max_length=1000)
+    answers: Answers
+
+    @field_validator("answers", mode="before")
+    @classmethod
+    def _drop_meta(cls, v):
+        return {k: x for k, x in v.items() if k != "_meta"} if isinstance(v, dict) else v
 
 
 @router.post("/public/placement/submit")
@@ -256,29 +285,44 @@ async def submit(body: SubmitIn, request: Request, db: DB) -> dict:
         attempt_id = decode_purpose_token(body.attempt_token, "attempt")
     except jwt.PyJWTError:
         raise HTTPException(401, "Время теста истекло, начните заново") from None
-    a = await db.get(Attempt, attempt_id)
+    # Row lock: two parallel submits of one attempt can't both score it.
+    a = await db.scalar(select(Attempt).where(Attempt.id == attempt_id).with_for_update()
+                        .execution_options(populate_existing=True))
     if a is None or a.status != "in_progress":
         raise bad_request("Тест уже завершён")
     t = await db.get(Test, a.test_id)
+    t_now = now()
+    if t.time_limit_min and t_now > a.started_at + timedelta(minutes=t.time_limit_min) + SUBMIT_GRACE:
+        a.status, a.finished_at = "expired", t_now
+        await db.commit()
+        raise bad_request("Время теста истекло, начните заново")
     qs = list(await db.scalars(select(Question).where(Question.test_id == t.id, Question.archived_at.is_(None))))
     auto, _ = score(qs, body.answers)
     meta_ = (a.answers or {}).get("_meta", {})
-    a.answers = {**{k: v for k, v in body.answers.items() if k.isdigit()}, "_meta": meta_}
+    a.answers = {**body.answers, "_meta": meta_}
     a.auto_score = a.score = auto
-    a.status, a.finished_at = "done", now()
+    a.status, a.finished_at = "done", t_now
     a.recommended_level_id = recommend(t, auto)
     level = await db.get(Level, a.recommended_level_id) if a.recommended_level_id else None
     # ТЗ 6: attach to the existing lead by phone, otherwise create a lead from the QR test.
-    lead = await find_by_phone(db, a.taker_phone) or (await find_by_phone(db, meta_.get("parent_phone")) if meta_.get("parent_phone") else None)
+    # Only leads of the QR's branch: a test taken in one branch never touches another branch's lead.
+    parent_phone = meta_.get("parent_phone")
+    lead = await find_by_phone(db, a.taker_phone, a.branch_id) or (
+        await find_by_phone(db, parent_phone, a.branch_id) if parent_phone else None)
+    result = f"Тест уровня: {auto} баллов → {level.name if level else '—'}"
     if lead is None:
         lead = await create_lead(db, full_name=a.taker_name, phone=a.taker_phone, branch_id=a.branch_id, source=LeadSource.QR,
                                  owner_id=None, age=meta_.get("age"), parent_name=meta_.get("parent_name"),
-                                 parent_phone=meta_.get("parent_phone"))
-    lead.placement_score, lead.level_id = auto, a.recommended_level_id
-    lead.last_activity_at = now()
+                                 parent_phone=parent_phone)
+    if lead.level_id is None and lead.placement_score is None:
+        lead.placement_score, lead.level_id = auto, a.recommended_level_id
+    elif lead.level_id != a.recommended_level_id or lead.placement_score != auto:
+        # Someone with this phone took the test again: the level on the card is changed by a person, not by the link.
+        result += " (уровень в карточке не изменён — проверьте и подтвердите)"
+    lead.last_activity_at = t_now
     a.lead_id = lead.id
-    db.add(LeadEvent(lead_id=lead.id, at=now(), kind="test", text=f"Тест уровня: {auto} баллов → {level.name if level else '—'}",
-                     actor_id=None, meta={"attempt_id": a.id}))
+    db.add(LeadEvent(lead_id=lead.id, at=t_now, kind="test", text=result, actor_id=None,
+                     meta={"attempt_id": a.id, "score": auto, "level_id": a.recommended_level_id}))
     if lead.assignee_id:
         await notify_user(db, lead.assignee_id, "lead", f"{lead.full_name} прошёл тест уровня: {level.name if level else auto}",
                           link=f"/crm/leads/{lead.id}")
@@ -287,10 +331,10 @@ async def submit(body: SubmitIn, request: Request, db: DB) -> dict:
 
 
 # ---------- final tests (ТЗ 5.5) ----------
-class ResultIn(BaseModel):
-    student_id: int
-    answers: dict | None = None
-    manual_score: int | None = Field(default=None, ge=0)
+class ResultIn(In):
+    student_id: int = Field(ge=1)
+    answers: Answers | None = None
+    manual_score: int | None = Field(default=None, ge=0, le=1000)
 
 
 class AttemptOut(ORM):
@@ -314,7 +358,7 @@ async def finalize_final(db: DB, a: Attempt, t: Test, actor_id: int | None) -> N
     a.status, a.finished_at = "done", a.finished_at or now()
     a.score = a.auto_score + (a.manual_score or 0)
     s = await db.get(Student, a.student_id)
-    d = now().date()
+    d = today()
     threshold = await rate(db, "final_test_bonus_threshold", d)
     if a.score > threshold:
         g = await db.scalar(select(Group).join(GroupMember, GroupMember.group_id == Group.id)
@@ -368,8 +412,8 @@ async def record_result(test_id: int, body: ResultIn, db: DB, actor: Actor = req
     return AttemptOut.model_validate(a)
 
 
-class ReviewIn(BaseModel):
-    manual_score: int = Field(ge=0)
+class ReviewIn(In):
+    manual_score: int = Field(ge=0, le=1000)
 
 
 @router.put("/attempts/{attempt_id}/review", response_model=AttemptOut)

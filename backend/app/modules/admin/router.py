@@ -10,27 +10,30 @@ from app.core.audit import diff, snapshot, write_audit
 from app.core.deps import DB, Actor, require
 from app.core.errors import bad_request, conflict, forbidden, not_found
 from app.core.permissions import CATALOG, NETWORK, SCOPES, SYSTEM_ROLE_CODES, is_valid, wider
-from app.core.query import paginate
-from app.core.schemas import ORM, Page
-from app.core.security import hash_password, mask_phone, normalize_phone, validate_password_strength
+from app.core.query import icontains, paginate
+from app.core.ratelimit import hit
+from app.core.schemas import In, ORM, Page
+from app.core.security import hash_password, mask_phone, normalize_phone, validate_password_strength, verify_password
 from app.models import AuditLog, AuthSession, RateSetting, Role, RolePermission, Setting, User, UserBranch, UserRole
 from app.models.identity import UserKind
 from app.modules.auth.service import revoke_all
+from app.services.clock import today as school_today
+from app.services.realtime import sessions_ended
 
 router = APIRouter(tags=["admin"])
 
 
 # ---------- roles ----------
-class PermIn(BaseModel):
-    module: str
-    action: str
+class PermIn(In):
+    module: str = Field(max_length=255)
+    action: str = Field(max_length=255)
     scope: str = "branch"
 
 
-class RoleIn(BaseModel):
+class RoleIn(In):
     name: str = Field(min_length=2, max_length=120)
     code: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_]{1,40}$")
-    description: str | None = None
+    description: str | None = Field(default=None, max_length=4000)
     coin_limit: int = Field(default=0, ge=0, le=100000)
     permissions: list[PermIn] = []
 
@@ -167,21 +170,21 @@ async def catalog(actor: Actor = require("roles", "view")) -> dict:
 
 
 # ---------- staff ----------
-class StaffIn(BaseModel):
+class StaffIn(In):
     full_name: str = Field(min_length=2, max_length=255)
-    phone: str
-    email: str | None = None
-    position: str | None = None
+    phone: str = Field(max_length=32)
+    email: str | None = Field(default=None, max_length=255)
+    position: str | None = Field(default=None, max_length=255)
     salary: int = Field(default=0, ge=0)
-    password: str | None = None
+    password: str | None = Field(default=None, max_length=255)
     role_ids: list[int] = []
     branch_ids: list[int] = []
 
 
-class StaffPatch(BaseModel):
-    full_name: str | None = None
-    email: str | None = None
-    position: str | None = None
+class StaffPatch(In):
+    full_name: str | None = Field(default=None, max_length=255)
+    email: str | None = Field(default=None, max_length=255)
+    position: str | None = Field(default=None, max_length=255)
     salary: int | None = Field(default=None, ge=0)
     role_ids: list[int] | None = None
     branch_ids: list[int] | None = None
@@ -238,7 +241,7 @@ def _staff_visible(actor: Actor, u: User) -> bool:
 @router.get("/staff", response_model=Page[StaffOut])
 async def list_staff(
     db: DB, actor: Actor = require("staff", "view"), q: str | None = None, branch_id: int | None = None,
-    role: str | None = None, archived: bool = False, limit: int = 50, offset: int = 0,
+    role: str | None = None, archived: bool = False, limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0),
 ) -> Page[StaffOut]:
     stmt = select(User).where(User.kind == UserKind.STAFF)
     stmt = stmt.where(User.archived_at.is_not(None) if archived else User.archived_at.is_(None))
@@ -250,7 +253,7 @@ async def list_staff(
     if role:
         stmt = stmt.where(User.id.in_(select(UserRole.user_id).join(Role).where(Role.code == role)))
     if q:
-        stmt = stmt.where(User.full_name.ilike(f"%{q}%"))
+        stmt = stmt.where(icontains(User.full_name, q))
     rows, total = await paginate(db, stmt.order_by(User.full_name), limit, offset)
     return Page(items=[staff_out(u, actor) for u in rows], total=total, limit=limit, offset=offset)
 
@@ -351,6 +354,7 @@ async def archive_staff(user_id: int, db: DB, actor: Actor = require("staff", "a
     await revoke_all(db, u.id, "archived")
     await write_audit(db, actor_id=actor.id, action="staff.archive", entity="user", entity_id=u.id, ip=actor.ip)
     await db.commit()
+    await sessions_ended(u.id)
 
 
 @router.post("/staff/{user_id}/reset-2fa", status_code=204)
@@ -364,10 +368,12 @@ async def reset_2fa(user_id: int, db: DB, actor: Actor = require("security", "ma
     await revoke_all(db, u.id, "2fa_reset")
     await write_audit(db, actor_id=actor.id, action="security.2fa_reset", entity="user", entity_id=u.id, ip=actor.ip)
     await db.commit()
+    await sessions_ended(u.id)
 
 
-class PasswordSet(BaseModel):
-    password: str
+class PasswordSet(In):
+    password: str = Field(min_length=1, max_length=256)
+    old_password: str | None = Field(default=None, max_length=256)  # required when changing your own password
 
 
 @router.post("/staff/{user_id}/password", status_code=204)
@@ -377,14 +383,22 @@ async def set_password(user_id: int, body: PasswordSet, db: DB, actor: Actor = r
         raise not_found("Сотрудник")
     if any(ur.role.code == "owner" for ur in u.roles) and not actor.is_owner:
         raise forbidden()
-    if u.id != actor.id:
+    own = u.id == actor.id
+    if own:
+        # QA C-8: a borrowed open session must not be enough to take over the account.
+        await hit(f"password-own:{u.id}", 5, 300)
+        if not body.old_password or not verify_password(body.old_password, u.password_hash):
+            raise bad_request("Текущий пароль неверный")
+    else:
         await _ensure_outranks(db, actor, u)
     if err := validate_password_strength(body.password):
         raise bad_request(err)
     u.password_hash = hash_password(body.password)
-    await revoke_all(db, u.id, "password_reset")
-    await write_audit(db, actor_id=actor.id, action="staff.password_reset", entity="user", entity_id=u.id, ip=actor.ip)
+    await revoke_all(db, u.id, "password_changed" if own else "password_reset", except_id=actor.session_id if own else None)
+    await write_audit(db, actor_id=actor.id, action="staff.password_changed" if own else "staff.password_reset", entity="user",
+                      entity_id=u.id, ip=actor.ip)
     await db.commit()
+    await sessions_ended(u.id, keep=actor.session_id if own else None)
 
 
 # ---------- security overview ----------
@@ -424,6 +438,7 @@ async def kill_session(session_id: int, db: DB, actor: Actor = require("security
     await write_audit(db, actor_id=actor.id, action="security.session_ended", entity="session", entity_id=s.id,
                       ip=actor.ip, after={"user_id": s.user_id})
     await db.commit()
+    await sessions_ended(s.user_id, only=[s.id])
 
 
 # ---------- audit ----------
@@ -446,7 +461,7 @@ class AuditOut(ORM):
 async def audit_log(
     db: DB, actor: Actor = require("audit", "view"), entity: str | None = None, entity_id: int | None = None,
     actor_id: int | None = None, action: str | None = None, since: datetime | None = None,
-    limit: int = Query(50, le=200), offset: int = 0,
+    limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0),
 ) -> Page[AuditOut]:
     stmt = select(AuditLog)
     allowed = actor.branches_for("audit", "view")
@@ -481,7 +496,7 @@ async def get_settings_(db: DB, actor: Actor = require("settings", "view")) -> d
     return {s.key: s.value.get("v") for s in await db.scalars(select(Setting))}
 
 
-class SettingIn(BaseModel):
+class SettingIn(In):
     value: bool | int | str | dict | list | None
 
 
@@ -508,8 +523,8 @@ async def list_rates(db: DB, actor: Actor = require("settings", "view")) -> list
     return [RateOut.model_validate(r) for r in await db.scalars(select(RateSetting).order_by(RateSetting.key, RateSetting.effective_from))]
 
 
-class RateIn(BaseModel):
-    key: str
+class RateIn(In):
+    key: str = Field(max_length=255)
     value: int = Field(ge=0)
     effective_from: date
 
@@ -518,7 +533,7 @@ class RateIn(BaseModel):
 async def add_rate(body: RateIn, db: DB, actor: Actor = require("settings", "edit")) -> RateOut:
     if not await db.scalar(select(RateSetting).where(RateSetting.key == body.key)):
         raise bad_request("Неизвестная ставка")
-    if body.effective_from < datetime.now(UTC).date():
+    if body.effective_from < school_today():
         raise bad_request("Новая ставка действует только с сегодняшнего дня или позже")
     if await db.scalar(select(RateSetting).where(RateSetting.key == body.key, RateSetting.effective_from == body.effective_from)):
         raise conflict("На эту дату ставка уже задана")

@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import exists, func, or_, select
 
@@ -11,7 +11,7 @@ from app.core.deps import DB, Actor, require
 from app.core.errors import bad_request, forbidden, not_found
 from app.core.permissions import OWN
 from app.core.query import paginate
-from app.core.schemas import Page
+from app.core.schemas import In, Page
 from app.models import Task, TaskAssignee, TaskComment, User, UserBranch
 from app.models.work import TaskStatus
 from app.services.clock import now
@@ -20,7 +20,7 @@ from app.services.messaging import notify_user
 router = APIRouter(tags=["tasks"])
 
 
-class TaskIn(BaseModel):
+class TaskIn(In):
     title: str = Field(min_length=2, max_length=255)
     description: str | None = Field(default=None, max_length=8000)
     branch_id: int | None = None
@@ -32,12 +32,12 @@ class TaskIn(BaseModel):
     recurrence: str | None = Field(default=None, pattern="^(daily|weekly)$")
 
 
-class TaskPatch(BaseModel):
+class TaskPatch(In):
     title: str | None = Field(default=None, min_length=2, max_length=255)
     description: str | None = Field(default=None, max_length=8000)
     priority: str | None = Field(default=None, pattern="^(low|normal|high)$")
     due_at: datetime | None = None
-    status: str | None = None
+    status: str | None = Field(default=None, max_length=255)
     assignee_ids: list[int] | None = Field(default=None, min_length=1, max_length=50)
 
 
@@ -130,7 +130,7 @@ async def _check_assignees(db: DB, actor: Actor, ids: list[int]) -> None:
 
 @router.get("/tasks", response_model=Page[TaskOut])
 async def list_tasks(db: DB, actor: Actor = require("tasks", "view"), box: str = "mine", status: str | None = None,
-                     overdue: bool = False, branch_id: int | None = None, limit: int = 50, offset: int = 0) -> Page:
+                     overdue: bool = False, branch_id: int | None = None, limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0)) -> Page:
     q = select(Task).where(Task.archived_at.is_(None), _visible(actor))
     if box == "mine":
         q = q.where(_is_assignee(actor.id))
@@ -218,7 +218,7 @@ async def update_task(task_id: int, body: TaskPatch, db: DB, actor: Actor = requ
     return await _out(db, t)
 
 
-class CommentIn(BaseModel):
+class CommentIn(In):
     text: str = Field(min_length=1, max_length=4000)
     file_url: str | None = Field(default=None, max_length=255)
 

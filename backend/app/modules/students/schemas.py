@@ -2,39 +2,39 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, Field
 
-from app.core.schemas import ORM
+from app.core.schemas import In, ORM
 
 
-class GuardianIn(BaseModel):
+class GuardianIn(In):
     full_name: str = Field(min_length=2, max_length=255)
-    phone: str
-    relation: str | None = None
-    whatsapp: str | None = None
+    phone: str = Field(max_length=32)
+    relation: str | None = Field(default=None, max_length=255)
+    whatsapp: str | None = Field(default=None, max_length=32)
     notify: bool = True
     locale: str = Field(default="ru", pattern="^(ru|kk)$")
 
 
-class StudentIn(BaseModel):
+class StudentIn(In):
     full_name: str = Field(min_length=2, max_length=255)
     birth_date: date | None = None
-    phone: str | None = None
+    phone: str | None = Field(default=None, max_length=32)
     branch_id: int
     level_id: int | None = None
-    source: str | None = None
+    source: str | None = Field(default=None, max_length=255)
     status: str = "active"
-    notes: str | None = None
+    notes: str | None = Field(default=None, max_length=4000)
     guardians: list[GuardianIn] = []
     create_account: bool = True
 
 
-class StudentPatch(BaseModel):
-    full_name: str | None = None
+class StudentPatch(In):
+    full_name: str | None = Field(default=None, max_length=255)
     birth_date: date | None = None
-    phone: str | None = None
+    phone: str | None = Field(default=None, max_length=32)
     level_id: int | None = None
-    source: str | None = None
-    notes: str | None = None
-    photo_url: str | None = None
+    source: str | None = Field(default=None, max_length=255)
+    notes: str | None = Field(default=None, max_length=4000)
+    photo_url: str | None = Field(default=None, max_length=255)
 
 
 class GuardianOut(BaseModel):
@@ -98,7 +98,7 @@ class LedgerOut(ORM):
     note: str | None
 
 
-class TransferIn(BaseModel):
+class TransferIn(In):
     to_group_id: int
     reason: str | None = Field(default=None, max_length=255)
 
@@ -119,7 +119,7 @@ class TransferPreview(BaseModel):
     book_hint: str | None = None
 
 
-class FreezeIn(BaseModel):
+class FreezeIn(In):
     starts_on: date
     ends_on: date
-    reason: str | None = None
+    reason: str | None = Field(default=None, max_length=255)

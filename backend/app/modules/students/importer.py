@@ -3,6 +3,7 @@
 import io
 from datetime import date, datetime
 
+from fastapi.concurrency import run_in_threadpool
 from fastapi import APIRouter, File, Query, UploadFile
 from sqlalchemy import func, select
 
@@ -63,15 +64,31 @@ def _date(v) -> date | None:
     raise ValueError("дата в формате ДД.ММ.ГГГГ")
 
 
-async def _parse(db: DB, data: bytes, actor: Actor) -> tuple[list[dict], list[dict]]:
+def _read_rows(data: bytes) -> list[tuple]:
+    """Parsing XLSX is CPU work: it runs in a worker thread, so the API keeps serving others (QA H-14)."""
     from openpyxl import load_workbook
 
     try:
         wb = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
     except Exception as e:  # noqa: BLE001 — any broken file is the user's error
+        raise ValueError("bad file") from e
+    try:
+        out = []
+        for row in wb.worksheets[0].iter_rows(values_only=True):
+            out.append(tuple(row[:40]))
+            if len(out) > MAX_ROWS + 1:
+                break
+        return out
+    finally:
+        wb.close()
+
+
+async def _parse(db: DB, data: bytes, actor: Actor) -> tuple[list[dict], list[dict]]:
+    try:
+        all_rows = await run_in_threadpool(_read_rows, data)
+    except ValueError as e:
         raise bad_request("Не удалось прочитать Excel-файл (.xlsx)") from e
-    ws = wb.worksheets[0]
-    rows = ws.iter_rows(values_only=True)
+    rows = iter(all_rows)
     header = [COLUMNS.get((_cell(h) or "").lower()) for h in next(rows, [])]
     if "full_name" not in header:
         raise bad_request("Нет колонки «ФИО»")

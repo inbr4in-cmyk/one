@@ -1,18 +1,22 @@
 """Platform rules and recording consent with versions, and the complaints procedure (Правила платформы)."""
 
 from datetime import datetime, timedelta
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Request
-from pydantic import BaseModel, Field
+from pydantic import Field
 from sqlalchemy import select
 
 from app.core.audit import write_audit
 from app.core.deps import DB, Actor, CurrentActor, ensure_staff_mfa, require
+from app.core.ratelimit import hit
 from app.core.errors import bad_request, conflict, forbidden, not_found
+from app.core.schemas import In
 from app.models import Complaint, Consent, DocumentVersion, Role, Student, StudentGuardian, User, UserBranch, UserRole
 from app.models.identity import UserKind
 from app.modules.crm.service import crm_people
 from app.services.clock import local, now
+from app.services import files
 from app.services.messaging import notify_user
 
 router = APIRouter(tags=["compliance"])
@@ -28,7 +32,7 @@ def add_business_days(start: datetime, days: int) -> datetime:
 
 
 # ---------- documents ----------
-class DocIn(BaseModel):
+class DocIn(In):
     kind: str = Field(pattern="^(rules|recording)$")
     version: str = Field(min_length=1, max_length=16)
     title: str = Field(min_length=3, max_length=255)
@@ -69,7 +73,7 @@ async def publish_document(body: DocIn, db: DB, actor: Actor = require("settings
     return {"id": d.id}
 
 
-class AcceptIn(BaseModel):
+class AcceptIn(In):
     document_id: int
     student_id: int | None = None  # a parent signs the recording consent for a child
 
@@ -137,31 +141,47 @@ async def owner_ids(db: DB) -> set[int]:
                                 .join(User, User.id == UserRole.user_id)
                                 .where(Role.code == "owner", User.is_active.is_(True))))
 
-class ComplaintIn(BaseModel):
+class ComplaintIn(In):
     subject: str = Field(min_length=3, max_length=255)
     body: str = Field(min_length=10, max_length=8000)
     branch_id: int | None = None
-    against_user_id: int | None = None
+    against_user_id: int | None = Field(default=None, ge=1)
     file_url: str | None = Field(default=None, max_length=255)
 
 
 def _view(c: Complaint, for_author: bool) -> dict:
     d = {"id": c.id, "subject": c.subject, "body": c.body, "status": c.status, "created_at": c.created_at,
          "acknowledged_at": c.acknowledged_at, "due_at": c.due_at, "answer": c.answer, "answered_at": c.answered_at,
-         "branch_id": c.branch_id, "file_url": c.file_url}
+         "branch_id": c.branch_id, "file_url": files.signed_url(c.file_url) if c.file_url and not c.file_url.startswith("https://")
+         else c.file_url}
     if not for_author:
         d |= {"author_id": c.author_id, "against_user_id": c.against_user_id,
               "overdue": c.status not in ("answered", "closed") and c.due_at < now()}
     return d
 
 
-async def _author_branch(db: DB, actor: Actor) -> int | None:
+async def _author_branches(db: DB, actor: Actor) -> list[int]:
     if actor.is_staff:
-        return await db.scalar(select(UserBranch.branch_id).where(UserBranch.user_id == actor.id).limit(1))
-    if actor.user.kind == UserKind.STUDENT:
-        return await db.scalar(select(Student.branch_id).where(Student.user_id == actor.id).limit(1))
-    return await db.scalar(select(Student.branch_id).join(StudentGuardian, StudentGuardian.student_id == Student.id)
-                           .where(StudentGuardian.user_id == actor.id).limit(1))
+        q = select(UserBranch.branch_id).where(UserBranch.user_id == actor.id).order_by(UserBranch.id)
+    elif actor.user.kind == UserKind.STUDENT:
+        q = select(Student.branch_id).where(Student.user_id == actor.id, Student.archived_at.is_(None))
+    else:
+        q = (select(Student.branch_id).join(StudentGuardian, StudentGuardian.student_id == Student.id)
+             .where(StudentGuardian.user_id == actor.id, Student.archived_at.is_(None)))
+    return list(dict.fromkeys(await db.scalars(q)))
+
+
+def _attachment(value: str | None) -> str | None:
+    """QA H-3: an attachment is a file uploaded here (its key) or an https link; never javascript:, data: and the like."""
+    if not value:
+        return None
+    v = value.strip()
+    if files.path_of(v):
+        return v
+    u = urlparse(v)
+    if u.scheme == "https" and u.netloc and not any(ch.isspace() for ch in v):
+        return v
+    raise bad_request("Вложение: загрузите файл или укажите ссылку https://")
 
 
 def _handlers_filter(actor: Actor):
@@ -175,9 +195,18 @@ def _handlers_filter(actor: Actor):
 
 @router.post("/complaints", status_code=201)
 async def file_complaint(body: ComplaintIn, db: DB, actor: CurrentActor) -> dict:
-    branch = body.branch_id or await _author_branch(db, actor)
+    await hit(f"complaint:{actor.id}", 5, 3600)
+    mine = await _author_branches(db, actor)
+    # The branch comes from the author: a complaint can't be dropped into a branch the author has nothing to do with.
+    if body.branch_id is not None and body.branch_id not in mine:
+        raise forbidden("Жалобу можно подать только в свой филиал")
+    branch = body.branch_id or (mine[0] if mine else None)
+    if body.against_user_id is not None:
+        against = await db.get(User, body.against_user_id)
+        if against is None or against.id == actor.id or against.archived_at is not None:
+            raise bad_request("Неизвестно, на кого жалоба")
     c = Complaint(author_id=actor.id, branch_id=branch, subject=body.subject, body=body.body,
-                  against_user_id=body.against_user_id, file_url=body.file_url, status="new",
+                  against_user_id=body.against_user_id, file_url=_attachment(body.file_url), status="new",
                   due_at=add_business_days(now(), 3))
     db.add(c)
     await db.flush()
@@ -209,7 +238,7 @@ async def complaints(db: DB, actor: Actor = require("complaints", "view"), statu
             for c in rows]
 
 
-class ComplaintAction(BaseModel):
+class ComplaintAction(In):
     action: str = Field(pattern="^(acknowledge|investigate|answer|close|appeal)$")
     answer: str | None = Field(default=None, max_length=8000)
 

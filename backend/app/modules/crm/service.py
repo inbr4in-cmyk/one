@@ -27,11 +27,14 @@ async def get_lead_scoped(db: AsyncSession, actor: Actor, lead_id: int, action: 
     return lead
 
 
-async def find_by_phone(db: AsyncSession, phone: str | None) -> Lead | None:
+async def find_by_phone(db: AsyncSession, phone: str | None, branch_id: int | None = None) -> Lead | None:
+    """The newest open lead with this phone (own or parent's); with branch_id — only in that branch."""
     if not phone:
         return None
-    return await db.scalar(select(Lead).where(or_(Lead.phone == phone, Lead.parent_phone == phone), Lead.archived_at.is_(None))
-                           .order_by(Lead.id.desc()))
+    q = select(Lead).where(or_(Lead.phone == phone, Lead.parent_phone == phone), Lead.archived_at.is_(None))
+    if branch_id is not None:
+        q = q.where(Lead.branch_id == branch_id)
+    return await db.scalar(q.order_by(Lead.id.desc()).limit(1))
 
 
 async def find_client_by_phone(db: AsyncSession, phone: str | None) -> Student | None:

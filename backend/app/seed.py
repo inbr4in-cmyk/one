@@ -89,6 +89,8 @@ DEFAULT_SETTINGS = {
     "nonpayment_block_days": 5,
     "freeze_max_days": 31,
     "freeze_max_per_course": 1,
+    # Rules p.362: freezing needs a month prepaid. 12 = 3 lessons a week × 4 weeks (all default levels have 3–4).
+    "freeze_prepaid_lessons": 12,
     "absence_notice_hours": 3,
     "coins": {"attendance": 5, "homework": 5, "perfect_month": 50, "final_test": 100, "birthday": 50, "referral": 200},
 }

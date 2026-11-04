@@ -1,7 +1,7 @@
 import os
 
 os.environ["OE_ENV"] = "test"
-os.environ["OE_DATABASE_URL"] = "postgresql+asyncpg://oe:oe@localhost:5432/one_english_test"
+os.environ["OE_DATABASE_URL"] = os.environ.get("OE_TEST_DATABASE_URL", "postgresql+asyncpg://oe:oe@localhost:5432/one_english_test")
 os.environ.setdefault("OE_REQUIRE_STAFF_2FA", "false")
 
 import subprocess  # noqa: E402

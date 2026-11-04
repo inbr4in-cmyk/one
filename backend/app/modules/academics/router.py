@@ -9,7 +9,7 @@ from app.core.audit import snapshot, write_audit
 from app.core.deps import DB, Actor, require_staff, require
 from app.core.errors import bad_request, conflict, forbidden, not_found
 from app.core.permissions import NETWORK, OWN
-from app.core.schemas import ORM
+from app.core.schemas import In, ORM
 from app.models import (
     Attendance,
     Group,
@@ -42,7 +42,7 @@ router = APIRouter(tags=["academics"])
 
 
 # ---------- groups ----------
-class GroupIn(BaseModel):
+class GroupIn(In):
     name: str = Field(min_length=1, max_length=120)
     branch_id: int
     level_id: int
@@ -182,7 +182,7 @@ async def archive_group(group_id: int, db: DB, actor: Actor = require("schedule"
     await db.commit()
 
 
-class MemberIn(BaseModel):
+class MemberIn(In):
     student_id: int
 
 
@@ -235,7 +235,7 @@ async def remove_member(group_id: int, student_id: int, db: DB, actor: Actor = r
     await db.commit()
 
 
-class RuleIn(BaseModel):
+class RuleIn(In):
     weekdays: list[int] = Field(min_length=1, max_length=7)
     start_time: time
     end_time: time
@@ -357,10 +357,10 @@ async def list_lessons(
         raise forbidden()
     if (date_to - date_from).days > 62:
         raise bad_request("Период не больше 2 месяцев")
-    from app.services.clock import at_local
+    from app.services.clock import local_range
 
-    q = select(Lesson).where(lesson_filter(actor), Lesson.starts_at >= at_local(date_from, time(0)),
-                             Lesson.starts_at < at_local(date_to + timedelta(days=1), time(0)))
+    start, end = local_range(date_from, date_to)
+    q = select(Lesson).where(lesson_filter(actor), Lesson.starts_at >= start, Lesson.starts_at < end)
     if not include_cancelled:
         q = q.where(Lesson.status != LessonStatus.CANCELLED)
     if branch_id:
@@ -374,14 +374,14 @@ async def list_lessons(
     return await _lesson_outs(db, list(await db.scalars(q.order_by(Lesson.starts_at).limit(3000))))
 
 
-class LessonIn(BaseModel):
+class LessonIn(In):
     group_id: int | None = None
     student_id: int | None = None
     teacher_id: int
     room_id: int
     starts_at: datetime
     ends_at: datetime
-    topic: str | None = None
+    topic: str | None = Field(default=None, max_length=255)
 
 
 @router.post("/lessons", response_model=LessonOut, status_code=201)
@@ -436,7 +436,7 @@ async def _notify_group(db: DB, lesson: Lesson, code: str, variables: dict) -> N
         await notify_guardians(db, s, code, variables, ref=("lesson", lesson.id))
 
 
-class CancelIn(BaseModel):
+class CancelIn(In):
     reason: str = Field(min_length=3, max_length=255)
 
 
@@ -457,7 +457,7 @@ async def cancel_lesson(lesson_id: int, body: CancelIn, db: DB, actor: Actor = r
     return (await _lesson_outs(db, [lesson]))[0]
 
 
-class MoveIn(BaseModel):
+class MoveIn(In):
     starts_at: datetime
     ends_at: datetime
     room_id: int | None = None
@@ -499,7 +499,7 @@ async def move_lesson(lesson_id: int, body: MoveIn, db: DB, actor: Actor = requi
     return (await _lesson_outs(db, [new]))[0]
 
 
-class SubstituteIn(BaseModel):
+class SubstituteIn(In):
     teacher_id: int
 
 
@@ -522,14 +522,14 @@ async def substitute(lesson_id: int, body: SubstituteIn, db: DB, actor: Actor = 
 
 
 # ---------- attendance (ТЗ 7.1) ----------
-class RosterRow(BaseModel):
+class RosterRow(In):
     student_id: int | None
     lead_id: int | None
-    full_name: str
+    full_name: str = Field(max_length=255)
     is_trial: bool
-    status: str | None
+    status: str | None = Field(max_length=255)
     grade: int | None
-    comment: str | None
+    comment: str | None = Field(max_length=4000)
     stars: int
     lessons_left: int | None
     frozen: bool = False
@@ -598,16 +598,16 @@ async def roster(lesson_id: int, db: DB, actor: Actor = require("attendance", "v
     return Roster(lesson=(await _lesson_outs(db, [lesson]))[0], can_edit=can_edit, needs_reason=needs_reason, rows=rows)
 
 
-class MarkIn(BaseModel):
+class MarkIn(In):
     student_id: int | None = None
     lead_id: int | None = None
-    status: str
+    status: str = Field(max_length=255)
     grade: int | None = Field(default=None, ge=1, le=5)
     comment: str | None = Field(default=None, max_length=500)
     stars: int = Field(default=0, ge=0, le=5)
 
 
-class MarksIn(BaseModel):
+class MarksIn(In):
     marks: list[MarkIn]
     reason: str | None = Field(default=None, max_length=255)
     topic: str | None = Field(default=None, max_length=255)
@@ -707,7 +707,7 @@ async def mark(lesson_id: int, body: MarksIn, db: DB, actor: Actor = require("at
 
 
 # ---------- homework ----------
-class HomeworkIn(BaseModel):
+class HomeworkIn(In):
     title: str = Field(min_length=2, max_length=255)
     body: str | None = Field(default=None, max_length=8000)
     due_at: datetime | None = None
@@ -752,7 +752,7 @@ async def add_homework(group_id: int, body: HomeworkIn, db: DB, actor: Actor = r
     return HomeworkOut.model_validate(h)
 
 
-class HomeworkPatch(BaseModel):
+class HomeworkPatch(In):
     title: str | None = Field(default=None, min_length=2, max_length=255)
     body: str | None = Field(default=None, max_length=8000)
     due_at: datetime | None = None
@@ -805,7 +805,7 @@ async def archive_homework(homework_id: int, db: DB, actor: Actor = require("hom
     await db.commit()
 
 
-class CheckIn(BaseModel):
+class CheckIn(In):
     grade: int | None = Field(default=None, ge=1, le=5)
     comment: str | None = Field(default=None, max_length=1000)
 

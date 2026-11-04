@@ -3,12 +3,13 @@
 from datetime import date, time, timedelta
 
 from fastapi import APIRouter
-from pydantic import BaseModel, Field
+from pydantic import Field
 from sqlalchemy import func, select
 
 from app.core.audit import write_audit
 from app.core.deps import DB, Actor, require, require_staff
 from app.core.errors import bad_request, conflict, not_found
+from app.core.schemas import In
 from app.models import Attempt, Course, DailyReport, Material, MaterialProgress, StaffCheckin, User, UserBranch
 from app.services.clock import at_local, now, today
 
@@ -16,7 +17,7 @@ router = APIRouter(tags=["staff"])
 
 
 # ---------- check-in ----------
-class CheckinIn(BaseModel):
+class CheckinIn(In):
     branch_id: int
 
 
@@ -68,7 +69,7 @@ async def my_checkin(db: DB, actor: Actor = require_staff()) -> dict:
 
 
 # ---------- daily reports ----------
-class ReportIn(BaseModel):
+class ReportIn(In):
     text: str = Field(min_length=10, max_length=8000)
 
 
@@ -104,13 +105,13 @@ async def reports(db: DB, actor: Actor = require("staff", "view"), day: date | N
 
 
 # ---------- training base ----------
-class CourseIn(BaseModel):
+class CourseIn(In):
     title: str = Field(min_length=3, max_length=255)
     description: str | None = Field(default=None, max_length=8000)
     role_codes: list[str] = Field(default_factory=list)
 
 
-class MaterialIn(BaseModel):
+class MaterialIn(In):
     kind: str = Field(pattern="^(video|document|test)$")
     title: str = Field(min_length=2, max_length=255)
     url: str | None = Field(default=None, max_length=255)
@@ -176,7 +177,7 @@ async def add_material(course_id: int, body: MaterialIn, db: DB, actor: Actor = 
     return {"id": m.id}
 
 
-class DoneIn(BaseModel):
+class DoneIn(In):
     attempt_id: int | None = None
 
 

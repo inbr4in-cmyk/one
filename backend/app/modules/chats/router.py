@@ -1,9 +1,10 @@
+import asyncio
 import json
 import logging
 import mimetypes
 import secrets
 
-from fastapi import APIRouter, File, HTTPException, Query, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, File, HTTPException, Path, Query, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
@@ -15,14 +16,17 @@ from app.core.errors import bad_request, forbidden, not_found
 from app.core.kv import get_kv
 from app.core.permissions import NETWORK
 from app.core.ratelimit import hit
+from app.core.schemas import In
 from app.models import Chat, ChatMember, ChatMessage, Group, GroupMember, Notification, Student, StudentGuardian, User, UserBranch
 from app.models.identity import UserKind
 from app.services import chats as policy
+from app.services.access import ensure_user_access
 from app.services import files
 from app.services.clock import now
-from app.services.realtime import publish, subscribe
+from app.services.realtime import ends_session, publish, subscribe
 
 log = logging.getLogger("chats")
+WS_RECHECK_S = 30
 router = APIRouter(tags=["chats"])
 
 
@@ -62,7 +66,7 @@ def _msg(m: ChatMessage, users: dict[int, User], show_hidden: bool = False) -> M
                       sender_kind=u.kind if u else None,
                       sender_position=u.position if u and u.kind == UserKind.STAFF else None, at=m.at.isoformat(), kind=m.kind,
                       text=None if hidden and not show_hidden else m.text,
-                      file_url=None if hidden and not show_hidden else files.signed_url(m.file_url),
+                      file_url=None if hidden and not show_hidden else files.signed_url(m.file_url, name=m.file_name),
                       file_name=m.file_name, pinned=m.pinned, edited=m.edited_at is not None, hidden=hidden)
 
 
@@ -188,9 +192,20 @@ async def _subtitle(db: DB, u: User) -> str:
     return "Ученик" + (f", {', '.join(groups)}" if groups else "")
 
 
-class DirectIn(BaseModel):
-    user_id: int
-    about_student_id: int | None = None
+class DirectIn(In):
+    user_id: int = Field(ge=1)
+    about_student_id: int | None = Field(default=None, ge=1)
+
+
+async def _about_ok(db: DB, student_id: int, people: list[User]) -> bool:
+    """QA H-1: a chat can be «about» a child only if that child is one of the people in it or their own child."""
+    for u in people:
+        if u.kind == UserKind.STUDENT and await db.scalar(select(Student.id).where(Student.id == student_id, Student.user_id == u.id)):
+            return True
+        if u.kind == UserKind.PARENT and await db.scalar(select(StudentGuardian.id).where(
+                StudentGuardian.student_id == student_id, StudentGuardian.user_id == u.id)):
+            return True
+    return False
 
 
 @router.post("/chats/direct", response_model=ChatOut)
@@ -203,6 +218,8 @@ async def open_direct(body: DirectIn, db: DB, actor: Actor = require("chats", "u
         await write_audit(db, actor_id=actor.id, action="chat.denied", entity="user", entity_id=other.id, ip=actor.ip, note=reason)
         await db.commit()
         raise forbidden(reason)
+    if body.about_student_id is not None and not await _about_ok(db, body.about_student_id, [actor.user, other]):
+        raise bad_request("Этот ученик не связан с участниками чата")
     key = policy.direct_key(actor.id, other.id)
     chat = await db.scalar(select(Chat).where(Chat.direct_key == key))
     if chat is None:
@@ -229,7 +246,7 @@ async def _open_chat(db: DB, actor: Actor, chat_id: int) -> tuple[Chat, ChatMemb
 
 @router.get("/chats/{chat_id}/messages", response_model=list[MessageOut])
 async def chat_messages(chat_id: int, db: DB, actor: Actor = require("chats", "use"), before_id: int | None = None,
-                        after_id: int | None = None, limit: int = Query(50, le=200)) -> list[MessageOut]:
+                        after_id: int | None = None, limit: int = Query(50, ge=1, le=200)) -> list[MessageOut]:
     chat, m = await _open_chat(db, actor, chat_id)
     monitoring = m is None
     q = select(ChatMessage).where(ChatMessage.chat_id == chat.id)
@@ -250,9 +267,9 @@ async def chat_messages(chat_id: int, db: DB, actor: Actor = require("chats", "u
     return [_msg(r, users, show_hidden=monitoring) for r in reversed(rows)]
 
 
-class SendIn(BaseModel):
+class SendIn(In):
     text: str | None = Field(default=None, max_length=4000)
-    file_key: str | None = None
+    file_key: str | None = Field(default=None, max_length=64)
     file_name: str | None = Field(default=None, max_length=255)
     kind: str = Field(default="text", pattern="^(text|image|file|voice)$")
 
@@ -262,11 +279,14 @@ async def send(chat_id: int, body: SendIn, db: DB, actor: Actor = require("chats
     chat, m = await _open_chat(db, actor, chat_id)
     if m is None:
         raise forbidden("Просмотр чата только для чтения")
+    await ensure_user_access(db, actor.user)
     if not (body.text and body.text.strip()) and not body.file_key:
         raise bad_request("Пустое сообщение")
     if body.file_key and not files.path_of(body.file_key):
         raise bad_request("Файл не найден")
-    if actor.user.kind == UserKind.STUDENT and policy.has_phone(body.text):
+    if body.file_name and not body.file_key:
+        raise bad_request("Имя файла без файла")
+    if actor.user.kind == UserKind.STUDENT and (policy.has_phone(body.text) or policy.has_phone(body.file_name)):
         raise bad_request("Ученики не отправляют номера телефонов в чатах (правила школы)")
     await hit(f"chat-send:{actor.id}", 60, 60)
     if chat.kind == "direct":
@@ -360,34 +380,43 @@ async def monitor_list(db: DB, actor: Actor = require("chats", "monitor"), branc
 
 # ---------- files ----------
 @router.post("/files", status_code=201)
-async def upload(actor: CurrentActor, file: UploadFile = File(...)) -> dict:
+async def upload(db: DB, actor: CurrentActor, file: UploadFile = File(...)) -> dict:
     ensure_staff_mfa(actor)
+    await ensure_user_access(db, actor.user)
     await hit(f"upload:{actor.id}", 30, 300)
-    data = await file.read(25 * 1024 * 1024 + 1)
+    data = await file.read(files.max_bytes() + 1)
     ctype = (file.content_type or "").split(";")[0].strip()
-    if err := files.check(ctype, data[:32], len(data)):
-        raise bad_request(err)
+    if err := files.check(ctype, data):
+        raise HTTPException(413, err) if len(data) > files.max_bytes() else bad_request(err)
+    name = (file.filename or "файл")[:255]
+    if actor.user.kind == UserKind.STUDENT and policy.has_phone(name):
+        raise bad_request("Ученики не отправляют номера телефонов в чатах (правила школы)")
     key = files.save(data, ctype)
-    return {"key": key, "url": files.signed_url(key), "name": (file.filename or "файл")[:255], "size": len(data)}
+    return {"key": key, "url": files.signed_url(key, name=name), "name": name, "size": len(data)}
 
 
 @router.get("/files/{key}")
-async def download(key: str, exp: int, sig: str):
-    if not files.verify(key, exp, sig):
+async def download(key: str = Path(max_length=80), exp: int = Query(ge=0, le=2**62), sig: str = Query(max_length=64),
+                   name: str = Query("", max_length=200)):
+    if not files.verify(key, exp, sig, name):
         raise HTTPException(403, "Ссылка устарела")
     path = files.path_of(key)
     if path is None:
         raise not_found("Файл")
     ctype = mimetypes.guess_type(path)[0] or "application/octet-stream"
     inline = ctype.startswith(("image/", "audio/", "video/")) or ctype == "application/pdf"
-    return FileResponse(path, media_type=ctype, content_disposition_type="inline" if inline else "attachment",
-                        headers={"Cache-Control": "private, max-age=600", "X-Content-Type-Options": "nosniff"})
+    # Always a Content-Disposition with a file name (QA C-11); documents are never rendered inline.
+    return FileResponse(path, media_type=ctype, filename=files.download_name(key, name),
+                        content_disposition_type="inline" if inline else "attachment",
+                        headers={"Cache-Control": "private, max-age=600", "X-Content-Type-Options": "nosniff",
+                                 "Content-Security-Policy": "default-src 'none'; sandbox"})
 
 
 # ---------- notifications ----------
 @router.get("/notifications")
-async def my_notifications(db: DB, actor: CurrentActor, limit: int = 30) -> dict:
-    rows = await db.scalars(select(Notification).where(Notification.user_id == actor.id).order_by(Notification.id.desc()).limit(min(limit, 100)))
+async def my_notifications(db: DB, actor: CurrentActor, limit: int = Query(30, ge=1, le=100)) -> dict:
+    ensure_staff_mfa(actor)  # QA H-5: nothing but 2FA setup before the second factor
+    rows = await db.scalars(select(Notification).where(Notification.user_id == actor.id).order_by(Notification.id.desc()).limit(limit))
     unread = await db.scalar(select(func.count()).select_from(Notification).where(Notification.user_id == actor.id,
                                                                                   Notification.read_at.is_(None)))
     return {"unread": unread, "items": [{"id": n.id, "at": n.at, "kind": n.kind, "title": n.title, "body": n.body,
@@ -396,6 +425,7 @@ async def my_notifications(db: DB, actor: CurrentActor, limit: int = 30) -> dict
 
 @router.post("/notifications/read-all", status_code=204)
 async def read_all(db: DB, actor: CurrentActor) -> None:
+    ensure_staff_mfa(actor)  # QA H-5: nothing but 2FA setup before the second factor
     for n in await db.scalars(select(Notification).where(Notification.user_id == actor.id, Notification.read_at.is_(None))):
         n.read_at = now()
     await db.commit()
@@ -404,6 +434,7 @@ async def read_all(db: DB, actor: CurrentActor) -> None:
 @router.get("/counters")
 async def counters(db: DB, actor: CurrentActor) -> dict:
     """Badge numbers for the sidebar."""
+    ensure_staff_mfa(actor)  # QA H-5: nothing but 2FA setup before the second factor
     out = {"notifications": await db.scalar(select(func.count()).select_from(Notification).where(
         Notification.user_id == actor.id, Notification.read_at.is_(None)))}
     if actor.can("chats", "use"):
@@ -482,25 +513,38 @@ async def ws(websocket: WebSocket, ticket: str):
     await websocket.accept()
     pubsub = await subscribe(channels)
     try:
-        import asyncio
-
         async def pump():
             async for item in pubsub.listen():
-                if item.get("type") == "message":
-                    await websocket.send_text(item["data"])
+                if item.get("type") != "message":
+                    continue
+                try:
+                    event = json.loads(item["data"])
+                except ValueError:
+                    continue
+                if event.get("type") == "session.ended":
+                    # Logout / password change / archive close the socket at once (QA C-5); not forwarded.
+                    if ends_session(event, sid):
+                        await websocket.close(code=4401)
+                        return
+                    continue
+                await websocket.send_text(item["data"])
 
         async def keepalive():
             while True:
                 msg = await websocket.receive_text()
-                # Logout, "end session" or archiving closes the socket at the next ping (clients ping every 25 s).
-                if not await _session_alive(uid, sid):
-                    await websocket.close(code=4401)
-                    return
                 if msg == "ping":
                     await websocket.send_text(json.dumps({"type": "pong"}))
 
-        done, pending = await asyncio.wait([asyncio.create_task(pump()), asyncio.create_task(keepalive())],
-                                           return_when=asyncio.FIRST_COMPLETED)
+        async def watchdog():
+            # Belt and braces: re-check the session on a timer, even if an event was missed or the client is silent.
+            while True:
+                await asyncio.sleep(WS_RECHECK_S)
+                if not await _session_alive(uid, sid):
+                    await websocket.close(code=4401)
+                    return
+
+        done, pending = await asyncio.wait([asyncio.create_task(pump()), asyncio.create_task(keepalive()),
+                                            asyncio.create_task(watchdog())], return_when=asyncio.FIRST_COMPLETED)
         for t in pending:
             t.cancel()
     except WebSocketDisconnect:

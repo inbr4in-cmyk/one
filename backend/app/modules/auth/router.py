@@ -14,6 +14,7 @@ from app.core.errors import bad_request, not_found
 from app.core.kv import get_kv
 from app.core.permissions import CATALOG
 from app.core.ratelimit import client_ip, hit
+from app.core.schemas import In
 from app.core.security import (
     create_purpose_token,
     decode_purpose_token,
@@ -21,6 +22,7 @@ from app.core.security import (
     new_otp_code,
     new_totp_secret,
     normalize_phone,
+    seal_totp_secret,
     sha256,
     totp_uri,
     validate_password_strength,
@@ -30,27 +32,28 @@ from app.core.security import (
 from app.models.identity import AuthSession, User, UserKind
 from app.modules.auth import service
 from app.services.messaging import send_whatsapp_text
+from app.services.realtime import sessions_ended
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 REFRESH_COOKIE = "oe_refresh"
 
 
-class LoginIn(BaseModel):
+class LoginIn(In):
     phone: str = Field(min_length=6, max_length=32)
     password: str = Field(min_length=1, max_length=256)
 
 
-class MfaIn(BaseModel):
-    mfa_token: str
+class MfaIn(In):
+    mfa_token: str = Field(max_length=2000)
     code: str = Field(min_length=6, max_length=6)
 
 
-class OtpRequestIn(BaseModel):
+class OtpRequestIn(In):
     phone: str = Field(min_length=6, max_length=32)
 
 
-class OtpVerifyIn(BaseModel):
-    phone: str
+class OtpVerifyIn(In):
+    phone: str = Field(min_length=6, max_length=32)
     code: str = Field(min_length=6, max_length=6)
 
 
@@ -61,6 +64,7 @@ class TokenOut(BaseModel):
     mfa_required: bool = False
     mfa_token: str | None = None
     mfa_setup_required: bool = False
+    device_token: str | None = None  # mobile only: send back as X-Device-Token on the next logins
 
 
 def _set_refresh_cookie(resp: Response, token: str) -> None:
@@ -83,29 +87,57 @@ def _issue(resp: Response, request: Request, access: str, refresh: str, user: Us
     )
 
 
+def _device(request: Request) -> str | None:
+    return request.cookies.get(service.DEVICE_COOKIE) or request.headers.get("x-device-token")
+
+
+def _remember_device(resp: Response, request: Request, user: User, out: TokenOut) -> TokenOut:
+    """A signed «this device signed in before» token: with it a correct password is never held back by failed tries."""
+    token = service.device_token(user.id)
+    if request.headers.get("x-client") == "mobile":
+        out.device_token = token
+    else:
+        s = get_settings()
+        resp.set_cookie(service.DEVICE_COOKIE, token, httponly=True, secure=s.cookie_secure, samesite="strict",
+                        max_age=service.DEVICE_DAYS * 86400, path="/api/auth")
+    return out
+
+
 @router.post("/login", response_model=TokenOut)
 async def login(body: LoginIn, request: Request, response: Response, db: DB) -> TokenOut:
+    """QA B-4: failed passwords slow down the phone + IP they came from (growing pauses), they never lock the account.
+    Unknown phones get exactly the same answers, so the endpoint doesn't reveal who has an account."""
     ip = client_ip(request)
     s = get_settings()
-    await hit(f"login:ip:{ip}", s.login_rate_per_minute, 60)
+    # A hard ceiling before any password hashing (CPU), well above what a real person needs.
+    await hit(f"login:ip-hard:{ip}", s.login_rate_per_minute * 6, 60)
     phone = normalize_phone(body.phone)
-    await hit(f"login:phone:{phone}", s.login_rate_per_minute, 60)
     user = await db.scalar(select(User).where(User.phone == phone, User.archived_at.is_(None)))
     ok = verify_password(body.password, user.password_hash if user else None)
-    if user is None or not user.is_active:
-        # Unknown phones behave like real ones (same lock after 5 tries), so the answer doesn't reveal who has an account.
-        if await get_kv().incr(f"login:ghost:{phone}", service.LOCK_MINUTES * 60) > service.MAX_FAILED:
-            raise HTTPException(status.HTTP_423_LOCKED, "Аккаунт временно заблокирован после неудачных попыток входа")
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Неверный телефон или пароль")
-    service.check_lock(user)
+    if user is not None and not user.is_active:
+        user, ok = None, False
+    known = user is not None and await service.is_known(db, user, ip, _device(request))
+    if not (ok and known):
+        # Everything except «right password from a known place» shares per-IP and per-phone budgets, so neither one IP
+        # spraying many phones nor many IPs on one phone go fast.
+        try:
+            await hit(f"login:ip:{ip}", s.login_rate_per_minute, 60)
+            await hit(f"login:phone:{phone}", s.login_rate_per_minute, 60)
+            if wait := await service.wait_left(phone, ip):
+                raise service.too_many(wait)
+        except HTTPException:
+            await service.record_burst(db, phone, ip, user)
+            raise
     if not ok:
-        await service.register_failure(db, user, ip)
+        await service.record_failure(db, phone, ip, user)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Неверный телефон или пароль")
+    await service.clear_failures(phone, ip)
     if user.totp_enabled:
-        return TokenOut(mfa_required=True, mfa_token=create_purpose_token(user.id, "mfa"))
+        return _remember_device(response, request, user,
+                                TokenOut(mfa_required=True, mfa_token=create_purpose_token(user.id, "mfa")))
     access, refresh, _ = await service.open_session(db, user, False, ip, request.headers.get("user-agent"))
     await db.commit()
-    return _issue(response, request, access, refresh, user, False)
+    return _remember_device(response, request, user, _issue(response, request, access, refresh, user, False))
 
 
 @router.post("/mfa", response_model=TokenOut)
@@ -119,13 +151,14 @@ async def mfa(body: MfaIn, request: Request, response: Response, db: DB) -> Toke
     user = await db.get(User, user_id)
     if user is None or not user.totp_enabled or not user.totp_secret:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Неверный код")
-    service.check_lock(user)
     # One TOTP code can be used once.
     used_key = f"totp-used:{user.id}:{body.code}"
     if not verify_totp(user.totp_secret, body.code) or await get_kv().get(used_key):
-        await service.register_failure(db, user, ip)
+        await service.record_failure(db, f"mfa:{user.id}", ip, user)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Неверный код")
     await get_kv().set(used_key, "1", 120)
+    if not user.totp_secret.startswith("enc1:"):
+        user.totp_secret = seal_totp_secret(user.totp_secret)
     access, refresh, _ = await service.open_session(db, user, True, ip, request.headers.get("user-agent"))
     await db.commit()
     return _issue(response, request, access, refresh, user, True)
@@ -203,10 +236,11 @@ async def logout(actor: CurrentActor, db: DB, response: Response) -> None:
         await service.revoke(db, sess, "logout")
     await write_audit(db, actor_id=actor.id, action="auth.logout", entity="session", entity_id=actor.session_id, ip=actor.ip)
     await db.commit()
+    await sessions_ended(actor.id, only=[actor.session_id])
     response.delete_cookie(REFRESH_COOKIE, path="/api/auth")
 
 
-class DeviceIn(BaseModel):
+class DeviceIn(In):
     platform: str = Field(pattern="^(ios|android)$")
     token: str = Field(min_length=20, max_length=512)
     locale: str = Field(default="ru", pattern="^(ru|kk)$")
@@ -271,17 +305,26 @@ async def permission_catalog(actor: CurrentActor) -> dict:
     return {m: {"title": t, "actions": acts} for m, (t, acts) in CATALOG.items()}
 
 
+class TotpSetupIn(In):
+    password: str | None = Field(default=None, max_length=256)
+
+
 @router.post("/2fa/setup")
-async def totp_setup(actor: CurrentActor, db: DB) -> dict:
+async def totp_setup(actor: CurrentActor, db: DB, body: TotpSetupIn | None = None) -> dict:
+    """QA H-5: a stolen session alone can't attach the thief's authenticator — the password is asked again."""
     u = actor.user
     if u.totp_enabled:
         raise bad_request("Двухфакторная защита уже включена")
+    if u.password_hash:
+        await hit(f"2fa-setup:{u.id}", 5, 300)
+        if not body or not body.password or not verify_password(body.password, u.password_hash):
+            raise bad_request("Введите текущий пароль")
     secret = new_totp_secret()
     await get_kv().set(f"totp-setup:{u.id}", secret, 600)
     return {"secret": secret, "uri": totp_uri(secret, u.phone)}
 
 
-class CodeIn(BaseModel):
+class CodeIn(In):
     code: str = Field(min_length=6, max_length=6)
 
 
@@ -291,7 +334,7 @@ async def totp_enable(body: CodeIn, actor: CurrentActor, db: DB, request: Reques
     if not secret or not verify_totp(secret, body.code):
         raise bad_request("Неверный код из приложения")
     u = actor.user
-    u.totp_secret = secret
+    u.totp_secret = seal_totp_secret(secret)
     u.totp_enabled = True
     await get_kv().delete(f"totp-setup:{actor.id}")
     # Other sessions were opened without 2FA: end them; this one is upgraded to a fresh MFA session.
@@ -299,11 +342,12 @@ async def totp_enable(body: CodeIn, actor: CurrentActor, db: DB, request: Reques
     await write_audit(db, actor_id=u.id, action="auth.2fa_enabled", entity="user", entity_id=u.id, ip=actor.ip)
     access, refresh, _ = await service.open_session(db, u, True, actor.ip, request.headers.get("user-agent"))
     await db.commit()
+    await sessions_ended(u.id)
     return _issue(response, request, access, refresh, u, True)
 
 
-class PasswordIn(BaseModel):
-    old_password: str
+class PasswordIn(In):
+    old_password: str = Field(max_length=256)
     new_password: str = Field(min_length=10, max_length=256)
 
 
@@ -318,6 +362,7 @@ async def change_password(body: PasswordIn, actor: CurrentActor, db: DB) -> None
     await service.revoke_all(db, u.id, "password_changed", except_id=actor.session_id)
     await write_audit(db, actor_id=u.id, action="auth.password_changed", entity="user", entity_id=u.id, ip=actor.ip)
     await db.commit()
+    await sessions_ended(u.id, keep=actor.session_id)
 
 
 class SessionOut(BaseModel):
@@ -349,6 +394,7 @@ async def end_other_sessions(actor: CurrentActor, db: DB) -> None:
     await service.revoke_all(db, actor.id, "user_ended_others", except_id=actor.session_id)
     await write_audit(db, actor_id=actor.id, action="auth.sessions_ended_others", entity="user", entity_id=actor.id, ip=actor.ip)
     await db.commit()
+    await sessions_ended(actor.id, keep=actor.session_id)
 
 
 @router.delete("/sessions/{session_id}", status_code=204)
@@ -359,3 +405,4 @@ async def end_session(session_id: int, actor: CurrentActor, db: DB) -> None:
     await service.revoke(db, sess, "user_ended")
     await write_audit(db, actor_id=actor.id, action="auth.session_ended", entity="session", entity_id=session_id, ip=actor.ip)
     await db.commit()
+    await sessions_ended(actor.id, only=[session_id])

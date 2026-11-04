@@ -8,6 +8,7 @@ from app.core.audit import write_audit
 from app.core.deps import DB, Actor, require
 from app.core.errors import bad_request, conflict, not_found
 from app.core.permissions import OWN
+from app.core.schemas import In
 from app.models import Accrual, Attendance, Lesson, PayrollPeriod, User, UserBranch
 from app.models.learning import AttendanceStatus, LessonStatus
 from app.modules.finance.router import month_bounds
@@ -105,13 +106,13 @@ async def my_pay(db: DB, actor: Actor = require("payroll", "view"), period: str 
     return {"period": period, "total": sum(i.amount for i in items), "items": items}
 
 
-class AdjustIn(BaseModel):
+class AdjustIn(In):
     user_id: int
     branch_id: int
     kind: str = Field(pattern="^(bonus|deduction|salary)$")
     amount: int = Field(gt=0, le=10_000_000)
     description: str = Field(min_length=3, max_length=255)
-    period: str | None = None
+    period: str | None = Field(default=None, max_length=255)
 
 
 @router.post("/payroll/adjust", response_model=AccrualOut, status_code=201)
@@ -141,8 +142,8 @@ async def adjust(body: AdjustIn, db: DB, actor: Actor = require("payroll", "adju
     return _out(a)
 
 
-class PeriodIn(BaseModel):
-    period: str
+class PeriodIn(In):
+    period: str = Field(max_length=255)
     branch_id: int
 
 
