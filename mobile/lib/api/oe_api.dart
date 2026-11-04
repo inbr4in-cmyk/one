@@ -17,6 +17,7 @@ class OeApi {
   Future<void> otpVerify(String phone, String code) async {
     final r = (await client.postPublic('/auth/otp/verify', {'phone': phone, 'code': code})) as Json;
     await client.setTokens(r['access_token'] as String, r['refresh_token'] as String?);
+    await client.rememberDevice(r);
   }
 
   Future<AuthMe> authMe() async => AuthMe.fromJson((await client.get('/auth/me')) as Json);

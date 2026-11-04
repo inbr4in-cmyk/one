@@ -31,6 +31,12 @@ class ApiClient {
         _http = client ?? http.Client();
 
   static const refreshKey = 'oe.refresh';
+
+  /// Device token from login/MFA responses (`device_token`). Sent as `X-Device-Token` on later login and OTP
+  /// requests so the server recognises a known device and does not throttle it. One value per install; it is kept
+  /// after sign-out (it identifies the device, not the session) and replaced whenever the server sends a new one.
+  static const deviceKey = 'oe.device';
+  static const deviceHeader = 'X-Device-Token';
   static const _headers = {'X-Client': 'mobile', 'Accept': 'application/json'};
 
   final String base;
@@ -66,6 +72,13 @@ class ApiClient {
   Future<void> setTokens(String access, String? refresh) async {
     _access = access;
     if (refresh != null) await secrets.write(refreshKey, refresh);
+  }
+
+  /// Keep the `device_token` of a login or MFA response, if it has one.
+  Future<void> rememberDevice(Object? response) async {
+    if (response is! Map) return;
+    final t = response['device_token'];
+    if (t is String && t.isNotEmpty) await secrets.write(deviceKey, t);
   }
 
   Future<void> clearTokens() async {
@@ -125,9 +138,12 @@ class ApiClient {
       };
       if (q.isNotEmpty) u = u.replace(queryParameters: q);
     }
+    // Login and OTP requests (the public ones) carry the device token, when the server gave us one.
+    final device = auth ? null : await secrets.read(deviceKey);
     Future<http.Response> send() {
       final req = http.Request(method, u)..headers.addAll(_headers);
       if (auth && _access != null) req.headers['Authorization'] = 'Bearer $_access';
+      if (device != null) req.headers[deviceHeader] = device;
       if (body != null) {
         req.headers['Content-Type'] = 'application/json';
         req.body = jsonEncode(body);

@@ -67,7 +67,7 @@ class FakeBackend {
     if (key == 'POST /auth/otp/request') return _json({'sent': true});
     if (key == 'POST /auth/otp/verify') {
       if (body['code'] != '123456') return _json({'detail': 'Неверный код'}, 400);
-      return _json({'access_token': access, 'refresh_token': refresh});
+      return _json({'access_token': access, 'refresh_token': refresh, 'device_token': 'dev-1'});
     }
     if (r.headers['Authorization'] != 'Bearer $access') return _json({'detail': 'Не авторизован'}, 401);
     switch (key) {

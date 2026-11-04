@@ -14,6 +14,7 @@ void main() {
     await api.otpRequest(phone);
     await expectLater(api.otpVerify(phone, '000000'), throwsA(isA<ApiException>()));
     await api.otpVerify(phone, DemoBackend.code);
+    expect(await api.client.secrets.read(ApiClient.deviceKey), 'demo-device');
     final me = await api.portalMe();
     expect(me.children, hasLength(2));
     final lessons = await api.schedule(me.children.first.id, days: 14);

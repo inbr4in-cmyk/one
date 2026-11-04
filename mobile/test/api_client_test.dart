@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:one_english/api/api_client.dart';
+import 'package:one_english/api/oe_api.dart';
 import 'package:one_english/api/secret_store.dart';
 
 import 'support/fake_backend.dart';
@@ -116,5 +117,23 @@ void main() {
     expect(ApiClient(baseUrl: 'http://localhost:8000', secrets: store).wsUri('x').toString(), 'ws://localhost:8000/api/ws?ticket=x');
     expect(api.absolute('/api/files/k?exp=1&sig=s'), 'https://oe.test/api/files/k?exp=1&sig=s');
     expect(api.absolute('https://cdn/x.png'), 'https://cdn/x.png');
+  });
+
+  test('device_token from login is kept and sent as X-Device-Token on later login and OTP requests only', () async {
+    final oe = OeApi(api);
+    await oe.otpRequest('+77011234567');
+    expect(be.requests.last.headers.containsKey(ApiClient.deviceHeader), isFalse);
+    await oe.otpVerify('+77011234567', '123456');
+    expect(await store.read(ApiClient.deviceKey), 'dev-1');
+
+    await api.get('/auth/me');
+    expect(be.requests.last.headers.containsKey(ApiClient.deviceHeader), isFalse);
+
+    // Sign-out drops the session but keeps the device token.
+    await api.clearTokens();
+    await oe.otpRequest('+77011234567');
+    expect(be.requests.last.headers[ApiClient.deviceHeader], 'dev-1');
+    await oe.otpVerify('+77011234567', '123456');
+    expect(be.requests.last.headers[ApiClient.deviceHeader], 'dev-1');
   });
 }

@@ -116,7 +116,8 @@ class DemoBackend {
         return _json(null, 204);
       case 'POST /auth/otp/verify':
         if (body['code'] != code) return _error(400, 'Неверный или устаревший код');
-        return _json(_tokens(_roleForPhone(body['phone'] as String? ?? '')));
+        // Like the real server: a login response names the device, later logins send it back as X-Device-Token.
+        return _json({..._tokens(_roleForPhone(body['phone'] as String? ?? '')), 'device_token': 'demo-device'});
       case 'POST /auth/refresh':
         final t = body['refresh_token'] as String? ?? '';
         final role = t.replaceFirst('demo-refresh-', '');
