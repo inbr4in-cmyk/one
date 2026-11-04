@@ -100,19 +100,37 @@ curl -fs "http://127.0.0.1:$PORT/api/health" && echo " API is up" || { journalct
 say "nginx (one new file for $DOMAIN)"
 CONF=/etc/nginx/sites-available/one-english.conf
 [ -d /etc/nginx/sites-available ] || CONF=/etc/nginx/conf.d/one-english.conf
+NEWCONF=$(mktemp); sed -e "s/__DOMAIN__/$DOMAIN/g" -e "s/__PORT__/$PORT/g" "$SRC/deploy/nginx.conf.tpl" > "$NEWCONF"
+TPLSUM=$(sha256sum "$NEWCONF" | cut -d' ' -f1)
 if [ ! -f "$CONF" ]; then
-  sed -e "s/__DOMAIN__/$DOMAIN/" -e "s/__PORT__/$PORT/" "$SRC/deploy/nginx.conf.tpl" > "$CONF"
+  cp "$NEWCONF" "$CONF"
   [ -d /etc/nginx/sites-enabled ] && ln -sf "$CONF" /etc/nginx/sites-enabled/one-english.conf
+  echo "$TPLSUM" > "$ETC/nginx.sum"
+  if nginx -t 2>&1; then systemctl reload nginx; else
+    echo "nginx test failed, removing our file so other sites keep working"; rm -f "$CONF" /etc/nginx/sites-enabled/one-english.conf; exit 1
+  fi
+elif [ "$(cat "$ETC/nginx.sum" 2>/dev/null)" != "$TPLSUM" ]; then
+  # Template changed (e.g. new security headers): rewrite our file only, then let certbot put its existing
+  # certificate back in. On any failure the previous file is restored, so other sites are never affected.
+  cp "$CONF" "$CONF.bak-$(date +%s)"; BAK=$(ls -t "$CONF".bak-* | head -1)
+  cp "$NEWCONF" "$CONF"
+  ok=1
+  nginx -t 2>&1 || ok=0
+  if [ $ok = 1 ] && [ -d "/etc/letsencrypt/live/$DOMAIN" ]; then
+    systemctl reload nginx
+    certbot --nginx -d "$DOMAIN" --cert-name "$DOMAIN" --non-interactive --reinstall --redirect || ok=0
+  fi
+  if [ $ok = 1 ] && nginx -t 2>&1; then systemctl reload nginx; echo "$TPLSUM" > "$ETC/nginx.sum"; echo "nginx file updated"
+  else echo "nginx update failed, restoring the previous file"; cp "$BAK" "$CONF"; nginx -t && systemctl reload nginx; fi
+  mv "$BAK" "$ETC/" 2>/dev/null || true   # keep backups out of sites-available
 fi
-if nginx -t 2>&1; then systemctl reload nginx; else
-  echo "nginx test failed, removing our file so other sites keep working"; rm -f "$CONF" /etc/nginx/sites-enabled/one-english.conf; exit 1
-fi
+rm -f "$NEWCONF"
 
 say "HTTPS"
 MYIP=$(curl -fs4 https://api.ipify.org || true)
 # Ask public DNS: /etc/hosts on the server may map the domain to 127.0.0.1.
 if [ -n "$MYIP" ] && curl -fs "https://dns.google/resolve?name=$DOMAIN&type=A" | grep -q "\"$MYIP\""; then
-  if ! grep -q "ssl_certificate" "$CONF"; then
+  if ! grep -q "ssl_certificate" "$CONF"; then  # first install, or certbot never ran
     if [ -n "$EMAIL" ]; then MAILARG=(-m "$EMAIL"); else MAILARG=(--register-unsafely-without-email); fi
     certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --redirect "${MAILARG[@]}"
   fi
