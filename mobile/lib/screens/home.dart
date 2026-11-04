@@ -198,7 +198,7 @@ class _Hello extends StatelessWidget {
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(line, style: TextStyle(fontSize: 13, color: oe.muted)),
-            Semantics(header: true, child: Text(hello, style: display(21, color: oe.brandInk, height: 1.2))),
+            Semantics(header: true, child: WholeWordsText(hello, style: display(21, color: oe.brandInk, height: 1.2))),
           ]),
         ),
         if (bell) const BellAction(),
@@ -241,15 +241,23 @@ class _NextLessonCard extends StatelessWidget {
         Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             Expanded(
-                child: Text(t.nextLesson.toUpperCase(),
+                child: WholeWordsText(t.nextLesson.toUpperCase(),
                     style: TextStyle(fontSize: 12, letterSpacing: 1, color: oe.onHero2, fontWeight: FontWeight.w600))),
-            if (l != null)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(color: oe.red, borderRadius: BorderRadius.circular(999)),
-                child: Text(_until(context, l.startsAt.difference(DateTime.now())),
-                    style: const TextStyle(color: OeColors.white, fontSize: 12, fontWeight: FontWeight.w600)),
+            if (l != null) ...[
+              const SizedBox(width: 8),
+              Flexible(
+                child: TightText(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(color: oe.red, borderRadius: BorderRadius.circular(999)),
+                    child: Text(_until(context, l.startsAt.difference(DateTime.now())),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: OeColors.white, fontSize: 12, fontWeight: FontWeight.w600)),
+                  ),
+                ),
               ),
+            ],
           ]),
           const SizedBox(height: 12),
           if (l == null)
@@ -296,7 +304,11 @@ class _HeroMeta extends StatelessWidget {
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           OeIcon(icon, size: 16, color: OeColors.white),
           const SizedBox(width: 6),
-          Text(text, style: const TextStyle(color: OeColors.white, fontSize: 13, fontWeight: FontWeight.w500)),
+          Flexible(
+              child: Text(text,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: OeColors.white, fontSize: 13, fontWeight: FontWeight.w500))),
         ]),
       );
 }
@@ -369,7 +381,11 @@ class _CoinsTile extends StatelessWidget {
           Flexible(child: FittedBox(fit: BoxFit.scaleDown, child: Text(num(balance), style: display(30, color: oe.ink, height: 1)))),
         ]),
         const SizedBox(height: 10),
-        if (week != null && week! > 0) Pill(t.perWeek(week!), tone: Tone.ok) else const SizedBox(height: 22),
+        // «+140 за неделю» shrinks to the tile width on 320 px phones instead of running past the card (QA H-20).
+        if (week != null && week! > 0)
+          FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerStart, child: Pill(t.perWeek(week!), tone: Tone.ok))
+        else
+          const SizedBox(height: 22),
       ]),
     );
   }

@@ -315,7 +315,10 @@ class _ChatRow extends StatelessWidget {
                           style: const TextStyle(fontWeight: FontWeight.w600),
                         ),
                       ),
-                      if (tag != null) RoleTag(tag),
+                      if (tag != null)
+                        Flexible(
+                          child: FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerStart, child: RoleTag(tag)),
+                        ),
                     ],
                   ),
                   const SizedBox(height: 2),

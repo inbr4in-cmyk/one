@@ -282,7 +282,7 @@ class _Meta extends StatelessWidget {
   Widget build(BuildContext context) => Row(mainAxisSize: MainAxisSize.min, children: [
         OeIcon(icon, size: 16, color: context.oe.muted),
         const SizedBox(width: 4),
-        Text(text, style: TextStyle(fontSize: 13, color: context.oe.muted)),
+        Flexible(child: Text(text, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, color: context.oe.muted))),
       ]);
 }
 

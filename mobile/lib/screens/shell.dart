@@ -51,7 +51,8 @@ class AppShell extends StatelessWidget {
           ];
     final blocked = (s.child?.blocked ?? false) && !openWhenBlocked.contains(location);
     return Scaffold(
-      body: SafeArea(bottom: false, child: blocked ? const BlockedView() : child),
+      // On tablets the tab pages keep a phone-like readable width, centred (QA H-21).
+      body: SafeArea(bottom: false, child: ReadableWidth(child: blocked ? const BlockedView() : child)),
       bottomNavigationBar: _TabBar(tabs: tabs, current: location),
     );
   }
@@ -73,11 +74,14 @@ class _TabBar extends StatelessWidget {
       ),
       child: SafeArea(
         top: false,
-        child: SizedBox(
+        // The bar keeps its height: labels follow the system text size only up to 130 % (QA H-20).
+        child: TightText(
+          child: SizedBox(
           height: ios ? 50 : 80,
           child: Row(children: [
             for (final tab in tabs) Expanded(child: _TabItem(tab: tab, active: tab.path == current)),
           ]),
+        ),
         ),
       ),
     );
@@ -134,13 +138,19 @@ class _TabItem extends StatelessWidget {
         child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
           Stack(clipBehavior: Clip.none, children: [icon, ?badge]),
           SizedBox(height: ios ? 3 : 4),
-          Text(tab.label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                  fontSize: ios ? 10.5 : 12,
-                  fontWeight: active && !ios ? FontWeight.w600 : FontWeight.w500,
-                  color: color)),
+          // A long label («Расписание» on 320 px) shrinks to fit the tab instead of being cut to «Распи…».
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 2),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(tab.label,
+                  maxLines: 1,
+                  style: TextStyle(
+                      fontSize: ios ? 10.5 : 12,
+                      fontWeight: active && !ios ? FontWeight.w600 : FontWeight.w500,
+                      color: color)),
+            ),
+          ),
         ]),
       ),
     );

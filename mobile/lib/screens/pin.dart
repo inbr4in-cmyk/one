@@ -74,7 +74,8 @@ class PinPad extends StatelessWidget {
         child: SizedBox(width: 76, height: 76, child: Center(child: OeIcon('arrow-l', size: 30, color: oe.tint))),
       ),
     );
-    return Column(mainAxisSize: MainAxisSize.min, children: [
+    // Digits sit in fixed 76 px circles: they follow large text only up to 130 %.
+    return TightText(child: Column(mainAxisSize: MainAxisSize.min, children: [
       for (final row in [
         ['1', '2', '3'],
         ['4', '5', '6'],
@@ -93,8 +94,62 @@ class PinPad extends StatelessWidget {
         const SizedBox(width: 28),
         back,
       ]),
-    ]);
+    ]));
   }
+}
+
+/// Lays out a PIN screen for any size (QA C-17): the keypad shrinks to fit, the text above it scrolls if needed, and
+/// on a short, wide screen (a phone in landscape) the text and dots go left and the keypad right, so the title, the
+/// dots and every key stay visible.
+class PinLayout extends StatelessWidget {
+  const PinLayout({super.key, required this.info, required this.pad, this.footer, this.icon});
+  /// Title, explanation, dots and hint.
+  final List<Widget> info;
+  final Widget pad;
+  final Widget? footer;
+  /// Big picture above the title, shown only when there is room.
+  final Widget? icon;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(builder: (context, c) {
+        final h = c.maxHeight;
+        final wide = c.maxWidth > c.maxHeight && h < 600;
+        Widget infoColumn({required bool withIcon}) => Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 420),
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    if (withIcon && icon != null) ...[icon!, const SizedBox(height: 14)],
+                    ...info,
+                  ]),
+                ),
+              ),
+            );
+        // The keypad is 300 × 352 at full size; it never gets more than 60 % of a portrait screen.
+        final keypad = Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: FittedBox(fit: BoxFit.scaleDown, child: pad),
+        );
+        if (wide) {
+          return Row(children: [
+            Expanded(child: infoColumn(withIcon: false)),
+            Expanded(
+              child: Column(children: [
+                Expanded(child: keypad),
+                ?footer,
+                const SizedBox(height: 8),
+              ]),
+            ),
+          ]);
+        }
+        return Column(children: [
+          Expanded(child: infoColumn(withIcon: h >= 640)),
+          ConstrainedBox(constraints: BoxConstraints(maxHeight: h * .6), child: keypad),
+          ?footer,
+          SizedBox(height: footer == null ? 24 : 12),
+        ]);
+      });
 }
 
 /// 13a — create (and repeat) a 4-digit PIN; simple combinations are refused. Optional: can be skipped.
@@ -161,34 +216,30 @@ class _PinSetupScreenState extends State<PinSetupScreen> {
     return Scaffold(
       appBar: widget.change ? NavBar(backLabel: t.security) : null,
       body: SafeArea(
-        child: Column(children: [
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(28, 24, 28, 0),
-              child: Column(children: [
-                const _BigIcon('lock'),
-                const SizedBox(height: 14),
-                Semantics(
-                    header: true,
-                    child: Text(_first == null ? t.pinCreate : t.pinRepeat,
-                        textAlign: TextAlign.center, style: display(22, color: oe.brandInk, height: 1.25))),
-                const SizedBox(height: 10),
-                Text(t.pinCreateText, textAlign: TextAlign.center, style: TextStyle(color: oe.muted)),
-                const SizedBox(height: 24),
-                PinDots(_pin.length, error: _error != null),
-                const SizedBox(height: 12),
-                Text(_error ?? t.pinHint,
-                    textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: _error != null ? oe.red : oe.muted)),
-              ]),
-            ),
-          ),
-          PinPad(onDigit: _digit, onBack: () => setState(() => _pin = _pin.isEmpty ? '' : _pin.substring(0, _pin.length - 1))),
-          if (!widget.change)
-            TextButton(
-                onPressed: () => context.read<Session>().pinOffered(),
-                child: Text(t.notNow, style: TextStyle(color: oe.tint, fontWeight: FontWeight.w600))),
-          const SizedBox(height: 16),
-        ]),
+        child: PinLayout(
+          icon: const _BigIcon('lock'),
+          info: [
+            Semantics(
+                header: true,
+                child: WholeWordsText(_first == null ? t.pinCreate : t.pinRepeat,
+                    textAlign: TextAlign.center, style: display(22, color: oe.brandInk, height: 1.25))),
+            const SizedBox(height: 10),
+            Text(t.pinCreateText, textAlign: TextAlign.center, style: TextStyle(color: oe.muted)),
+            const SizedBox(height: 20),
+            PinDots(_pin.length, key: const Key('pin-dots'), error: _error != null),
+            const SizedBox(height: 12),
+            Text(_error ?? t.pinHint,
+                textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: _error != null ? oe.red : oe.muted)),
+          ],
+          pad: PinPad(onDigit: _digit, onBack: () => setState(() => _pin = _pin.isEmpty ? '' : _pin.substring(0, _pin.length - 1))),
+          footer: widget.change
+              ? null
+              : TightText(
+                  child: TextButton(
+                      onPressed: () => context.read<Session>().pinOffered(),
+                      child: Text(t.notNow, style: TextStyle(color: oe.tint, fontWeight: FontWeight.w600))),
+                ),
+        ),
       ),
     );
   }
@@ -304,26 +355,20 @@ class _LockScreenState extends State<LockScreen> {
     final left = LockController.maxFailures - lock.failures;
     return Scaffold(
       body: SafeArea(
-        child: Column(children: [
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(28, 24, 28, 0),
-              child: Column(children: [
-                Avatar(name, size: 72, tone: 0),
-                const SizedBox(height: 14),
-                Text(t.pinEnter(name.split(' ').first), textAlign: TextAlign.center, style: display(22, color: oe.brandInk)),
-                const SizedBox(height: 20),
-                PinDots(_pin.length, error: _error),
-                const SizedBox(height: 14),
-                if (_error) Text(t.pinWrong(left), style: TextStyle(color: oe.red, fontSize: 13)),
-                TextButton(
-                  onPressed: () => context.read<Session>().signOut(),
-                  child: Text(t.pinForgot, style: TextStyle(color: oe.tint, fontWeight: FontWeight.w600, fontSize: 14)),
-                ),
-              ]),
+        child: PinLayout(
+          icon: Avatar(name, size: 72, tone: 0),
+          info: [
+            WholeWordsText(t.pinEnter(name.split(' ').first), textAlign: TextAlign.center, style: display(22, color: oe.brandInk)),
+            const SizedBox(height: 20),
+            PinDots(_pin.length, key: const Key('pin-dots'), error: _error),
+            const SizedBox(height: 14),
+            if (_error) Text(t.pinWrong(left), textAlign: TextAlign.center, style: TextStyle(color: oe.red, fontSize: 13)),
+            TextButton(
+              onPressed: () => context.read<Session>().signOut(),
+              child: Text(t.pinForgot, style: TextStyle(color: oe.tint, fontWeight: FontWeight.w600, fontSize: 14)),
             ),
-          ),
-          PinPad(
+          ],
+          pad: PinPad(
             onDigit: _digit,
             onBack: () => setState(() => _pin = _pin.isEmpty ? '' : _pin.substring(0, _pin.length - 1)),
             leading: _bio
@@ -335,8 +380,7 @@ class _LockScreenState extends State<LockScreen> {
                   )
                 : null,
           ),
-          const SizedBox(height: 32),
-        ]),
+        ),
       ),
     );
   }

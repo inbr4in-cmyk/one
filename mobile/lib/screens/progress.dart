@@ -85,20 +85,27 @@ class _Body extends StatelessWidget {
       if (graded.isNotEmpty)
         OeCard(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Expanded(child: Text(t.lessonGrades, style: display(15, color: oe.brandInk))),
-              Text.rich(TextSpan(style: TextStyle(fontSize: 13, color: oe.muted), children: [
-                TextSpan(text: '${t.average} '),
-                TextSpan(text: avg!.toStringAsFixed(1).replaceAll('.', ','), style: TextStyle(color: oe.ink, fontWeight: FontWeight.w700)),
-              ])),
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Expanded(child: WholeWordsText(t.lessonGrades, style: display(15, color: oe.brandInk))),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text.rich(
+                    textAlign: TextAlign.end,
+                    TextSpan(style: TextStyle(fontSize: 13, color: oe.muted), children: [
+                      TextSpan(text: '${t.average} '),
+                      TextSpan(
+                          text: avg!.toStringAsFixed(1).replaceAll('.', ','),
+                          style: TextStyle(color: oe.ink, fontWeight: FontWeight.w700)),
+                    ])),
+              ),
             ]),
             const SizedBox(height: 12),
-            SizedBox(
-              height: 96,
+            // The chart takes the height its labels need (no fixed box), and its labels stop growing at 130 % (QA H-20).
+            TightText(
               child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
                 for (final m in graded)
                   Expanded(
-                    child: Column(mainAxisAlignment: MainAxisAlignment.end, children: [
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
                       Container(
                         constraints: const BoxConstraints(maxWidth: 26),
                         height: 16 + 54 * (m.grade!.clamp(1, 5) / 5),
@@ -113,8 +120,11 @@ class _Body extends StatelessWidget {
                                 fontSize: 12, fontWeight: FontWeight.w700, color: m.grade! >= 5 ? oe.onPrimary : oe.tint)),
                       ),
                       const SizedBox(height: 4),
-                      Text('${school(m.at).day}.${school(m.at).month.toString().padLeft(2, '0')}',
-                          style: TextStyle(fontSize: 11, color: oe.muted)),
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text('${school(m.at).day}.${school(m.at).month.toString().padLeft(2, '0')}',
+                            maxLines: 1, style: TextStyle(fontSize: 11, color: oe.muted)),
+                      ),
                     ]),
                   ),
               ]),
@@ -163,13 +173,19 @@ class _Kpi extends StatelessWidget {
   final String value;
 
   @override
-  Widget build(BuildContext context) => OeCard(
-        padding: const EdgeInsets.all(12),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: context.oe.muted)),
-          const SizedBox(height: 4),
-          Text(value, style: display(22, color: context.oe.ink)),
-        ]),
+  Widget build(BuildContext context) => TightText(
+        child: OeCard(
+          padding: const EdgeInsets.all(12),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: context.oe.muted)),
+            const SizedBox(height: 4),
+            // «83%» stays on one line in a third of a 320 px screen.
+            FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: AlignmentDirectional.centerStart,
+                child: Text(value, maxLines: 1, style: display(22, color: context.oe.ink))),
+          ]),
+        ),
       );
 }
 

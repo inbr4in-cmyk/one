@@ -14,6 +14,7 @@ import 'state/session.dart';
 import 'state/settings.dart';
 import 'ui/icons.dart';
 import 'ui/theme.dart';
+import 'ui/widgets.dart' show kMaxTextScale;
 
 class OeApp extends StatefulWidget {
   const OeApp({super.key, required this.api, required this.settings, required this.session, required this.lock,
@@ -86,10 +87,14 @@ class _OeAppState extends State<OeApp> with WidgetsBindingObserver {
             GlobalWidgetsLocalizations.delegate,
           ],
           routerConfig: widget.router,
-          builder: (context, child) => Stack(children: [
-            child ?? const SizedBox(),
-            if (_hidden) const _PrivacyCover(),
-          ]),
+          // System text size is followed up to 200 %; tight elements cap themselves lower (TightText).
+          builder: (context, child) => MediaQuery.withClampedTextScaling(
+            maxScaleFactor: kMaxTextScale,
+            child: Stack(children: [
+              child ?? const SizedBox(),
+              if (_hidden) const _PrivacyCover(),
+            ]),
+          ),
         ),
       ),
     );

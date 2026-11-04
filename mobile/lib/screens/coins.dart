@@ -202,7 +202,12 @@ class _BodyState extends State<_Body> {
                     Row(children: [
                       const Coin(size: 18),
                       const SizedBox(width: 6),
-                      Text(num(i.priceCoins), style: display(15, color: oe.ink)),
+                      Flexible(
+                        child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: AlignmentDirectional.centerStart,
+                            child: Text(num(i.priceCoins), maxLines: 1, style: display(15, color: oe.ink))),
+                      ),
                     ]),
                     const SizedBox(height: 8),
                     if (i.stock <= 0)
