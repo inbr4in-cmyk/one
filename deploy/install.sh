@@ -70,11 +70,12 @@ fi
 
 say "Code"
 TS=$(date +%Y%m%d-%H%M%S)
-[ -d "$APP/backend" ] && mv "$APP/backend" "$APP/backend.prev-$TS" && mv "$APP/web" "$APP/web.prev-$TS"
+if [ -d "$APP/backend" ]; then mv "$APP/backend" "$APP/backend.prev-$TS"; fi
+if [ -d "$APP/web" ]; then mv "$APP/web" "$APP/web.prev-$TS"; fi
 cp -r "$SRC/backend" "$APP/backend"; cp -r "$SRC/web" "$APP/web"
 chown -R root:root "$APP/backend" "$APP/web"; chmod -R a+rX "$APP/backend" "$APP/web"
-ls -dt "$APP"/backend.prev-* 2>/dev/null | tail -n +4 | xargs -r rm -rf
-ls -dt "$APP"/web.prev-* 2>/dev/null | tail -n +4 | xargs -r rm -rf
+{ ls -dt "$APP"/backend.prev-* 2>/dev/null || true; } | tail -n +4 | xargs -r rm -rf
+{ ls -dt "$APP"/web.prev-* 2>/dev/null || true; } | tail -n +4 | xargs -r rm -rf
 
 say "Python (own copy via uv, system Python untouched)"
 export UV_INSTALL_DIR=$APP/bin UV_PYTHON_INSTALL_DIR=$APP/python UV_CACHE_DIR=$APP/.uv-cache
@@ -109,7 +110,8 @@ fi
 
 say "HTTPS"
 MYIP=$(curl -fs4 https://api.ipify.org || true)
-if getent hosts "$DOMAIN" | grep -q "$MYIP"; then
+# Ask public DNS: /etc/hosts on the server may map the domain to 127.0.0.1.
+if [ -n "$MYIP" ] && curl -fs "https://dns.google/resolve?name=$DOMAIN&type=A" | grep -q "\"$MYIP\""; then
   if ! grep -q "ssl_certificate" "$CONF"; then
     if [ -n "$EMAIL" ]; then MAILARG=(-m "$EMAIL"); else MAILARG=(--register-unsafely-without-email); fi
     certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --redirect "${MAILARG[@]}"
