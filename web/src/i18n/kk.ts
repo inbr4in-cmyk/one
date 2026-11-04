@@ -1,10 +1,12 @@
 import type { Messages } from './ru'
 import modules from './modules.kk'
 import ops from './ops.kk'
+import tests from './tests.kk'
 
 const kk: Messages = {
   ...modules,
   ...ops,
+  ...tests,
   app: {
     name: 'One English',
     tagline: 'Innovation in Learning',
@@ -44,6 +46,7 @@ const kk: Messages = {
     server: 'Сервердің ішкі қатесі. Біз оны шешіп жатырмыз.',
     forbidden: 'Құқық жеткіліксіз',
     generic: 'Бірдеңе дұрыс болмады',
+    tooMany: 'Әрекет тым көп, {n} сек күтіңіз',
   },
   nav: {
     menu: 'Мәзір',
@@ -103,9 +106,17 @@ const kk: Messages = {
     twoFaOff: '2FA өшірулі',
   },
   theme: {
-    light: 'Ашық',
+    title: 'Безендіру',
+    hint: 'Тақырып осы құрылғыда сіз үшін сақталады.',
+    auto: 'Авто',
+    autoHint: 'жүйедегідей ашық не қараңғы',
+    light: 'Фирмалық',
     dark: 'Қараңғы',
-    system: 'Жүйедегідей',
+    ocean: 'Мұхит',
+    graphite: 'Графит',
+    sand: 'Құм',
+    isLight: 'Ашық',
+    isDark: 'Қараңғы',
   },
   lang: {
     ru: 'Рус',
@@ -159,6 +170,9 @@ const kk: Messages = {
     secure: 'Қорғалған байланыс · деректер Қазақстанда сақталады',
   },
   setup2fa: {
+    password: 'Ағымдағы құпиясөз',
+    passwordText: 'Бұл сіз екеніңізді растаңыз: кіру құпиясөзін енгізіңіз. Содан кейін QR-код шығады.',
+    passwordRequired: 'Ағымдағы құпиясөзді енгізіңіз',
     title: 'Екі факторлы қорғауды қосыңыз',
     subtitle: 'Мектеп қызметкерлері үшін бұл міндетті. Бірнеше минут қана алады.',
     step1: 'Аутентификатор қосымшасын орнатыңыз',

@@ -13,13 +13,7 @@
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=Unbounded:wght@500;600;700&family=Playfair+Display:wght@800&display=swap"
     />
-    <script>
-      // Apply the saved theme before first paint to avoid a flash.
-      try {
-        var t = localStorage.getItem('oe-theme')
-        if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t)
-      } catch (e) {}
-    </script>
+    <script src="%BASE_URL%theme-init.js"></script>
   </head>
   <body>
     <div id="app"></div>

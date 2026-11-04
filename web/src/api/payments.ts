@@ -46,7 +46,9 @@ export interface Payment {
 
 export const paymentsApi = {
   quote: (body: PaymentIn) => http.post<Quote>('/payments/quote', body),
-  create: (body: PaymentIn) => http.post<Payment>('/payments', body),
+  /** `key`: Idempotency-Key, one per payment form, so a retried or double submit records one payment (QA C-1). */
+  create: (body: PaymentIn, key: string) => http.post<Payment>('/payments', body, { headers: { 'Idempotency-Key': key } }),
+  refundable: (id: number) => http.get<{ lessons_max: number; amount_max: number; amount_left: number }>(`/payments/${id}/refundable`, { silent: true }),
   list: (p: { student_id?: number; branch_id?: number | null; date_from?: string; date_to?: string; limit?: number; offset?: number }) =>
     http.get<Page<Payment>>(`/payments${qs(p)}`),
   refund: (id: number, body: { lessons: number; amount: number; reason: string }) =>

@@ -9,5 +9,5 @@ defineProps<{
 </script>
 
 <template>
-  <span class="chip" :class="[tone, { xs: small }]"><UiIcon v-if="icon" :name="icon" :size="16" /><slot /></span>
+  <span class="chip" :class="[tone, { xs: small }]"><UiIcon v-if="icon" :name="icon" :size="16" /><span class="chip-t"><slot /></span></span>
 </template>

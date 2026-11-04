@@ -39,6 +39,7 @@ const drawer = ref(false)
 const editing = ref<Staff | null>(null)
 const pwFor = ref<Staff | null>(null)
 const pw = ref('')
+const oldPw = ref('')
 const pwErr = ref<string | null>(null)
 const confirmFor = ref<{ s: Staff; kind: 'archive' | 'reset2fa' } | null>(null)
 const busy = ref(false)
@@ -90,7 +91,7 @@ async function setPassword() {
   busy.value = true
   pwErr.value = null
   try {
-    await adminApi.setPassword(s.id, pw.value)
+    await adminApi.setPassword(s.id, pw.value, s.id === auth.user?.id ? oldPw.value : undefined)
     toast.ok(t('staff.passwordSet'))
     pwFor.value = null
   } catch (e) {
@@ -163,7 +164,7 @@ const hours = (r: CheckinRow) => {
             <td class="r">
               <div v-if="!s.archived_at" class="row-acts nowrap">
                 <UiButton v-if="auth.can('staff.edit')" size="sm" variant="ghost" icon="edit" :title="t('common.edit')" :aria-label="`${t('common.edit')}: ${s.full_name}`" @click="edit(s)" />
-                <UiButton v-if="auth.can('staff.edit')" size="sm" variant="ghost" icon="key" :title="t('staff.setPassword')" :aria-label="`${t('staff.setPassword')}: ${s.full_name}`" @click="pwFor = s; pw = ''; pwErr = null" />
+                <UiButton v-if="auth.can('staff.edit')" size="sm" variant="ghost" icon="key" :title="t('staff.setPassword')" :aria-label="`${t('staff.setPassword')}: ${s.full_name}`" @click="pwFor = s; pw = ''; oldPw = ''; pwErr = null" />
                 <UiButton v-if="isOwner && auth.can('security.manage') && s.totp_enabled && s.id !== auth.user?.id" size="sm" variant="ghost" icon="shield" :title="t('staff.reset2fa')" :aria-label="`${t('staff.reset2fa')}: ${s.full_name}`" @click="confirmFor = { s, kind: 'reset2fa' }" />
                 <UiButton v-if="auth.can('staff.archive') && s.id !== auth.user?.id" size="sm" variant="ghost" icon="archive" :title="t('staff.archive')" :aria-label="`${t('staff.archive')}: ${s.full_name}`" @click="confirmFor = { s, kind: 'archive' }" />
               </div>
@@ -200,13 +201,14 @@ const hours = (r: CheckinRow) => {
   <StaffDrawer v-model:open="drawer" :staff="editing" :roles="roles" @saved="loadStaff" />
   <UiModal :open="!!pwFor" :title="t('staff.setPasswordFor', { name: pwFor?.full_name ?? '' })" @update:open="(v) => !v && (pwFor = null)">
     <form id="pw-form" class="stack" @submit.prevent="setPassword">
-      <UiInput v-model="pw" type="password" :label="t('staff.newPassword')" :hint="t('staff.passwordHint')" autocomplete="new-password" autofocus />
+      <UiInput v-if="pwFor && pwFor.id === auth.user?.id" v-model="oldPw" type="password" :label="t('staff.currentPassword')" autocomplete="current-password" :maxlength="256" autofocus />
+      <UiInput v-model="pw" type="password" :label="t('staff.newPassword')" :hint="t('staff.passwordHint')" autocomplete="new-password" :maxlength="256" :autofocus="!(pwFor && pwFor.id === auth.user?.id)" />
       <p class="form-note">{{ t('staff.passwordNote') }}</p>
       <p v-if="pwErr" class="form-err" role="alert">{{ pwErr }}</p>
     </form>
     <template #footer="{ close }">
       <UiButton @click="close">{{ t('common.cancel') }}</UiButton>
-      <UiButton type="submit" form="pw-form" variant="primary" :loading="busy" :disabled="pw.length < 8">{{ t('staff.setPassword') }}</UiButton>
+      <UiButton type="submit" form="pw-form" variant="primary" :loading="busy" :disabled="pw.length < 10 || (pwFor?.id === auth.user?.id && !oldPw)">{{ t('staff.setPassword') }}</UiButton>
     </template>
   </UiModal>
   <UiPrompt

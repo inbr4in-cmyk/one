@@ -25,7 +25,7 @@ const auth = useAuthStore()
 const branch = useBranchStore()
 const refs = useRefsStore()
 const loc = computed(() => locale.value as Locale)
-const narrow = useMediaQuery('(max-width: 760px)')
+const narrow = useMediaQuery('(max-width:820px)')
 
 const start = ref(weekStart(new Date()))
 const view = ref<View>(route.query.group ? 'groups' : 'rooms')
@@ -247,7 +247,7 @@ const nConflicts = computed(() => shown.value.filter((l) => conflicts.value.has(
           @click="selected = p.l"
         >
           <b>{{ p.l.group_name ?? t('schedule.individual') }}</b>
-          <span>{{ hm(p.l.starts_at, loc) }}–{{ hm(p.l.ends_at, loc) }} · {{ p.l.teacher_name }}</span><br />
+          <span>{{ hm(p.l.starts_at, loc) }}–{{ hm(p.l.ends_at, loc) }} · {{ p.l.teacher_name }}</span>
           <span>{{ view === 'rooms' && pick ? (p.l.actual_teacher_id ? t('schedule.sub') : '') : p.l.room_name }}</span>
           <span v-if="conflicts.has(p.l.id)" class="trial conf"><UiIcon name="alert" :size="11" />{{ t('schedule.conflictShort') }}</span>
           <span v-else-if="p.l.trials" class="trial"><UiIcon name="flag" :size="11" />{{ t('schedule.trial') }}</span>

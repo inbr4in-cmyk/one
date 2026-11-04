@@ -92,7 +92,7 @@ async function sendReport() {
 
 <template>
   <div v-if="loaded" ref="root" class="top-pop">
-    <button type="button" class="checkin-btn" :class="state" :aria-expanded="open" aria-haspopup="true" @click="open = !open">
+    <button type="button" class="checkin-btn" :class="state" :aria-label="label" :title="label" :aria-expanded="open" aria-haspopup="true" @click="open = !open">
       <span class="ci-dot" aria-hidden="true" /><span class="ci-l">{{ label }}</span><UiIcon name="clock" :size="16" class="ci-ico" />
     </button>
     <Transition name="pop">

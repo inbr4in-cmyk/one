@@ -18,6 +18,11 @@ useUiStore() // applies saved theme and language
 
 const toast = useToastStore()
 setErrorHandler((err) => {
+  // Rate limits (login, OTP, 2FA): say how long to wait, in the user's language.
+  if (err.status === 429 && err.retryAfter) {
+    toast.error(t('errors.tooMany', { n: err.retryAfter }))
+    return
+  }
   const fallback = err.status === 0 ? t('errors.network') : err.status >= 500 ? t('errors.server') : t('errors.generic')
   toast.error(err.detail || fallback)
 })

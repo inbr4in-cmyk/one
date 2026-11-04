@@ -74,11 +74,19 @@ async function fetchQuote() {
   }
 }
 
+/** One key per opened form: a double tap or a retry after a lost response can't charge twice. */
+const newKey = () => (globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`)
+let idemKey = newKey()
+watch(open, (v) => {
+  if (v) idemKey = newKey()
+})
+
 async function submit() {
-  if (!quote.value) return
+  if (!quote.value || busy.value) return
   busy.value = true
   try {
-    await paymentsApi.create(body.value)
+    await paymentsApi.create(body.value, idemKey)
+    idemKey = newKey()
     toast.ok(t('payments.done', { sum: money(quote.value.to_pay, loc.value) }))
     emit('paid')
     open.value = false

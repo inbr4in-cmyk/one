@@ -34,11 +34,14 @@ let onMfaRequired: Handler<void> = null
 export class ApiError extends Error {
   readonly status: number
   readonly detail: string
-  constructor(status: number, detail: string) {
+  /** Seconds from a 429's Retry-After header, when the server sent one. */
+  readonly retryAfter: number | null
+  constructor(status: number, detail: string, retryAfter: number | null = null) {
     super(detail)
     this.name = 'ApiError'
     this.status = status
     this.detail = detail
+    this.retryAfter = retryAfter
   }
 }
 
@@ -49,6 +52,8 @@ export interface RequestOptions {
   /** Do not show an error toast; the caller handles the error. */
   silent?: boolean
   signal?: AbortSignal
+  /** Extra request headers (e.g. Idempotency-Key). */
+  headers?: Record<string, string>
 }
 
 export function setAccessToken(token: string | null): void {
@@ -94,7 +99,63 @@ async function parseBody(res: Response): Promise<unknown> {
   return null
 }
 
-/** Exchange the refresh cookie for a new access token. Shared by concurrent callers. */
+/**
+ * Tabs share one refresh (QA C-6). The refresh token rotates on every use and the server treats a second use
+ * of the old one as theft, so two tabs refreshing at once used to sign the user out. Now:
+ * - a Web Lock (`navigator.locks`) lets only one tab call /auth/refresh at a time; the others wait for it;
+ * - the winner posts the new access token on a BroadcastChannel, so a tab that waited adopts it instead of
+ *   spending the already-rotated cookie again.
+ * Browsers without Web Locks still refresh, just without the cross-tab guard.
+ */
+const REFRESH_LOCK = 'oe-auth-refresh'
+const SHARE_FRESH_MS = 15_000
+const channel: BroadcastChannel | null = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('oe-auth') : null
+let shared: { token: string; at: number } | null = null
+channel?.addEventListener('message', (e: MessageEvent<{ type?: string; token?: string }>) => {
+  if (e.data?.type === 'token' && typeof e.data.token === 'string') shared = { token: e.data.token, at: Date.now() }
+  else if (e.data?.type === 'logout') shared = null
+})
+
+/** Tell the other tabs that this one signed out, so none of them hands out a stale token. */
+export function broadcastLogout(): void {
+  shared = null
+  try {
+    channel?.postMessage({ type: 'logout' })
+  } catch {
+    /* channel closed */
+  }
+}
+
+async function refreshOnce(staleToken: string | null): Promise<boolean> {
+  // Another tab refreshed a moment ago: take its token instead of spending the rotated cookie.
+  if (shared && shared.token !== staleToken && Date.now() - shared.at < SHARE_FRESH_MS) {
+    setAccessToken(shared.token)
+    return true
+  }
+  try {
+    const res = await fetch(`${BASE}/auth/refresh`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: CSRF_HEADER,
+    })
+    if (!res.ok) return false
+    const data = (await res.json()) as { access_token?: string | null }
+    setAccessToken(data.access_token ?? null)
+    if (data.access_token) {
+      shared = { token: data.access_token, at: Date.now() }
+      try {
+        channel?.postMessage({ type: 'token', token: data.access_token })
+      } catch {
+        /* channel closed */
+      }
+    }
+    return !!data.access_token
+  } catch {
+    return false
+  }
+}
+
+/** Exchange the refresh cookie for a new access token. Shared by concurrent callers and across tabs. */
 export function refreshAccess(): Promise<boolean> {
   const d = demo()
   if (d) {
@@ -104,29 +165,31 @@ export function refreshAccess(): Promise<boolean> {
     })
   }
   if (!refreshing) {
-    refreshing = (async () => {
-      try {
-        const res = await fetch(`${BASE}/auth/refresh`, {
-          method: 'POST',
-          credentials: 'include',
-          headers: CSRF_HEADER,
-        })
-        if (!res.ok) return false
-        const data = (await res.json()) as { access_token?: string | null }
-        setAccessToken(data.access_token ?? null)
-        return !!data.access_token
-      } catch {
-        return false
-      }
-    })().finally(() => {
-      refreshing = null
+    const stale = accessToken
+    const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined
+    // A lock that can't be had (unsupported, page being torn down, a tab stuck for 10 s) must never cost the
+    // session: fall back to a plain refresh.
+    let ran = false
+    const guarded = () => {
+      ran = true
+      return refreshOnce(stale)
+    }
+    const run: Promise<boolean> = locks
+      ? locks
+          .request(REFRESH_LOCK, { signal: AbortSignal.timeout?.(10_000) }, guarded)
+          .then((v) => !!v, () => (ran ? false : refreshOnce(stale)))
+      : refreshOnce(stale)
+    const p = run.catch(() => false).finally(() => {
+      if (refreshing === p) refreshing = null
     })
+    refreshing = p
+    return p
   }
   return refreshing
 }
 
 async function send(method: string, path: string, opts: RequestOptions): Promise<Response> {
-  const headers: Record<string, string> = { Accept: 'application/json', ...CSRF_HEADER }
+  const headers: Record<string, string> = { Accept: 'application/json', ...CSRF_HEADER, ...opts.headers }
   const isForm = opts.body instanceof FormData
   if (opts.body !== undefined && !isForm) headers['Content-Type'] = 'application/json'
   if (opts.auth !== false && accessToken) headers.Authorization = `Bearer ${accessToken}`
@@ -176,9 +239,11 @@ export async function request<T>(method: string, path: string, opts: RequestOpti
 
   const data = await parseBody(res)
   if (!res.ok) {
-    const err = new ApiError(res.status, readDetail(data, res.status))
+    const retry = Number(res.headers.get('retry-after'))
+    const err = new ApiError(res.status, readDetail(data, res.status), Number.isFinite(retry) && retry > 0 ? retry : null)
     if (res.status === 403 && /двухфактор/i.test(err.detail)) {
-      onMfaRequired?.()
+      // Background polls (counters, notifications) stay quiet; screens the user opened go to the 2FA setup.
+      if (!opts.silent) onMfaRequired?.()
       throw err
     }
     // A lost session is handled by redirecting to /login, not by a toast.

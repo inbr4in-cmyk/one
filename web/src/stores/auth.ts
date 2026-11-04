@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { authApi, type Me, type Scope, type TokenOut } from '@/api/auth'
-import { hasAccessToken, refreshAccess, setAccessToken } from '@/api/http'
+import { broadcastLogout, hasAccessToken, refreshAccess, setAccessToken } from '@/api/http'
 import { readPref, writePref } from '@/utils/storage'
 import { stopRealtime } from '@/composables/useRealtime'
 import { useRefsStore } from './refs'
@@ -103,6 +103,7 @@ export const useAuthStore = defineStore('auth', () => {
   /** Forget the session locally (server already ended it, or refresh failed). */
   function clear() {
     stopRealtime()
+    broadcastLogout()
     useRefsStore().reset()
     usePortalStore().reset()
     setAccessToken(null)

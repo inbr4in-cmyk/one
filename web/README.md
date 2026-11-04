@@ -42,7 +42,9 @@ The web app has no build-time secrets and reads no `VITE_*` variables. It expect
 
 - requests go to `/api/...`, the refresh token is an httpOnly cookie, the access token lives in memory only;
 - every request carries `X-Requested-With: one-english` (CSRF guard on the API);
-- realtime uses one WebSocket per tab at `/api/ws?ticket=…` (ticket from `POST /api/ws/ticket`).
+- realtime uses one WebSocket per tab at `/api/ws?ticket=…` (ticket from `POST /api/ws/ticket`); close code 4401 signs the tab out;
+- tabs share one token refresh: a Web Lock (`oe-auth-refresh`) lets one tab call `/auth/refresh` at a time and a BroadcastChannel (`oe-auth`) hands the new access token to the others, so the rotating refresh cookie is never spent twice;
+- `POST /payments` carries an `Idempotency-Key` (one per opened payment form).
 
 | Variable | Where | Meaning |
 |---|---|---|
@@ -70,7 +72,7 @@ src/
                         portal (children, selected child), toast
   router/
     nav.ts              sidebar items: path, icon, permission, counter, page; the single place to add a staff screen
-    index.ts            routes, auth/2FA/rules guards, portal routes, redirects for links sent in notifications
+    index.ts            routes, auth/2FA/rules guards, portal routes, the public QR test `/t/:token`, redirects for links sent in notifications
   pages/                one folder per area (dashboard, crm, inbox, chats, schedule, groups, students, attendance,
                         payments, finance, payroll, tasks, books, coins, complaints, training, settings, portal)
   components/
@@ -90,7 +92,8 @@ src/
 
 ## Conventions
 
-- **Design**: the reference is `docs/design/web.html`. Never hardcode colors: use the tokens in `tokens.css`, which define light and dark (`prefers-color-scheme` plus a manual `data-theme`). Navy is primary; red is only for the main CTA, unread and urgent. Unbounded for headings and numbers, Golos for UI.
+- **Design**: the reference is `docs/design/web.html`. Never hardcode colors: use the tokens in `tokens.css`. Navy is primary; red is only for the main CTA, unread and urgent. Unbounded for headings and numbers, Golos for UI.
+- **Themes**: «Авто» (no `data-theme`, follows the system), «Фирменная» (`light`, default), «Тёмная» (`dark`), «Океан» (`ocean`), «Графит» (`graphite`), «Песок» (`sand`). Each is a token set in `tokens.css` on `<html data-theme>`; text stays at WCAG AA in every theme. The list lives in `stores/ui.ts` (`THEMES`), the picker is `components/layout/ThemePicker.vue` (login, user menu, Security page, portal profile). The choice is kept per user on the device (`oe-theme:u<id>`) and as the device default (`oe-theme`), which `public/theme-init.js` applies before first paint (a file, not an inline script, so the CSP can forbid inline code).
 - **Motion**: 120–280 ms, ease-out, transform/opacity only; `motion.css` turns it off under `prefers-reduced-motion`.
 - **Text**: every string goes through i18n in both ru and kk. A literal `{` starts interpolation in vue-i18n; dynamic keys (`t(\`x.${k}\`)`) must exist in both languages or be guarded with `te()`.
 - **Permissions**: `auth.can('module.action', scope?)` with scopes own < branch < network. Hide what the user cannot do; the API enforces everything again, the UI is never the security boundary.

@@ -55,7 +55,8 @@ export const authApi = {
   otpVerify: (phone: string, code: string) => http.post<TokenOut>('/auth/otp/verify', { phone, code }, anon),
   me: () => http.get<Me>('/auth/me', { silent: true }),
   logout: () => http.post<null>('/auth/logout', undefined, { silent: true }),
-  totpSetup: () => http.post<TotpSetup>('/auth/2fa/setup'),
+  /** The current password is asked again, so a stolen session alone can't attach an authenticator (QA H-5). */
+  totpSetup: (password: string) => http.post<TotpSetup>('/auth/2fa/setup', { password }, { silent: true }),
   totpEnable: (code: string) => http.post<TokenOut>('/auth/2fa/enable', { code }),
   changePassword: (old_password: string, new_password: string) =>
     http.post<null>('/auth/password', { old_password, new_password }),

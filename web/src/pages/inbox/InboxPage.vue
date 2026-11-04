@@ -211,7 +211,7 @@ import { safeUrl } from '@/utils/url'
             <span>{{ conv.channel === 'instagram' ? 'Instagram Direct' : 'WhatsApp' }}<template v-if="conv.contact.username"> · @{{ conv.contact.username }}</template><template v-if="conv.contact.phone"> · {{ formatPhone(conv.contact.phone) }}</template></span>
           </div>
           <span v-if="conv.lead" class="chip info hd-stage">{{ stageLabel(conv) }}</span>
-          <UiButton v-if="conv.lead && auth.can('crm.view')" class="hd-cta" size="sm" variant="primary" icon="crm" :to="{ path: '/crm', query: { lead: conv.lead.id } }"><span class="cta-t">{{ t('inbox.openLead') }}</span></UiButton>
+          <UiButton v-if="conv.lead && auth.can('crm.view')" class="hd-cta" size="sm" variant="primary" icon="crm" :aria-label="t('inbox.openLead')" :to="{ path: '/crm', query: { lead: conv.lead.id } }"><span class="cta-t">{{ t('inbox.openLead') }}</span></UiButton>
           <UiButton v-if="canReply" size="sm" variant="ghost" :icon="conv.status === 'open' ? 'archive' : 'inbox'" :title="conv.status === 'open' ? t('inbox.close') : t('inbox.reopen')" :aria-label="conv.status === 'open' ? t('inbox.close') : t('inbox.reopen')" @click="toggleStatus" />
         </div>
         <div ref="msgsEl" class="msgs" aria-live="polite" @scroll="onScroll">

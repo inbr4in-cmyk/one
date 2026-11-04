@@ -6,10 +6,11 @@ import UiAvatar from '@/components/ui/UiAvatar.vue'
 import UiChip from '@/components/ui/UiChip.vue'
 import UiIcon from '@/components/ui/UiIcon.vue'
 import UiSegmented from '@/components/ui/UiSegmented.vue'
+import ThemePicker from '@/components/layout/ThemePicker.vue'
 import { useClickOutside } from '@/composables/useClickOutside'
 import { useAuthStore } from '@/stores/auth'
 import { useBranchStore } from '@/stores/branch'
-import { useUiStore, type ThemePref } from '@/stores/ui'
+import { useUiStore } from '@/stores/ui'
 import type { Locale } from '@/i18n'
 
 const auth = useAuthStore()
@@ -32,11 +33,6 @@ const roleName = computed(() => {
 const branchLabel = computed(() => (branch.current.id === null ? t('branch.all') : branch.current.name))
 const subtitle = computed(() => (auth.isStaff && branchLabel.value ? `${roleName.value} · ${branchLabel.value}` : roleName.value))
 
-const themes = computed<{ value: ThemePref; label: string; icon: string; iconOnly: boolean }[]>(() => [
-  { value: 'light', label: t('theme.light'), icon: 'sun', iconOnly: true },
-  { value: 'dark', label: t('theme.dark'), icon: 'moon', iconOnly: true },
-  { value: 'system', label: t('theme.system'), icon: 'laptop', iconOnly: true },
-])
 const langs = computed<{ value: Locale; label: string }[]>(() => [
   { value: 'ru', label: t('lang.ru') },
   { value: 'kk', label: t('lang.kk') },
@@ -77,7 +73,7 @@ async function logout() {
           <button type="button" class="mi" role="menuitem" @click="go('/rules')"><UiIcon name="file" :size="18" />{{ t('user.rules') }}</button>
         </template>
         <hr />
-        <div class="row"><span>{{ t('user.theme') }}</span><UiSegmented v-model="ui.theme" :options="themes" :label="t('user.theme')" size="sm" /></div>
+        <div class="row stack-row"><span>{{ t('user.theme') }} · {{ t(`theme.${ui.theme}`) }}</span><ThemePicker compact /></div>
         <div class="row"><span>{{ t('user.language') }}</span><UiSegmented v-model="ui.locale" :options="langs" :label="t('user.language')" size="sm" /></div>
         <hr />
         <button type="button" class="mi danger" role="menuitem" @click="logout"><UiIcon name="logout" :size="18" />{{ t('user.logout') }}</button>

@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { UiAvatar, UiButton, UiCard, UiIcon, UiSegmented } from '@/components/ui'
+import ThemePicker from '@/components/layout/ThemePicker.vue'
 import { useAuthStore } from '@/stores/auth'
 import { usePortalStore } from '@/stores/portal'
 import { useUiStore } from '@/stores/ui'
@@ -18,11 +19,6 @@ async function logout() {
   await auth.logout()
   router.replace({ name: 'login' })
 }
-const themes = computed(() => [
-  { value: 'light' as const, label: t('theme.light'), icon: 'sun', iconOnly: true },
-  { value: 'dark' as const, label: t('theme.dark'), icon: 'moon', iconOnly: true },
-  { value: 'system' as const, label: t('theme.system'), icon: 'laptop', iconOnly: true },
-])
 const langs = computed(() => [{ value: 'ru' as const, label: t('lang.ru') }, { value: 'kk' as const, label: t('lang.kk') }])
 const links = computed(() => [
   { to: '/portal/progress', icon: 'progress', label: t('portal.nav.progress') },
@@ -51,7 +47,8 @@ const links = computed(() => [
     </div>
   </UiCard>
   <UiCard style="margin-top: 14px" :title="t('portal.appearance')">
-    <div class="set-row"><div class="grow"><b>{{ t('user.theme') }}</b></div><UiSegmented v-model="ui.theme" :options="themes" :label="t('user.theme')" size="sm" /></div>
+    <div class="set-row wrap"><div class="grow"><b>{{ t('user.theme') }}</b><span>{{ t('theme.hint') }}</span></div></div>
+    <ThemePicker style="padding: 4px 0 12px" />
     <div class="set-row"><div class="grow"><b>{{ t('user.language') }}</b></div><UiSegmented v-model="ui.locale" :options="langs" :label="t('user.language')" size="sm" /></div>
   </UiCard>
   <div style="margin-top: 16px"><UiButton icon="logout" block @click="logout">{{ t('user.logout') }}</UiButton></div>

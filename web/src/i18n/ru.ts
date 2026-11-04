@@ -1,9 +1,11 @@
 import modules from './modules.ru'
 import ops from './ops.ru'
+import tests from './tests.ru'
 
 const ru = {
   ...modules,
   ...ops,
+  ...tests,
   app: {
     name: 'One English',
     tagline: 'Innovation in Learning',
@@ -43,6 +45,7 @@ const ru = {
     server: 'Внутренняя ошибка сервера. Мы уже разбираемся.',
     forbidden: 'Недостаточно прав',
     generic: 'Что-то пошло не так',
+    tooMany: 'Слишком много попыток, подождите {n} сек',
   },
   nav: {
     menu: 'Меню',
@@ -102,9 +105,17 @@ const ru = {
     twoFaOff: '2FA выкл.',
   },
   theme: {
-    light: 'Светлая',
+    title: 'Оформление',
+    hint: 'Тема сохраняется для вас на этом устройстве.',
+    auto: 'Авто',
+    autoHint: 'светлая или тёмная, как в системе',
+    light: 'Фирменная',
     dark: 'Тёмная',
-    system: 'Как в системе',
+    ocean: 'Океан',
+    graphite: 'Графит',
+    sand: 'Песок',
+    isLight: 'Светлая',
+    isDark: 'Тёмная',
   },
   lang: {
     ru: 'Рус',
@@ -158,6 +169,9 @@ const ru = {
     secure: 'Защищённое соединение · данные хранятся в Казахстане',
   },
   setup2fa: {
+    password: 'Текущий пароль',
+    passwordText: 'Подтвердите, что это вы: введите пароль от входа. После этого появится QR-код.',
+    passwordRequired: 'Введите текущий пароль',
     title: 'Включите двухфакторную защиту',
     subtitle: 'Для сотрудников школы она обязательна. Это займёт пару минут.',
     step1: 'Установите приложение-аутентификатор',

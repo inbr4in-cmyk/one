@@ -13,11 +13,11 @@ const { t } = useI18n()
       <div class="glow b" />
       <div class="bars"><i /><i /><i /></div>
     </div>
-    <div class="mark"><BrandLogo :size="40" :tagline="false" /></div>
+    <div class="auth-mark"><BrandLogo :size="40" :tagline="false" /></div>
     <div class="hero">
       <h2 class="wordmark"><span>ONE</span><span>ENGLISH</span></h2>
       <p class="tagline">{{ t('app.tagline') }}</p>
-      <p class="lead">{{ t('login.lead') }}</p>
+      <p class="auth-lead">{{ t('login.lead') }}</p>
     </div>
     <div class="bfoot"><span>{{ t('app.footer') }}</span><span>{{ t('app.since') }}</span></div>
   </aside>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { toDataURL } from 'qrcode'
@@ -9,8 +9,11 @@ import UiButton from '@/components/ui/UiButton.vue'
 import UiCard from '@/components/ui/UiCard.vue'
 import UiCodeInput from '@/components/ui/UiCodeInput.vue'
 import UiEmptyState from '@/components/ui/UiEmptyState.vue'
+import UiInput from '@/components/ui/UiInput.vue'
 import UiSkeleton from '@/components/ui/UiSkeleton.vue'
 import { authApi, type TotpSetup } from '@/api/auth'
+import { ApiError } from '@/api/http'
+import { apiErr } from '@/utils/err'
 import { useAuthStore } from '@/stores/auth'
 import { useToastStore } from '@/stores/toast'
 import { homePath } from '@/router'
@@ -29,16 +32,32 @@ const tried = ref(false)
 
 const secretGroups = computed(() => setup.value?.secret.match(/.{1,4}/g)?.join(' ') ?? '')
 
+const password = ref('')
+const pwErr = ref<string | null>(null)
+const pwBusy = ref(false)
+
+/** Step 2 starts with the current password; the server returns the secret only then. */
 async function load() {
   failed.value = false
+  pwErr.value = null
+  if (!password.value) {
+    pwErr.value = t('setup2fa.passwordRequired')
+    return
+  }
+  pwBusy.value = true
   try {
-    setup.value = await authApi.totpSetup()
+    setup.value = await authApi.totpSetup(password.value)
+    password.value = ''
     // QR stays dark-on-white in both themes so every camera reads it.
     qr.value = await toDataURL(setup.value.uri, {
       margin: 0, width: 328, errorCorrectionLevel: 'M', color: { dark: '#01225F', light: '#FFFFFF' },
     })
-  } catch {
-    failed.value = true
+  } catch (e) {
+    if (e instanceof ApiError && (e.status === 400 || e.status === 429)) {
+      pwErr.value = e.status === 429 && e.retryAfter ? t('errors.tooMany', { n: e.retryAfter }) : (apiErr(e) ?? t('errors.generic'))
+    } else failed.value = true
+  } finally {
+    pwBusy.value = false
   }
 }
 
@@ -72,7 +91,6 @@ async function logout() {
   router.replace({ name: 'login' })
 }
 
-onMounted(load)
 </script>
 
 <template>
@@ -100,8 +118,12 @@ onMounted(load)
           <li>
             <span class="n">2</span>
             <div>
-              <b>{{ t('setup2fa.step2') }}</b><p>{{ t('setup2fa.step2Text') }}</p>
-              <div class="qr-wrap">
+              <b>{{ t('setup2fa.step2') }}</b><p>{{ setup ? t('setup2fa.step2Text') : t('setup2fa.passwordText') }}</p>
+              <form v-if="!setup" class="stack" style="margin-top: 12px; max-width: 360px" novalidate @submit.prevent="load">
+                <UiInput v-model="password" type="password" :label="t('setup2fa.password')" autocomplete="current-password" :maxlength="256" :error="pwErr" autofocus />
+                <div><UiButton type="submit" variant="navy" :loading="pwBusy">{{ t('common.continue') }}</UiButton></div>
+              </form>
+              <div v-else class="qr-wrap">
                 <div class="qr">
                   <img v-if="qr" :src="qr" :alt="t('setup2fa.qrAlt')" width="164" height="164" />
                   <UiSkeleton v-else width="164px" height="164px" />

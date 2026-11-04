@@ -1,21 +1,29 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { UiButton, UiCard, UiEmptyState, UiField, UiIcon, UiInput, UiModal, UiSkeleton, UiTabs, UiTextarea } from '@/components/ui'
 import { workApi, type Course, type ProgressRow } from '@/api/staffwork'
 import { adminApi, type Role } from '@/api/admin'
 import { useAuthStore } from '@/stores/auth'
 import { useToastStore } from '@/stores/toast'
 import { apiErr } from '@/utils/err'
+import TestsPanel from '@/components/tests/TestsPanel.vue'
 
-type Tab = 'courses' | 'progress'
+type Tab = 'courses' | 'progress' | 'tests'
 const { t, te } = useI18n()
 const router = useRouter()
 const auth = useAuthStore()
 const toast = useToastStore()
+const route = useRoute()
 const tab = ref<Tab>('courses')
-const tabs = computed(() => [{ value: 'courses' as const, label: t('training.tab.courses') }, ...(auth.can('training.progress') ? [{ value: 'progress' as const, label: t('training.tab.progress') }] : [])])
+const tabs = computed(() => [
+  { value: 'courses' as const, label: t('training.tab.courses') },
+  ...(auth.can('training.progress') ? [{ value: 'progress' as const, label: t('training.tab.progress') }] : []),
+  ...(auth.can('tests.view') ? [{ value: 'tests' as const, label: t('tests.tab') }] : []),
+])
+// Deep link (?tab=tests) only to a tab this user can see.
+if (tabs.value.some((x) => x.value === route.query.tab)) tab.value = route.query.tab as Tab
 const courses = ref<Course[] | null>(null)
 const progress = ref<ProgressRow[] | null>(null)
 const roles = ref<Role[]>([])
@@ -29,8 +37,9 @@ onMounted(async () => {
   if (auth.can('training.edit') && auth.can('roles.view')) roles.value = (await adminApi.roles().catch(() => [])).filter((r) => !r.archived_at)
 })
 watch(tab, async (v) => {
+  router.replace({ query: v === 'courses' ? {} : { tab: v } })
   if (v === 'progress' && !progress.value) progress.value = await workApi.progress().catch(() => [])
-})
+}, { immediate: true })
 const pct = (c: { done: number; materials?: number; total?: number }) => {
   const total = c.materials ?? c.total ?? 0
   return total ? Math.round((c.done / total) * 100) : 0
@@ -70,7 +79,7 @@ async function create() {
   <div class="ph">
     <div><h1>{{ t('nav.training') }}</h1><p>{{ t('training.subtitle') }}</p></div>
     <span class="sp" />
-    <UiButton v-if="auth.can('training.edit')" variant="primary" icon="plus" @click="openCreate">{{ t('training.new') }}</UiButton>
+    <UiButton v-if="auth.can('training.edit') && tab === 'courses'" variant="primary" icon="plus" @click="openCreate">{{ t('training.new') }}</UiButton>
   </div>
   <div v-if="tabs.length > 1" class="toolbar"><UiTabs v-model="tab" :items="tabs" :label="t('nav.training')" /></div>
 
@@ -87,6 +96,8 @@ async function create() {
       </RouterLink>
     </div>
   </template>
+
+  <TestsPanel v-else-if="tab === 'tests'" />
 
   <UiCard v-else flush>
     <div v-if="!progress" class="card-pad"><UiSkeleton :lines="5" /></div>

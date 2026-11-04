@@ -5,6 +5,8 @@ import PasswordCard from '@/components/security/PasswordCard.vue'
 import SessionsCard from '@/components/security/SessionsCard.vue'
 import TwoFactorCard from '@/components/security/TwoFactorCard.vue'
 import UiIcon from '@/components/ui/UiIcon.vue'
+import UiCard from '@/components/ui/UiCard.vue'
+import ThemePicker from '@/components/layout/ThemePicker.vue'
 import { useAuthStore } from '@/stores/auth'
 
 const { t } = useI18n()
@@ -32,6 +34,10 @@ const status = computed(() => {
       <SessionsCard ref="sessionsCard" />
     </div>
     <div class="grid stagger">
+      <UiCard id="appearance" :title="t('theme.title')" icon="sun">
+        <p class="card-note" style="margin: 0 0 12px">{{ t('theme.hint') }}</p>
+        <ThemePicker />
+      </UiCard>
       <PasswordCard v-if="auth.isStaff" @changed="sessionsCard?.reload()" />
     </div>
   </div>

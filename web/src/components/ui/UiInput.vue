@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, useId } from 'vue'
+import { computed, ref, useAttrs, useId } from 'vue'
 import UiField from './UiField.vue'
 import UiIcon from './UiIcon.vue'
 import { useI18n } from 'vue-i18n'
@@ -28,6 +28,9 @@ const id = useId()
 const el = ref<HTMLInputElement | null>(null)
 const reveal = ref(false)
 const { t } = useI18n()
+const attrs = useAttrs()
+/** A field without a visible label still needs a name: aria-label from the parent, else the placeholder. */
+const ariaLabel = computed(() => (props.label ? undefined : ((attrs['aria-label'] as string | undefined) ?? props.placeholder)))
 
 const actualType = computed(() => (props.type === 'password' && reveal.value ? 'text' : props.type))
 
@@ -53,6 +56,7 @@ defineExpose({ focus: () => el.value?.focus(), el })
         :required="required"
         :autofocus="autofocus"
         :aria-invalid="!!error || undefined"
+        :aria-label="ariaLabel"
         @input="model = ($event.target as HTMLInputElement).value"
       />
       <button

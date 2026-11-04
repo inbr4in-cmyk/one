@@ -18,7 +18,9 @@ function demoHtml(): Plugin {
           .replace('/src/main.ts', '/src/demo/entry.ts')
           .replace(
             '</head>',
-            '  <style>body{margin:0;background:#FAF6F3}@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) body{background:#0A1630}}:root[data-theme="dark"] body{background:#0A1630}</style>\n  </head>',
+            '  <style>body{margin:0;background:#FAF6F3}@media (prefers-color-scheme:dark){:root:not([data-theme]) body{background:#0A1630}}' +
+              ':root[data-theme="dark"] body{background:#0A1630}:root[data-theme="ocean"] body{background:#F2F7F7}' +
+              ':root[data-theme="graphite"] body{background:#15171B}:root[data-theme="sand"] body{background:#F6F0E6}</style>\n  </head>',
           ),
     },
   }

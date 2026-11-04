@@ -1,12 +1,25 @@
-/* Design tokens — ported from docs/design/web.html. Never hardcode colors in components. */
+/* Design tokens — ported from docs/design/web.html. Never hardcode colors in components.
+ *
+ * Themes (stores/ui.ts sets data-theme on <html>):
+ *   no attribute  «Авто»: brand light or dark, following the system
+ *   light         «Фирменная» (default brand theme)
+ *   dark          «Тёмная»
+ *   ocean         «Океан»: calm teal, light
+ *   graphite      «Графит»: neutral dark
+ *   sand          «Песок»: warm, light
+ * Every theme keeps text at WCAG AA (4.5:1) and red stays the one CTA / urgent color.
+ */
 :root {
   --navy: #01225F; --navy-700: #0B2E73; --navy-600: #1A3F8A; --navy-100: #E6ECF7; --navy-50: #F3F6FB;
   --red: #BB1027; --red-600: #9E0D21; --red-100: #FBE7EA;
+  /* Red used as text (chips, errors, active tab label); differs from --red only on dark themes */
+  --red-ink: #BB1027;
   --paper: #FAF6F3; --surface: #FFFFFF; --line: #E3E6EE; --ink: #0F1A33; --muted: #5B6782;
-  --ok: #1E8E5A; --warn: #C98A06; --info: #1A6FD1;
+  /* ok / warn / info are used as text on their -bg and on white: all ≥ 4.5:1 */
+  --ok: #16774A; --warn: #8A5D00; --info: #1560BD;
   --ig: #D6286E; --wa: #1FAF54;
   --ok-bg: #E5F4EC; --warn-bg: #FBF1DC; --info-bg: #E4EFFB;
-  --side: #01225F; --side-ink: #FFFFFF; --side-muted: rgba(255,255,255,.66); --side-hover: rgba(255,255,255,.08); --side-active: rgba(255,255,255,.14);
+  --side: #01225F; --side-ink: #FFFFFF; --side-muted: rgba(255,255,255,.7); --side-hover: rgba(255,255,255,.08); --side-active: rgba(255,255,255,.14);
   --side-indicator: #FF4D63; --logo-accent: #FF6B7E;
   --bubble-in: #FFFFFF; --bubble-out: #01225F; --bubble-out-ink: #FFFFFF;
   --chart-bar: #01225F; --chart-bar-soft: #9DB0D6; --grid: #ECEEF3;
@@ -14,13 +27,15 @@
   --shadow-pop: 0 12px 32px rgba(0,0,0,.14);
   --scrim: rgba(5,12,30,.45);
   --lv-beg: #2E9A6E; --lv-ele: #1A6FD1; --lv-pre: #C9631A; --lv-int: #7B52C7; --lv-up: #B08900; --lv-ielts: #C2417F; --lv-kids: #0E8FA8;
-  --av-1: #7B52C7; --av-2: #1A6FD1; --av-3: #2E9A6E; --av-4: #C9631A; --av-5: #C2417F; --av-6: #0E8FA8; --av-7: #01225F; --av-8: #8A6D00;
+  /* Avatar fills carry white initials: all ≥ 4.5:1 */
+  --av-1: #7B52C7; --av-2: #1A6FD1; --av-3: #237A56; --av-4: #A9520F; --av-5: #C2417F; --av-6: #0B7287; --av-7: #01225F; --av-8: #8A6D00;
   /* Semantic tokens for the few places the prototype switches color in dark mode */
   --btn-navy: #01225F;       /* .btn.navy, selected pills */
   --accent-ink: #1A3F8A;     /* tinted icons on light chips */
   --kpi-ico: #1A3F8A;
   --on-accent: #FFFFFF;
   --qr-bg: #FFFFFF; --qr-ink: #01225F;
+  --glow: #1A3F8A;           /* login panel glow */
 
   --r: 12px; --r-sm: 8px;
   --font-ui: 'Golos Text', system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -37,28 +52,66 @@
   color-scheme: light;
 }
 
+/* «Тёмная», and «Авто» on a dark system */
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
+  :root:not([data-theme]) {
     --paper: #0A1630; --surface: #111F3D; --line: #22325A; --ink: #EAF0FB; --muted: #9AA8C7;
-    --navy-100: #18295180; --navy-50: #0E1B38; --red: #E0354B; --red-600: #C42A3F; --red-100: #3A1622;
+    --navy-100: #18295180; --navy-50: #0E1B38; --red: #D42A41; --red-600: #B8233A; --red-100: #3A1622; --red-ink: #FF7A8C;
     --ok: #3DB585; --warn: #E3A82B; --info: #5A9BEA; --ok-bg: #12322A; --warn-bg: #352A12; --info-bg: #132B4D;
     --side: #07102A; --side-hover: rgba(255,255,255,.06); --side-active: rgba(255,255,255,.11);
     --bubble-in: #1A2A4D; --bubble-out: #2A4C96; --chart-bar: #7FA2E6; --chart-bar-soft: #3A4F7E; --grid: #1D2C50;
     --shadow: 0 1px 2px rgba(0,0,0,.3);
     --shadow-pop: 0 12px 32px rgba(0,0,0,.45);
-    --btn-navy: #2A4C96; --accent-ink: #9DB6EE; --kpi-ico: #7FA2E6;
+    --btn-navy: #2A4C96; --accent-ink: #9DB6EE; --kpi-ico: #7FA2E6; --av-7: #2A4C96;
     color-scheme: dark;
   }
 }
 
 :root[data-theme="dark"] {
   --paper: #0A1630; --surface: #111F3D; --line: #22325A; --ink: #EAF0FB; --muted: #9AA8C7;
-  --navy-100: #18295180; --navy-50: #0E1B38; --red: #E0354B; --red-600: #C42A3F; --red-100: #3A1622;
+  --navy-100: #18295180; --navy-50: #0E1B38; --red: #D42A41; --red-600: #B8233A; --red-100: #3A1622; --red-ink: #FF7A8C;
   --ok: #3DB585; --warn: #E3A82B; --info: #5A9BEA; --ok-bg: #12322A; --warn-bg: #352A12; --info-bg: #132B4D;
   --side: #07102A; --side-hover: rgba(255,255,255,.06); --side-active: rgba(255,255,255,.11);
   --bubble-in: #1A2A4D; --bubble-out: #2A4C96; --chart-bar: #7FA2E6; --chart-bar-soft: #3A4F7E; --grid: #1D2C50;
   --shadow: 0 1px 2px rgba(0,0,0,.3);
   --shadow-pop: 0 12px 32px rgba(0,0,0,.45);
-  --btn-navy: #2A4C96; --accent-ink: #9DB6EE; --kpi-ico: #7FA2E6;
+  --btn-navy: #2A4C96; --accent-ink: #9DB6EE; --kpi-ico: #7FA2E6; --av-7: #2A4C96;
   color-scheme: dark;
+}
+
+/* «Океан»: calm teal, light */
+:root[data-theme="ocean"] {
+  --navy: #0A4652; --navy-700: #0D5662; --navy-600: #12707F; --navy-100: #DDEFF0; --navy-50: #EEF6F6;
+  --paper: #F2F7F7; --surface: #FFFFFF; --line: #D5E3E4; --ink: #0E2A30; --muted: #4E6A70;
+  --side: #0A4652; --side-muted: rgba(255,255,255,.72); --side-indicator: #FF8A80; --logo-accent: #FF9A8F;
+  --bubble-out: #0B5E6B; --chart-bar: #0B5E6B; --chart-bar-soft: #9CCBD0; --grid: #E3EEEF;
+  --btn-navy: #0B5E6B; --accent-ink: #0D6573; --kpi-ico: #0D6573; --av-7: #0A4652; --qr-ink: #0A4652; --glow: #12707F;
+  --shadow: 0 1px 2px rgba(14,42,48,.06), 0 4px 16px rgba(14,42,48,.05);
+  color-scheme: light;
+}
+
+/* «Графит»: neutral dark, no navy tint */
+:root[data-theme="graphite"] {
+  --navy: #2C323C; --navy-700: #353C47; --navy-600: #5B6577; --navy-100: #2A2F3880; --navy-50: #22262D;
+  --red: #D42A41; --red-600: #B8233A; --red-100: #3A1D22; --red-ink: #FF8A98;
+  --paper: #15171B; --surface: #1E2126; --line: #30343C; --ink: #ECEEF2; --muted: #A3A9B4;
+  --ok: #4CC38A; --warn: #E6B04A; --info: #7AB0F0; --ok-bg: #183026; --warn-bg: #33291A; --info-bg: #1A2A40;
+  --side: #0F1114; --side-ink: #F2F3F5; --side-muted: rgba(255,255,255,.62); --side-hover: rgba(255,255,255,.06); --side-active: rgba(255,255,255,.11);
+  --side-indicator: #FF5C70; --logo-accent: #FF7A8C;
+  --bubble-in: #262A31; --bubble-out: #3E4757; --chart-bar: #A9B4C6; --chart-bar-soft: #4A5260; --grid: #2A2E35;
+  --shadow: 0 1px 2px rgba(0,0,0,.35);
+  --shadow-pop: 0 12px 32px rgba(0,0,0,.5);
+  --btn-navy: #3E4757; --accent-ink: #C3CBD8; --kpi-ico: #A9B4C6; --av-7: #4A5568; --glow: #3E4757;
+  color-scheme: dark;
+}
+
+/* «Песок»: warm light, espresso sidebar */
+:root[data-theme="sand"] {
+  --navy: #3A2C21; --navy-700: #4A392B; --navy-600: #6B5440; --navy-100: #EFE4D3; --navy-50: #F8F2E8;
+  --paper: #F6F0E6; --surface: #FFFDF9; --line: #E6DCCB; --ink: #2A2118; --muted: #6B5D4C;
+  --side: #3A2C21; --side-ink: #FFF8EE; --side-muted: rgba(255,248,238,.7); --side-indicator: #FF6B5E; --logo-accent: #FF8C7A;
+  --bubble-in: #FFFDF9; --bubble-out: #4E3B2C; --chart-bar: #6B4A2E; --chart-bar-soft: #D9C3A5; --grid: #EEE4D4;
+  --btn-navy: #4E3B2C; --accent-ink: #6B4A2E; --kpi-ico: #8A5A2B; --av-7: #4E3B2C; --qr-ink: #3A2C21; --glow: #6B5440;
+  --shadow: 0 1px 2px rgba(42,33,24,.06), 0 4px 16px rgba(42,33,24,.05);
+  color-scheme: light;
 }

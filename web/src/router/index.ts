@@ -55,6 +55,8 @@ const portalRoutes: RouteRecordRaw[] = [
 
 const routes: RouteRecordRaw[] = [
   { path: '/login', name: 'login', component: () => import('@/pages/LoginPage.vue'), meta: { public: true, title: 'login.title' } },
+  // Public QR placement test (ТЗ 6): no login, opened from the QR code in a branch.
+  { path: '/t/:token', name: 'placement', component: () => import('@/pages/public/PlacementTestPage.vue'), meta: { public: true, title: 'placement.title' } },
   { path: '/2fa', name: 'setup-2fa', component: () => import('@/pages/TwoFactorSetupPage.vue'), meta: { title: 'setup2fa.title' } },
   { path: '/portal', component: () => import('@/components/portal/PortalShell.vue'), children: portalRoutes },
   {
@@ -111,7 +113,9 @@ router.beforeEach(async (to) => {
   // Students and parents live in their cabinet; staff never act through it.
   if (!auth.isStaff) return to.meta.portal ? true : portalPath(to.path)
   if (to.meta.portal) return homePath()
-  if (to.name === 'setup-2fa' || to.name === 'home') return homePath()
+  if (to.name === 'home') return homePath()
+  // Optional 2FA (when the server doesn't require it) is set up from Security → «Настроить».
+  if (to.name === 'setup-2fa') return auth.user?.totp_enabled ? homePath() : true
   if (to.name === 'complaints' && to.params.id && !auth.can('complaints.view')) return '/feedback'
   if (!allowed(to.meta.perm, auth.can)) return homePath()
   return true

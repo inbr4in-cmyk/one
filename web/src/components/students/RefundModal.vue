@@ -18,16 +18,21 @@ const error = ref<string | null>(null)
 const busy = ref(false)
 
 const open = computed({ get: () => props.payment !== null, set: (v) => !v && emit('close') })
-const max = computed(() => (props.payment ? props.payment.amount - props.payment.refunded : 0))
+/** Server limits (GET /payments/{id}/refundable): lessons still left from this payment and the money for them. */
+const limits = ref<{ lessons_max: number; amount_max: number; amount_left: number } | null>(null)
+const max = computed(() => limits.value?.amount_left ?? (props.payment ? props.payment.amount - props.payment.refunded : 0))
+const lessonsMax = computed(() => limits.value?.lessons_max ?? props.payment?.lessons ?? 0)
 
-watch(() => props.payment, (p) => {
+watch(() => props.payment, async (p) => {
+  limits.value = null
   if (!p) return
-  const rest = p.amount - p.refunded
-  // Never default to more lessons than the student still has (they may have used some of this payment).
-  const fit = p.lesson_price ? Math.min(p.lessons, Math.floor(rest / p.lesson_price)) : 0
-  const lessons = Math.max(0, Math.min(fit, p.student_lessons_left ?? fit))
-  Object.assign(form, { lessons: String(lessons), amount: String(p.lesson_price && lessons < fit ? lessons * p.lesson_price : rest), reason: '' })
+  Object.assign(form, { lessons: '0', amount: '', reason: '' })
   error.value = null
+  const l = await paymentsApi.refundable(p.id).catch(() => null)
+  if (props.payment?.id !== p.id) return
+  limits.value = l
+  if (l) Object.assign(form, { lessons: String(l.lessons_max), amount: String(l.amount_max) })
+  else Object.assign(form, { amount: String(p.amount - p.refunded) })
 })
 
 async function submit() {
@@ -36,7 +41,9 @@ async function submit() {
   const amount = Math.floor(Number(form.amount) || 0)
   const lessons = Math.floor(Number(form.lessons) || 0)
   error.value = null
-  if (amount <= 0 || amount > max.value) error.value = t('payments.refundBadSum', { max: money(max.value, loc.value) })
+  if (amount < 0 || amount > max.value) error.value = t('payments.refundBadSum', { max: money(max.value, loc.value) })
+  else if (lessons < 0 || lessons > lessonsMax.value) error.value = t('payments.refundLessonsBad', { n: lessonsMax.value })
+  else if (amount === 0 && lessons === 0) error.value = t('payments.refundNothing')
   else if (form.reason.trim().length < 3) error.value = t('common.reasonRequired')
   if (error.value) return
   busy.value = true
@@ -60,8 +67,8 @@ async function submit() {
         {{ payment.student_name ?? '' }} · {{ dmy(payment.paid_at, loc) }} · {{ money(payment.amount, loc) }} · {{ t('students.nLessons', { n: payment.lessons }) }}
       </p>
       <div class="form-2">
-        <UiInput v-model="form.amount" type="number" :min="1" :max="max" :label="t('payments.refundSum')" :hint="t('payments.refundMax', { max: money(max, loc) })" />
-        <UiInput v-model="form.lessons" type="number" :min="0" :label="t('payments.refundLessons')" />
+        <UiInput v-model="form.amount" type="number" :min="0" :max="max" :label="t('payments.refundSum')" :hint="t('payments.refundMax', { max: money(limits && Number(form.lessons) >= limits.lessons_max ? limits.amount_max : max, loc) })" />
+        <UiInput v-model="form.lessons" type="number" :min="0" :max="lessonsMax" :label="t('payments.refundLessons')" :hint="t('payments.refundLessonsMax', { n: lessonsMax })" />
       </div>
       <UiTextarea v-model="form.reason" :label="t('common.reason')" :rows="2" />
       <div class="alert"><UiIcon name="alert" /><div class="grow"><span>{{ t('payments.refundNote') }}</span></div></div>

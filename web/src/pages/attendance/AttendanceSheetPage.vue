@@ -189,15 +189,15 @@ onBeforeRouteLeave(() => (dirty.value && editable.value ? window.confirm(t('atte
         <div class="who">
           <UiAvatar :name="r.full_name" />
           <div style="min-width: 0">
-            <b style="display: flex; gap: 6px; align-items: center">
-              <RouterLink v-if="r.student_id && auth.can('students.view')" :to="{ name: 'student', params: { id: r.student_id } }" class="rowlink">{{ r.full_name }}</RouterLink>
-              <template v-else>{{ r.full_name }}</template>
+            <b>
+              <RouterLink v-if="r.student_id && auth.can('students.view')" :to="{ name: 'student', params: { id: r.student_id } }" class="rowlink nm" :title="r.full_name">{{ r.full_name }}</RouterLink>
+              <span v-else class="nm" :title="r.full_name">{{ r.full_name }}</span>
               <UiChip v-if="r.is_trial" tone="red" small icon="flag">{{ t('schedule.trial') }}</UiChip>
             </b>
-            <span v-if="r.frozen">{{ t('attendance.frozen') }}</span>
-            <span v-else-if="r.blocked" class="redc">{{ t('attendance.blocked') }}</span>
-            <span v-else-if="r.lessons_left !== null" :class="{ warnc: r.lessons_left <= 2 }">{{ t('students.lessonsLeft', { n: r.lessons_left }) }}<template v-if="r.lessons_left <= 2"> · {{ t('attendance.remind') }}</template></span>
-            <span v-else>{{ t('attendance.trialLead') }}</span>
+            <span v-if="r.frozen" class="sub">{{ t('attendance.frozen') }}</span>
+            <span v-else-if="r.blocked" class="sub redc">{{ t('attendance.blocked') }}</span>
+            <span v-else-if="r.lessons_left !== null" class="sub" :class="{ warnc: r.lessons_left <= 2 }">{{ t('students.lessonsLeft', { n: r.lessons_left }) }}<template v-if="r.lessons_left <= 2"> · {{ t('attendance.remind') }}</template></span>
+            <span v-else class="sub">{{ t('attendance.trialLead') }}</span>
           </div>
         </div>
         <div class="bal">
@@ -214,7 +214,7 @@ onBeforeRouteLeave(() => (dirty.value && editable.value ? window.confirm(t('atte
           <div class="grades" role="group" :aria-label="t('attendance.grade')">
             <button v-for="g in 5" :key="g" type="button" class="tgl sm" :aria-pressed="r.grade === g" :disabled="!editable" @click="setGrade(r, g)">{{ g }}</button>
           </div>
-          <input v-model="r.comment" class="inp mini" :placeholder="t('attendance.comment')" :disabled="!editable" maxlength="500" @input="dirty = true" />
+          <input v-model="r.comment" class="inp mini" :placeholder="t('attendance.comment')" :aria-label="t('attendance.comment')" :disabled="!editable" maxlength="500" @input="dirty = true" />
         </div>
       </div>
       <p v-if="!rows.length" class="muted" style="padding: 18px; margin: 0">{{ t('groups.noMembers') }}</p>
@@ -239,7 +239,7 @@ onBeforeRouteLeave(() => (dirty.value && editable.value ? window.confirm(t('atte
         <UiTextarea v-if="roster.needs_reason" v-model="reason" :label="t('attendance.reason')" :rows="2" />
       </div>
 
-      <div class="att-foot">
+      <div class="att-foot" :class="{ ro: !editable }">
         <div class="wa-note">
           <span class="srcico wa"><svg><use href="#i-wa" /></svg></span>
           <div><b>{{ t('attendance.waTitle') }}</b><div class="muted" style="font-size: 12.5px">{{ absentWithParents ? t('attendance.waAbsent', { n: absentWithParents }) : t('attendance.waNone') }}</div></div>

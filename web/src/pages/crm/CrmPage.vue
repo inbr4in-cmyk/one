@@ -226,7 +226,7 @@ function onCardKey(e: KeyboardEvent, l: Lead) {
                 <span class="srcico" :class="SRC[l.source]?.cls" :title="srcLabel(l.source)"><svg><use :href="`#i-${SRC[l.source]?.icon ?? 'user'}`" /></svg></span>
                 <b>{{ l.full_name }}</b>
                 <UiAvatar v-if="l.owner_name" :name="l.owner_name" size="sm" :title="l.owner_name" />
-                <span v-else class="chip red xs">{{ t('crm.unassigned') }}</span>
+                <span v-else class="chip red xs" :title="t('crm.unassigned')"><span class="chip-t">{{ t('crm.unassigned') }}</span></span>
               </div>
               <div class="meta">
                 <template v-if="l.lost_reason">{{ t('crm.reason', { r: l.lost_reason }) }}</template>

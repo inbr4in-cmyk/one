@@ -90,7 +90,9 @@ export const adminApi = {
   updateStaff: (id: number, body: Partial<Omit<StaffIn, 'phone' | 'password'>> & { is_active?: boolean }) =>
     http.patch<Staff>(`/staff/${id}`, body, { silent: true }),
   archiveStaff: (id: number) => http.post<null>(`/staff/${id}/archive`, undefined, { silent: true }),
-  setPassword: (id: number, password: string) => http.post<null>(`/staff/${id}/password`, { password }, { silent: true }),
+  /** Changing your own password needs the current one (`old_password`). */
+  setPassword: (id: number, password: string, oldPassword?: string) =>
+    http.post<null>(`/staff/${id}/password`, oldPassword ? { password, old_password: oldPassword } : { password }, { silent: true }),
   reset2fa: (id: number) => http.post<null>(`/staff/${id}/reset-2fa`),
   audit: (p: { entity?: string; actor_id?: number | null; action?: string; since?: string; limit?: number; offset?: number }) =>
     http.get<Page<AuditRow>>(`/audit${qs(p)}`),
