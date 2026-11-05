@@ -41,6 +41,8 @@ CATALOG: dict[str, tuple[str, dict[str, str]]] = {
     "complaints": ("Жалобы", {"view": "Просмотр", "answer": "Ответ"}),
     "audit": ("Журнал действий", {"view": "Просмотр"}),
     "security": ("Безопасность", {"view": "Сессии сотрудников", "manage": "Завершать сессии"}),
+    # Moving from the old CRM: creates students, staff, payments. Needs network scope (owner / network admin).
+    "import": ("Импорт данных", {"run": "Импорт из старой CRM"}),
 }
 
 # Modules where staff must have 2FA confirmed in this session.

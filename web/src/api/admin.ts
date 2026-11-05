@@ -87,7 +87,7 @@ export const adminApi = {
   staff: (p: { q?: string; branch_id?: number | null; role?: string; archived?: boolean; limit?: number; offset?: number }) =>
     http.get<Page<Staff>>(`/staff${qs(p)}`),
   createStaff: (body: StaffIn) => http.post<Staff>('/staff', body, { silent: true }),
-  updateStaff: (id: number, body: Partial<Omit<StaffIn, 'phone' | 'password'>> & { is_active?: boolean }) =>
+  updateStaff: (id: number, body: Partial<Omit<StaffIn, 'phone' | 'password'>> & { is_active?: boolean; phone?: string }) =>
     http.patch<Staff>(`/staff/${id}`, body, { silent: true }),
   archiveStaff: (id: number) => http.post<null>(`/staff/${id}/archive`, undefined, { silent: true }),
   /** Changing your own password needs the current one (`old_password`). */

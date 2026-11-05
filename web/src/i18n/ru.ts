@@ -1,11 +1,13 @@
 import modules from './modules.ru'
 import ops from './ops.ru'
 import tests from './tests.ru'
+import oldCrm from './oldcrm.ru'
 
 const ru = {
   ...modules,
   ...ops,
   ...tests,
+  ...oldCrm,
   app: {
     name: 'One English',
     tagline: 'Innovation in Learning',

@@ -36,6 +36,8 @@ class Payment(IdMixin, TimestampMixin, Base):
     note: Mapped[StrN]
     # Idempotency-Key of the request that created it: a retried request returns this payment (QA C-1).
     idempotency_key: Mapped[str | None] = mapped_column(String(64), default=None)
+    # "import" = brought in from the old CRM: history only, no balance change, no bonuses/KPI, no messages.
+    source: Mapped[str | None] = mapped_column(String(16), default=None)
 
     __table_args__ = (
         Index("payments_idempotency_key_uq", "idempotency_key", unique=True, postgresql_where=text("idempotency_key IS NOT NULL")),

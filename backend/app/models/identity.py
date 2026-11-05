@@ -18,7 +18,8 @@ class User(IdMixin, TimestampMixin, ArchiveMixin, Base):
 
     kind: Mapped[str] = mapped_column(String(16), index=True)
     full_name: Mapped[str] = mapped_column(String(255))
-    phone: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    # NULL only for staff imported from the old CRM without a phone: they cannot sign in until the owner sets one.
+    phone: Mapped[str | None] = mapped_column(String(32), unique=True, index=True, nullable=True)
     email: Mapped[StrN]
     password_hash: Mapped[StrN]
     totp_secret: Mapped[StrN]

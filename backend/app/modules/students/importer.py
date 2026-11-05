@@ -8,6 +8,7 @@ from fastapi import APIRouter, File, Query, UploadFile
 from sqlalchemy import func, select
 
 from app.core.audit import write_audit
+from app.core.config import get_settings
 from app.core.deps import DB, Actor, require
 from app.core.errors import bad_request, forbidden
 from app.core.security import normalize_phone
@@ -147,9 +148,10 @@ async def _parse(db: DB, data: bytes, actor: Actor) -> tuple[list[dict], list[di
 @router.post("/import/students")
 async def import_students(db: DB, actor: Actor = require("students", "create"), file: UploadFile = File(...),
                           commit: bool = Query(False)) -> dict:
-    data = await file.read(10 * 1024 * 1024 + 1)
-    if len(data) > 10 * 1024 * 1024:
-        raise bad_request("Файл больше 10 МБ")
+    limit = get_settings().import_max_mb * 1024 * 1024
+    data = await file.read(limit + 1)
+    if len(data) > limit:
+        raise bad_request(f"Файл больше {get_settings().import_max_mb} МБ")
     ok, errors = await _parse(db, data, actor)
     if not commit:
         return {"preview": [{k: (v.isoformat() if isinstance(v, date) else v) for k, v in r.items()} for r in ok[:50]],

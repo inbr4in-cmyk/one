@@ -61,6 +61,10 @@ export const NAV: NavItem[] = [
 export const DETAIL_ROUTES: { name: string; path: string; parent?: string; perm?: string; title?: string; page: () => Promise<unknown> }[] = [
   { name: 'student', path: '/students/:id(\\d+)', parent: 'students', perm: 'students.view', page: () => import('@/pages/students/StudentPage.vue') },
   { name: 'import', path: '/students/import', parent: 'students', perm: 'students.create', page: () => import('@/pages/students/ImportPage.vue') },
+  {
+    name: 'old-crm-import', path: '/settings/import', parent: 'settingsPage', perm: 'import.run', title: 'oldCrm.title',
+    page: () => import('@/pages/settings/OldCrmImportPage.vue'),
+  },
   { name: 'group', path: '/groups/:id(\\d+)', parent: 'groups', perm: 'schedule.view', page: () => import('@/pages/groups/GroupPage.vue') },
   { name: 'lesson-attendance', path: '/attendance/:lessonId(\\d+)', parent: 'attendance', perm: 'attendance.view', page: () => import('@/pages/attendance/AttendanceSheetPage.vue') },
   { name: 'task', path: '/tasks/:id(\\d+)', parent: 'tasks', perm: 'tasks.view', page: () => import('@/pages/tasks/TaskPage.vue') },

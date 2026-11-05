@@ -36,6 +36,7 @@ const toggle = (list: number[], id: number) => (list.includes(id) ? list.splice(
 async function submit() {
   error.value = form.full_name.trim().length < 2 ? t('staff.nameRequired')
     : !props.staff && !isCompletePhone(form.phone) ? t('staff.phoneRequired')
+    : props.staff && props.staff.phone === null && form.phone && !isCompletePhone(form.phone) ? t('staff.phoneRequired')
     : !form.branch_ids.length ? t('staff.branchRequired') : null
   if (error.value) return
   busy.value = true
@@ -43,7 +44,11 @@ async function submit() {
     const common = { full_name: form.full_name.trim(), position: form.position.trim() || null, branch_ids: form.branch_ids, ...(props.roles.length ? { role_ids: form.role_ids } : {}) }
     const salary = form.salary === '' ? undefined : Math.max(0, Math.round(Number(form.salary)))
     const out = props.staff
-      ? await adminApi.updateStaff(props.staff.id, { ...common, ...(salary !== undefined ? { salary } : {}) })
+      ? await adminApi.updateStaff(props.staff.id, {
+        ...common, ...(salary !== undefined ? { salary } : {}),
+        // Imported from the old CRM without a phone: the phone is set here once (then the owner sets a password)
+        ...(props.staff.phone === null && form.phone ? { phone: form.phone } : {}),
+      })
       : await adminApi.createStaff({ ...common, role_ids: form.role_ids, phone: form.phone, salary: salary ?? 0, password: form.password || null })
     toast.ok(props.staff ? t('common.saved') : t('staff.created'))
     emit('saved', out)
@@ -61,6 +66,7 @@ async function submit() {
     <form id="staff-form" class="stack" @submit.prevent="submit">
       <UiInput v-model="form.full_name" :label="t('staff.name')" :maxlength="255" autocomplete="off" />
       <UiPhoneInput v-if="!staff" v-model="form.phone" :label="t('staff.phone')" />
+      <UiPhoneInput v-else-if="staff.phone === null" v-model="form.phone" :label="t('staff.phone')" :hint="t('oldCrm.staffPhoneHint')" />
       <div class="form-2">
         <UiInput v-model="form.position" :label="t('staff.position')" :placeholder="t('staff.positionPh')" :maxlength="255" />
         <UiInput v-if="!staff || staff.salary !== null" v-model="form.salary" type="number" :min="0" :label="t('staff.salary')" inputmode="numeric" />

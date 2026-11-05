@@ -136,7 +136,11 @@ async function addRate() {
 </script>
 
 <template>
-  <div class="ph"><div><h1>{{ t('nav.settingsPage') }}</h1><p>{{ t('settingsPage.subtitle') }}</p></div></div>
+  <div class="ph">
+    <div><h1>{{ t('nav.settingsPage') }}</h1><p>{{ t('settingsPage.subtitle') }}</p></div>
+    <span class="sp" />
+    <UiButton v-if="auth.can('import.run')" icon="db" to="/settings/import" data-testid="open-old-crm-import">{{ t('oldCrm.open') }}</UiButton>
+  </div>
 
   <div v-if="!values" class="grid fin-a"><div class="card card-pad"><UiSkeleton :lines="8" /></div><div class="card card-pad"><UiSkeleton :lines="8" /></div></div>
   <div v-else class="grid fin-a">

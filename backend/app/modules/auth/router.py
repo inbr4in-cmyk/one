@@ -274,7 +274,7 @@ class MeOut(BaseModel):
     id: int
     kind: str
     full_name: str
-    phone: str
+    phone: str | None
     locale: str
     avatar_url: str | None
     position: str | None
@@ -321,7 +321,7 @@ async def totp_setup(actor: CurrentActor, db: DB, body: TotpSetupIn | None = Non
             raise bad_request("Введите текущий пароль")
     secret = new_totp_secret()
     await get_kv().set(f"totp-setup:{u.id}", secret, 600)
-    return {"secret": secret, "uri": totp_uri(secret, u.phone)}
+    return {"secret": secret, "uri": totp_uri(secret, u.phone or f"id{u.id}")}
 
 
 class CodeIn(In):

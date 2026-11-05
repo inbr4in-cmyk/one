@@ -2,11 +2,13 @@ import type { Messages } from './ru'
 import modules from './modules.kk'
 import ops from './ops.kk'
 import tests from './tests.kk'
+import oldCrm from './oldcrm.kk'
 
 const kk: Messages = {
   ...modules,
   ...ops,
   ...tests,
+  ...oldCrm,
   app: {
     name: 'One English',
     tagline: 'Innovation in Learning',

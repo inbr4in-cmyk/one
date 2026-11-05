@@ -183,6 +183,8 @@ class StaffIn(In):
 
 class StaffPatch(In):
     full_name: str | None = Field(default=None, max_length=255)
+    # Only for an account without a phone (staff imported from the old CRM): a phone is never replaced here.
+    phone: str | None = Field(default=None, max_length=32)
     email: str | None = Field(default=None, max_length=255)
     position: str | None = Field(default=None, max_length=255)
     salary: int | None = Field(default=None, ge=0)
@@ -297,6 +299,16 @@ async def update_staff(user_id: int, body: StaffPatch, db: DB, actor: Actor = re
     before["roles"] = sorted(ur.role.code for ur in u.roles)
     if "owner" in before["roles"] and not actor.is_owner:
         raise forbidden("Супер-админа может менять только супер-админ")
+    if body.phone is not None:
+        if u.phone:
+            raise bad_request("Телефон сотрудника уже задан")
+        phone = normalize_phone(body.phone)
+        if len(phone) != 12 or not phone.startswith("+7"):
+            raise bad_request("Неверный телефон")
+        if await db.scalar(select(User.id).where(User.phone == phone)):
+            raise conflict("Пользователь с таким телефоном уже есть")
+        u.phone = phone
+        await write_audit(db, actor_id=actor.id, action="staff.phone_set", entity="user", entity_id=u.id, ip=actor.ip)
     for f in ("full_name", "email", "position", "salary", "is_active"):
         v = getattr(body, f)
         if v is not None:
