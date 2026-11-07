@@ -1,0 +1,1 @@
+import{n as e}from"./vue-i18n-DBghp67Z.js";function t(){let{t,te:n}=e();return e=>e?n(`crm.source.${e}`)?t(`crm.source.${e}`):e:``}export{t};

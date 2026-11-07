@@ -1,0 +1,1 @@
+var e={new:`red`,acknowledged:`warn`,investigating:`info`,answered:`ok`,closed:void 0,appealed:`red`};function t(e,t){return e===`appealed`?t?[`answer`,`close`]:[]:e===`new`?[`acknowledge`,`investigate`,`answer`]:e===`acknowledged`?[`investigate`,`answer`]:e===`investigating`?[`answer`]:e===`answered`?[`close`]:[]}export{t as n,e as t};

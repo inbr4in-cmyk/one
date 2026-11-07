@@ -1,0 +1,1 @@
+import{o as e}from"./i18n-CLXW1k6b.js";function t(t){return t instanceof e&&t.detail?t.detail:null}export{t};

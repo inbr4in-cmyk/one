@@ -1,0 +1,34 @@
+[project]
+name = "one-english-api"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi[standard]>=0.115",
+  "sqlalchemy[asyncio]>=2.0",
+  "asyncpg>=0.29",
+  "alembic>=1.13",
+  "pydantic-settings>=2.4",
+  "argon2-cffi>=23.1",
+  "pyjwt[crypto]>=2.9",
+  "pyotp>=2.9",
+  "redis>=5.0",
+  "httpx>=0.27",
+  "openpyxl>=3.1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-asyncio>=0.24"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 130
+
+[tool.ruff.lint]
+select = ["F", "E9"]
+per-file-ignores = { "app/models/__init__.py" = ["F401"] }
