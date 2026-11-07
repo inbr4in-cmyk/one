@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     # Meta (Instagram / WhatsApp Cloud API)
     meta_app_secret: str = "dev-meta-secret"
     meta_verify_token: str = "dev-verify-token"
+    meta_graph_version: str = "v24.0"
     wa_phone_number_id: str = ""
     wa_access_token: str = ""
     ig_access_token: str = ""

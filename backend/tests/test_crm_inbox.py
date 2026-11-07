@@ -147,3 +147,10 @@ async def test_qr_placement_creates_lead(db, client, owner_h):
     assert lead.source == "qr" and lead.branch_id == bid and lead.placement_score == 2
     again = await client.post("/api/public/placement/submit", json={"attempt_token": st["attempt_token"], "answers": answers})
     assert again.status_code == 400
+
+
+def test_ig_graph_host_follows_token_type():
+    from app.services.meta import _graph, _ig_graph
+    assert _ig_graph("IGAAxyz").startswith("https://graph.instagram.com/")
+    assert _ig_graph("EAAxyz").startswith("https://graph.facebook.com/")
+    assert _graph().startswith("https://graph.facebook.com/v")

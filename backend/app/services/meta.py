@@ -9,7 +9,16 @@ import httpx
 from app.core.config import get_settings
 
 log = logging.getLogger("meta")
-GRAPH = "https://graph.facebook.com/v21.0"
+
+
+def _graph() -> str:
+    return f"https://graph.facebook.com/{get_settings().meta_graph_version}"
+
+
+def _ig_graph(token: str) -> str:
+    """Instagram-login tokens (IGAA...) go to graph.instagram.com; Page tokens (Facebook login) to graph.facebook.com."""
+    host = "graph.instagram.com" if token.startswith("IG") else "graph.facebook.com"
+    return f"https://{host}/{get_settings().meta_graph_version}"
 
 
 def verify_signature(body: bytes, header: str | None) -> bool:
@@ -44,7 +53,7 @@ async def wa_send_text(to_phone: str, text: str) -> SendResult:
         log.info("WA (dev) -> %s: %s", to_phone, text[:60])
         return SendResult(True, external_id=None)
     return await _post(
-        f"{GRAPH}/{s.wa_phone_number_id}/messages",
+        f"{_graph()}/{s.wa_phone_number_id}/messages",
         s.wa_access_token,
         {"messaging_product": "whatsapp", "to": to_phone.lstrip("+"), "type": "text", "text": {"body": text}},
     )
@@ -57,7 +66,7 @@ async def wa_send_template(to_phone: str, name: str, locale: str, params: list[s
         return SendResult(True)
     lang = {"ru": "ru", "kk": "kk"}.get(locale, "ru")
     return await _post(
-        f"{GRAPH}/{s.wa_phone_number_id}/messages",
+        f"{_graph()}/{s.wa_phone_number_id}/messages",
         s.wa_access_token,
         {
             "messaging_product": "whatsapp",
@@ -81,4 +90,4 @@ async def ig_send_text(recipient_id: str, text: str, human_agent: bool = False) 
     payload: dict = {"recipient": {"id": recipient_id}, "message": {"text": text}}
     if human_agent:
         payload |= {"messaging_type": "MESSAGE_TAG", "tag": "HUMAN_AGENT"}
-    return await _post(f"{GRAPH}/me/messages", s.ig_access_token, payload)
+    return await _post(f"{_ig_graph(s.ig_access_token)}/me/messages", s.ig_access_token, payload)
