@@ -39,6 +39,8 @@ server {
         add_header X-Frame-Options DENY always;
         try_files $uri =404;
     }
+    # PWA manifest: the right type so phones offer «Install app».
+    location = /manifest.webmanifest { default_type application/manifest+json; try_files $uri =404; }
     location / { try_files $uri $uri/ /index.html; }
 
     # QA H-6. Scripts only from this site (no inline scripts); fonts from Google Fonts; images may be https

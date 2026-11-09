@@ -547,6 +547,10 @@ async def ws(websocket: WebSocket, ticket: str):
                                             asyncio.create_task(watchdog())], return_when=asyncio.FIRST_COMPLETED)
         for t in pending:
             t.cancel()
+        for t in done:
+            # Read the result so a client disconnect (e.g. 1012 on restart) is not logged as "never retrieved".
+            if not t.cancelled() and t.exception() is not None and not isinstance(t.exception(), WebSocketDisconnect):
+                log.warning("chat socket task failed: %r", t.exception())
     except WebSocketDisconnect:
         pass
     finally:

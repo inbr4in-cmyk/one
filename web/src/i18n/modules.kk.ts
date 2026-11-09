@@ -263,6 +263,7 @@ const modules: typeof ru = {
     noLessonsDay: 'Бұл күні сабақ жоқ',
     conflict: 'Қиылысу',
     conflictShort: 'қайшылық',
+    members: 'Топтағы оқушылар: {n}',
     conflictsN: 'Кестедегі қиылысу: {n}',
     conflictsText: 'Кабинет немесе мұғалім бір уақытта екі рет бос емес. Сабақты ашып, ауыстырыңыз.',
     roomBusy: '{room} кабинеті бос емес',

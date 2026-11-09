@@ -168,6 +168,13 @@ function placed(d: Date): Placed[] {
   return out
 }
 const columns = computed(() => days.value.map((d) => ({ d, items: placed(d) })))
+/** Desktop: two rows of the week, Mon/Wed/Fri on top and Tue/Thu/Sat(/Sun) below: groups usually meet on 1-3-5 or 2-4-6. */
+const weekRows = computed(() => {
+  const odd = columns.value.filter((_, i) => i % 2 === 0 && i < 6)
+  const even = columns.value.filter((_, i) => i % 2 === 1 || i === 6)
+  return [odd, even].filter((r) => r.length)
+})
+const membersOf = (l: Lesson) => (l.group_id ? groups.value.find((g) => g.id === l.group_id)?.members : l.student_id ? 1 : undefined)
 const nowTop = computed(() => (hoursOf(now.value) - hours.value.h0) * PX)
 const nowVisible = computed(() => nowTop.value > 0 && nowTop.value < (hours.value.h1 - hours.value.h0) * PX)
 
@@ -230,7 +237,7 @@ const nConflicts = computed(() => shown.value.filter((l) => conflicts.value.has(
       <TransitionGroup v-else name="fade" tag="div">
         <button v-for="l in dayLessons" :key="l.id" type="button" class="agenda" :class="{ conflict: conflicts.has(l.id), 'has-trial': l.trials }" :style="{ '--c': levelColor(l) }" @click="selected = l">
           <span class="tm num">{{ hm(l.starts_at, loc) }}<small>{{ hm(l.ends_at, loc) }}</small></span>
-          <span class="grow"><b><UiIcon :name="KIND_ICON[kindOf(l)]" :size="14" class="kind-ico" :label="t(`kind.${kindOf(l)}`)" />{{ l.group_name ?? t('schedule.individual') }}</b><small>{{ l.room_name }} · {{ l.teacher_name }}<template v-if="l.actual_teacher_id"> · {{ t('schedule.sub') }}</template></small></span>
+          <span class="grow"><b><UiIcon :name="KIND_ICON[kindOf(l)]" :size="14" class="kind-ico" :label="t(`kind.${kindOf(l)}`)" />{{ l.group_name ?? t('schedule.individual') }}<span v-if="membersOf(l) !== undefined" class="mem" :title="t('schedule.members', { n: membersOf(l) })"><UiIcon name="users" :size="14" />{{ membersOf(l) }}</span></b><small>{{ l.room_name }} · {{ l.teacher_name }}<template v-if="l.actual_teacher_id"> · {{ t('schedule.sub') }}</template></small></span>
           <span v-if="conflicts.has(l.id)" class="chip red xs">{{ t('schedule.conflictShort') }}</span>
           <span v-else-if="l.trials" class="chip red xs">{{ t('schedule.trial') }}</span>
         </button>
@@ -240,14 +247,14 @@ const nConflicts = computed(() => shown.value.filter((l) => conflicts.value.has(
   </template>
 
   <!-- Desktop: week grid -->
-  <div v-else class="card sched-wrap scroll-x" style="margin-top: 12px">
-    <div class="sched" :style="{ gridTemplateColumns: `60px repeat(${days.length}, minmax(130px, 1fr))` }" :aria-busy="loading">
+  <div v-for="(row, ri) in narrow ? [] : weekRows" :key="ri" class="card sched-wrap scroll-x" style="margin-top: 12px">
+    <div class="sched" :style="{ gridTemplateColumns: `60px repeat(${row.length}, minmax(130px, 1fr))` }" :aria-busy="loading">
       <div class="dh" style="padding: 0" />
-      <div v-for="c in columns" :key="c.d.toISOString()" class="dh" :class="{ today: sameDay(c.d, now) }">
+      <div v-for="c in row" :key="c.d.toISOString()" class="dh" :class="{ today: sameDay(c.d, now) }">
         {{ dayLabel(c.d, loc, { weekday: 'short' }) }}<span>{{ dayLabel(c.d, loc, { day: 'numeric', month: 'short' }) }}<template v-if="sameDay(c.d, now)"> · {{ t('schedule.today') }}</template></span>
       </div>
       <div class="tc"><div v-for="h in hours.h1 - hours.h0" :key="h" class="hr">{{ hours.h0 + h - 1 }}:00</div></div>
-      <div v-for="c in columns" :key="`c${c.d.toISOString()}`" class="day-col">
+      <div v-for="c in row" :key="`c${c.d.toISOString()}`" class="day-col">
         <div v-for="h in hours.h1 - hours.h0" :key="h" class="hr" />
         <button
           v-for="p in c.items" :key="p.l.id" type="button" class="blk"
@@ -256,7 +263,7 @@ const nConflicts = computed(() => shown.value.filter((l) => conflicts.value.has(
           :title="conflicts.get(p.l.id)?.join('\n')"
           @click="selected = p.l"
         >
-          <b><UiIcon :name="KIND_ICON[kindOf(p.l)]" :size="11" class="kind-ico" :label="t(`kind.${kindOf(p.l)}`)" />{{ p.l.group_name ?? t('schedule.individual') }}</b>
+          <b><UiIcon :name="KIND_ICON[kindOf(p.l)]" :size="11" class="kind-ico" :label="t(`kind.${kindOf(p.l)}`)" />{{ p.l.group_name ?? t('schedule.individual') }}<span v-if="membersOf(p.l) !== undefined" class="mem" :title="t('schedule.members', { n: membersOf(p.l) })"><UiIcon name="users" :size="11" />{{ membersOf(p.l) }}</span></b>
           <span>{{ hm(p.l.starts_at, loc) }}–{{ hm(p.l.ends_at, loc) }} · {{ p.l.teacher_name }}</span>
           <span>{{ view === 'rooms' && pick ? (p.l.actual_teacher_id ? t('schedule.sub') : '') : p.l.room_name }}</span>
           <span v-if="conflicts.has(p.l.id)" class="trial conf"><UiIcon name="alert" :size="11" />{{ t('schedule.conflictShort') }}</span>
@@ -273,4 +280,5 @@ const nConflicts = computed(() => shown.value.filter((l) => conflicts.value.has(
 
 <style scoped>
 .kind-ico { display: inline-block; vertical-align: -2px; margin-right: 4px; opacity: 0.85 }
+.mem { display: inline-flex; align-items: center; gap: 2px; margin-left: 6px; font-weight: 600; opacity: 0.8; white-space: nowrap }
 </style>
