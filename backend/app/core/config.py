@@ -33,6 +33,8 @@ class Settings(BaseSettings):
     wa_phone_number_id: str = ""
     wa_access_token: str = ""
     ig_access_token: str = ""
+    # Approved WhatsApp Authentication template for login codes (Meta name). Empty = plain text (24 h window only).
+    wa_otp_template: str = ""
 
     # Push: Firebase service-account JSON (FCM HTTP v1 serves Android and iOS via APNs). Empty = log only.
     fcm_credentials_file: str = ""

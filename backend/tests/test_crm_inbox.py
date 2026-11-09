@@ -154,3 +154,17 @@ def test_ig_graph_host_follows_token_type():
     assert _ig_graph("IGAAxyz").startswith("https://graph.instagram.com/")
     assert _ig_graph("EAAxyz").startswith("https://graph.facebook.com/")
     assert _graph().startswith("https://graph.facebook.com/v")
+
+
+def test_template_params_follow_placeholder_order():
+    from app.services.messaging import template_params
+    assert template_params("{name}, урок {date} в {time}", {"time": "16:00", "name": "Аня", "date": "10.11"}) == ["Аня", "10.11", "16:00"]
+
+
+async def test_unconfigured_whatsapp_never_logs_text(caplog):
+    import logging
+
+    from app.services import meta
+    with caplog.at_level(logging.INFO, logger="meta"):
+        res = await meta.wa_send_text("+77001234567", "код 123456")
+    assert res.ok and "123456" not in caplog.text

@@ -31,7 +31,8 @@ from app.core.security import (
 )
 from app.models.identity import AuthSession, User, UserKind
 from app.modules.auth import service
-from app.services.messaging import send_whatsapp_text
+from app.services import meta
+from app.services.messaging import send_login_code
 from app.services.realtime import sessions_ended
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -169,6 +170,9 @@ async def otp_request(body: OtpRequestIn, request: Request, db: DB) -> None:
     """Students and parents sign in with a one-time code sent to WhatsApp."""
     ip = client_ip(request)
     s = get_settings()
+    if s.is_prod and not meta.wa_configured():
+        # Checked before the phone lookup, so it reveals nothing about who is registered.
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Вход по коду WhatsApp пока не подключён. Обратитесь в школу.")
     phone = normalize_phone(body.phone)
     await hit(f"otp:ip:{ip}", s.otp_rate_per_hour * 4, 3600)
     await hit(f"otp:phone:{phone}", s.otp_rate_per_hour, 3600)
@@ -179,8 +183,7 @@ async def otp_request(body: OtpRequestIn, request: Request, db: DB) -> None:
     code = new_otp_code()
     await get_kv().set(f"otp:{phone}", sha256(code), 300)
     await get_kv().delete(f"otp-tries:{phone}")
-    await send_whatsapp_text(db, phone, f"One English: код для входа {code}. Никому его не сообщайте.",
-                             template_code="otp", to_user_id=user.id, sensitive=True)
+    await send_login_code(db, phone, code, to_user_id=user.id, locale=user.locale or "ru")
     await db.commit()
 
 

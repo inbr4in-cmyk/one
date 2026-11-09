@@ -28,6 +28,8 @@ ask TOKEN      "Permanent system user token (hidden)" 1
 ask PHONE_ID   "WhatsApp Phone number ID" 0
 ask WABA_ID    "WhatsApp Business Account ID" 0
 ask PAGE_ID    "Facebook Page ID linked to Instagram (Enter = skip Instagram)" 0
+ask OTP_TPL    "Approved WhatsApp Authentication template for login codes, e.g. oe_login_code (Enter = skip)" 0
+read -rp "Are the notification templates oe_absence, oe_payment... approved in WhatsApp Manager? [y/N]: " TPL_OK
 
 graph() { # graph METHOD PATH TOKEN -> JSON on stdout; the token goes via stdin, not argv
   printf 'header = "Authorization: Bearer %s"\n' "$3" | curl -sS -K - -X "$1" "https://graph.facebook.com/$GV/$2"
@@ -59,7 +61,7 @@ import os, sys
 path = sys.argv[1]
 new = {k: v for k, v in {
     "OE_META_APP_SECRET": "$APP_SECRET", "OE_WA_ACCESS_TOKEN": "$TOKEN", "OE_WA_PHONE_NUMBER_ID": "$PHONE_ID",
-    "OE_WA_WABA_ID": "$WABA_ID", "OE_IG_PAGE_ID": "$PAGE_ID", "OE_IG_ACCESS_TOKEN": "$PAGE_TOKEN",
+    "OE_WA_WABA_ID": "$WABA_ID", "OE_WA_OTP_TEMPLATE": "$OTP_TPL", "OE_IG_PAGE_ID": "$PAGE_ID", "OE_IG_ACCESS_TOKEN": "$PAGE_TOKEN",
 }.items() if v}
 lines = [l for l in open(path).read().splitlines() if l.split("=", 1)[0] not in new]
 lines += [f"{k}={v}" for k, v in new.items()]
@@ -71,6 +73,11 @@ os.replace(tmp, path)
 print("Saved:", ", ".join(new) or "nothing changed")
 PY
 ls "$ENV".bak-* 2>/dev/null | sort | head -n -3 | xargs -r rm -f
+
+if [ "${TPL_OK,,}" = y ]; then
+  sudo -u postgres psql -q one_english -c "UPDATE message_templates SET wa_template_name = 'oe_' || code" \
+    && echo "Notifications will go out as approved templates (oe_<code>)"
+fi
 
 systemctl restart one-english-api one-english-jobs
 for i in $(seq 1 20); do
