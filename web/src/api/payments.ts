@@ -7,6 +7,8 @@ export const PAYMENT_METHODS: PaymentMethod[] = ['kaspi', 'cash', 'card', 'trans
 export interface PaymentIn {
   student_id: number
   lessons: number
+  /** any sum paid (partial payment); whole lessons are bought, the rest goes to the money balance */
+  amount?: number | null
   method: PaymentMethod
   discount?: number
   promo_code?: string | null

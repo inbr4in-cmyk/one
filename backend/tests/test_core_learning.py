@@ -227,3 +227,23 @@ async def test_backdated_payment_admin_only_no_notification(db, client, owner_h)
     assert local(p.paid_at).date().isoformat() == past
     sent = await db.scalar(select(OutboundMessage.id).where(OutboundMessage.template_code == "payment"))
     assert sent is None
+
+
+async def test_partial_payment_any_amount(db, client, owner_h):
+    from app.models import Level
+
+    bid, teacher, room, g = await _setup(db, client, owner_h)
+    s = await _student(db, client, owner_h, bid)
+    price = (await db.get(Level, g["level_id"])).lesson_price
+    r = await client.post("/api/payments", headers=owner_h, json={"student_id": s["id"], "method": "cash", "amount": price + price // 2})
+    assert r.status_code == 201, r.text
+    assert r.json()["lessons"] == 1 and r.json()["amount"] == price + price // 2
+    st = await db.get(Student, s["id"])
+    await db.refresh(st)
+    assert st.lessons_left == 1 and st.money_balance == price // 2
+    r = await client.post("/api/payments", headers=owner_h, json={"student_id": s["id"], "method": "kaspi", "amount": price - price // 2})
+    assert r.status_code == 201, r.text
+    await db.refresh(st)
+    assert st.lessons_left == 2 and st.money_balance == 0
+    r = await client.post("/api/payments/quote", headers=owner_h, json={"student_id": s["id"], "method": "cash", "amount": 100, "discount": 50})
+    assert r.status_code == 400

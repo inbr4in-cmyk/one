@@ -30,7 +30,9 @@ router = APIRouter(tags=["payments"])
 
 class PaymentIn(In):
     student_id: int = Field(ge=1)
-    lessons: int = Field(ge=1, le=500)
+    # Either a number of lessons, or any amount the client actually paid (partial payment).
+    lessons: int = Field(default=0, ge=0, le=500)
+    amount: int | None = Field(default=None, ge=1, le=100_000_000)
     method: str = Field(max_length=16)
     discount: int = Field(default=0, ge=0, le=100_000_000)
     promo_code: str | None = Field(default=None, max_length=64)
@@ -80,6 +82,20 @@ async def _quote(db: DB, s: Student, body: PaymentIn, actor: Actor) -> tuple[Pay
             raise forbidden("Оплата по цене другого уровня — только у сотрудников с правом на скидки")
     if body.discount and not actor.can("payments", "discount"):
         raise forbidden("Скидки — только у сотрудников с правом")
+    if body.amount is not None:
+        # Any sum: it buys whole lessons at the level price together with money already on the balance;
+        # what is left over stays on the money balance (negative money_balance_used = put on the balance).
+        if body.discount:
+            raise bad_request("Скидка указывается при оплате уроками, а не суммой")
+        if level.lesson_price <= 0:
+            raise bad_request("У уровня не указана цена урока")
+        available = body.amount + max(s.money_balance, 0)
+        lessons = min(available // level.lesson_price, 500)
+        gross = lessons * level.lesson_price
+        return PaymentQuote(lessons=lessons, lesson_price=level.lesson_price, gross=gross, discount=0,
+                            money_balance_used=gross - body.amount, to_pay=body.amount), level
+    if body.lessons < 1:
+        raise bad_request("Укажите количество уроков или сумму")
     gross = body.lessons * level.lesson_price
     if body.discount > gross:
         raise bad_request("Скидка больше суммы")
@@ -135,7 +151,7 @@ async def take_payment(body: PaymentIn, db: DB, response: Response, actor: Actor
     if not idempotency_key:
         recent = await db.scalar(select(Payment.id).where(
             Payment.student_id == s.id, Payment.received_by == actor.id, Payment.category == "course",
-            Payment.lessons == body.lessons, Payment.method == body.method, Payment.paid_at > now() - DOUBLE_TAP))
+            (Payment.amount == body.amount) if body.amount is not None else (Payment.lessons == body.lessons), Payment.method == body.method, Payment.paid_at > now() - DOUBLE_TAP))
         if recent:
             raise conflict("Такая оплата уже проведена только что. Обновите страницу")
     backdated = body.paid_on is not None and body.paid_on != today()
@@ -164,7 +180,8 @@ async def take_payment(body: PaymentIn, db: DB, response: Response, actor: Actor
         response.status_code = 200
         return _out(done, await db.get(Student, done.student_id))
     await bal.apply(db, s, "payment", lessons=q.lessons, money=-q.money_balance_used, price=q.lesson_price,
-                    ref=("payment", p.id), actor_id=actor.id, note=f"Оплата {q.lessons} × {q.lesson_price}")
+                    ref=("payment", p.id), actor_id=actor.id, note=f"Оплата {q.lessons} × {q.lesson_price}" if body.amount is None
+                    else f"Оплата {q.to_pay} тг: {q.lessons} ур. × {q.lesson_price}")
     s.last_payment_at = max(p.paid_at, s.last_payment_at) if s.last_payment_at else p.paid_at
     s.access_blocked_at = None
     if s.status in (StudentStatus.LEAD, StudentStatus.TRIAL, StudentStatus.LEFT, StudentStatus.FINISHED):

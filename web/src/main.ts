@@ -49,3 +49,12 @@ setMfaRequiredHandler(async () => {
 
 app.use(router)
 router.isReady().then(() => app.mount('#app'))
+
+// Installable app (PWA) on Android and iPhone. Only in the real build: the offline demo and dev server skip it.
+if (import.meta.env.PROD && import.meta.env.MODE !== 'demo' && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {
+      /* not critical: the site works without it */
+    })
+  })
+}
