@@ -51,6 +51,11 @@ class GroupIn(In):
     capacity: int = Field(default=12, ge=1, le=100)
     starts_on: date | None = None
     status: str = Field(default="active", pattern="^(recruiting|active|finished)$")
+    # group | duo (2 students) | individual (1 student)
+    kind: str = Field(default="group", pattern="^(group|duo|individual)$")
+
+
+KIND_CAPACITY = {"individual": 1, "duo": 2}
 
 
 class GroupOut(ORM):
@@ -63,6 +68,7 @@ class GroupOut(ORM):
     capacity: int
     starts_on: date | None
     status: str
+    kind: str = "group"
     chat_id: int | None
     members: int = 0
     teacher_name: str | None = None
@@ -108,8 +114,11 @@ async def _check_teacher(db: DB, teacher_id: int, branch_id: int) -> User:
 
 @router.get("/groups", response_model=list[GroupOut])
 async def list_groups(db: DB, actor: Actor = require("schedule", "view"), branch_id: int | None = None,
-                      level_id: int | None = None, teacher_id: int | None = None, archived: bool = False) -> list[GroupOut]:
+                      level_id: int | None = None, teacher_id: int | None = None, archived: bool = False,
+                      kind: str | None = Query(default=None, pattern="^(group|duo|individual)$")) -> list[GroupOut]:
     q = select(Group).where(group_filter(actor))
+    if kind:
+        q = q.where(Group.kind == kind)
     q = q.where(Group.archived_at.is_not(None) if archived else Group.archived_at.is_(None))
     if branch_id:
         q = q.where(Group.branch_id == branch_id)
@@ -127,6 +136,7 @@ async def create_group(body: GroupIn, db: DB, actor: Actor = require("schedule",
         raise bad_request("Уровень не найден")
     await _check_teacher(db, body.teacher_id, body.branch_id)
     g = Group(**body.model_dump())
+    g.capacity = min(g.capacity, KIND_CAPACITY.get(g.kind, g.capacity))
     db.add(g)
     await db.flush()
     await chats.ensure_group_chat(db, g)
@@ -147,12 +157,13 @@ async def update_group(group_id: int, body: GroupIn, db: DB, actor: Actor = requ
     actor.ensure_branch("schedule", "edit", g.branch_id)
     if body.branch_id != g.branch_id:
         raise bad_request("Филиал группы не меняется — создайте новую группу и переведите учеников")
-    before = snapshot(g, ["name", "level_id", "teacher_id", "room_id", "capacity", "status"])
+    before = snapshot(g, ["name", "level_id", "teacher_id", "room_id", "capacity", "status", "kind"])
     old_teacher = g.teacher_id
     if body.teacher_id != g.teacher_id:
         await _check_teacher(db, body.teacher_id, g.branch_id)
     for k, v in body.model_dump().items():
         setattr(g, k, v)
+    g.capacity = min(g.capacity, KIND_CAPACITY.get(g.kind, g.capacity))
     if old_teacher != g.teacher_id:
         await chats.change_group_teacher(db, g, old_teacher)
         # Future planned lessons follow the new teacher.
@@ -310,6 +321,8 @@ class LessonOut(ORM):
     attendance_marked_at: datetime | None
     topic: str | None
     group_name: str | None = None
+    # group | duo | individual: lessons of an individual student (no group) are «individual»
+    kind: str = "group"
     teacher_name: str | None = None
     room_name: str | None = None
     trials: int = 0
@@ -330,7 +343,9 @@ async def _lesson_outs(db: DB, lessons: list[Lesson]) -> list[LessonOut]:
     gids = {x.group_id for x in lessons if x.group_id}
     uids = {x.teacher_id for x in lessons} | {x.actual_teacher_id for x in lessons if x.actual_teacher_id}
     rids = {x.room_id for x in lessons}
-    gn = dict((await db.execute(select(Group.id, Group.name).where(Group.id.in_(gids)))).all()) if gids else {}
+    grows = (await db.execute(select(Group.id, Group.name, Group.kind).where(Group.id.in_(gids)))).all() if gids else []
+    gn = {i: n for i, n, _ in grows}
+    gk = {i: k for i, _, k in grows}
     un = dict((await db.execute(select(User.id, User.full_name).where(User.id.in_(uids)))).all()) if uids else {}
     rn = dict((await db.execute(select(Room.id, Room.name).where(Room.id.in_(rids)))).all()) if rids else {}
     lids = [x.id for x in lessons]
@@ -340,6 +355,7 @@ async def _lesson_outs(db: DB, lessons: list[Lesson]) -> list[LessonOut]:
     for x in lessons:
         o = LessonOut.model_validate(x)
         o.group_name = gn.get(x.group_id) if x.group_id else "Индивидуально"
+        o.kind = gk.get(x.group_id, "group") if x.group_id else "individual"
         o.teacher_name = un.get(x.actual_teacher_id or x.teacher_id)
         o.room_name = rn.get(x.room_id)
         o.trials = trials.get(x.id, 0)
@@ -351,7 +367,7 @@ async def _lesson_outs(db: DB, lessons: list[Lesson]) -> list[LessonOut]:
 async def list_lessons(
     db: DB, actor: Actor = require_staff(), date_from: date = Query(alias="from"), date_to: date = Query(alias="to"),
     branch_id: int | None = None, room_id: int | None = None, teacher_id: int | None = None, group_id: int | None = None,
-    include_cancelled: bool = False,
+    include_cancelled: bool = False, kind: str | None = Query(default=None, pattern="^(group|duo|individual)$"),
 ) -> list[LessonOut]:
     if not (actor.can("schedule", "view") or actor.can("attendance", "view")):
         raise forbidden()
@@ -371,6 +387,10 @@ async def list_lessons(
         q = q.where(or_(Lesson.teacher_id == teacher_id, Lesson.actual_teacher_id == teacher_id))
     if group_id:
         q = q.where(Lesson.group_id == group_id)
+    if kind == "individual":
+        q = q.where(or_(Lesson.group_id.is_(None), Lesson.group_id.in_(select(Group.id).where(Group.kind == "individual"))))
+    elif kind:
+        q = q.where(Lesson.group_id.in_(select(Group.id).where(Group.kind == kind)))
     return await _lesson_outs(db, list(await db.scalars(q.order_by(Lesson.starts_at).limit(3000))))
 
 
@@ -698,7 +718,7 @@ async def mark(lesson_id: int, body: MarksIn, db: DB, actor: Actor = require("at
         lesson.topic = body.topic
     await accrue_lesson(db, teacher_id=lesson.actual_teacher_id or lesson.teacher_id, lesson_id=lesson.id, n=n,
                         on=loc.date(), branch_id=lesson.branch_id, group_name=group.name if group else "индивидуально",
-                        actor_id=actor.id)
+                        actor_id=actor.id, kind=group.kind if group else "individual")
     await write_audit(db, actor_id=actor.id, action="attendance.mark" if first_mark and not needs_reason else "attendance.fix",
                       entity="lesson", entity_id=lesson.id, branch_id=lesson.branch_id, ip=actor.ip,
                       after={"changes": changes, "n": n}, note=body.reason)

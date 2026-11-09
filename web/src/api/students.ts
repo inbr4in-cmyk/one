@@ -42,6 +42,8 @@ export interface Student extends StudentListItem {
   photo_url: string | null
   source: string | null
   notes: string | null
+  contract_no?: string | null
+  contract_date?: string | null
   sales_user_id: number | null
   office_user_id: number | null
   user_id: number | null
@@ -84,6 +86,8 @@ export interface StudentIn {
   notes?: string | null
   guardians: GuardianIn[]
   create_account: boolean
+  contract_no?: string | null
+  contract_date?: string | null
 }
 
 export interface TransferPreview {

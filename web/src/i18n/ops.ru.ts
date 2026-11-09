@@ -41,7 +41,7 @@ export default {
     catNamePh: 'Аренда',
     catCode: 'Код',
     catCodeHint: 'латиница, цифры и _',
-    catInvalid: 'Название от 2 символов, код — латиница, цифры и _',
+    catInvalid: 'Название от 2 символов',
     amount: 'Сумма, ₸',
     amountInvalid: 'Укажите сумму больше нуля',
     spentOn: 'Дата',
@@ -632,6 +632,8 @@ export default {
     rate: {
       teacher_lesson_base: 'Учитель: ставка за урок',
       teacher_extra_per_student: 'Учитель: доплата за ученика сверх порога',
+      teacher_individual_lesson: 'Учитель: индивидуальный урок',
+      teacher_duo_lesson: 'Учитель: урок в дуэте',
       teacher_extra_threshold: 'Учитель: порог учеников для доплаты',
       teacher_trial_retention: 'Учитель: бонус за ученика, оставшегося после пробного',
       teacher_final_test_bonus: 'Учитель: бонус за итоговый тест',

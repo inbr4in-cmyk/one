@@ -25,6 +25,8 @@ class StudentIn(In):
     notes: str | None = Field(default=None, max_length=4000)
     guardians: list[GuardianIn] = []
     create_account: bool = True
+    contract_no: str | None = Field(default=None, max_length=64)
+    contract_date: date | None = None
 
 
 class StudentPatch(In):
@@ -35,6 +37,8 @@ class StudentPatch(In):
     source: str | None = Field(default=None, max_length=255)
     notes: str | None = Field(default=None, max_length=4000)
     photo_url: str | None = Field(default=None, max_length=255)
+    contract_no: str | None = Field(default=None, max_length=64)
+    contract_date: date | None = None
 
 
 class GuardianOut(BaseModel):
@@ -74,6 +78,8 @@ class StudentOut(StudentListOut):
     photo_url: str | None
     source: str | None
     notes: str | None
+    contract_no: str | None = None
+    contract_date: date | None = None
     sales_user_id: int | None
     office_user_id: int | None
     user_id: int | None

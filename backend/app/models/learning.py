@@ -1,6 +1,6 @@
 
 
-from sqlalchemy import BigInteger, Boolean, String, UniqueConstraint
+from sqlalchemy import BigInteger, Boolean, Index, String, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -20,6 +20,10 @@ class StudentStatus:
 
 class Student(IdMixin, TimestampMixin, ArchiveMixin, Base):
     __tablename__ = "students"
+    __table_args__ = (
+        Index("students_contract_no_uq", "contract_no", unique=True,
+              postgresql_where=text("archived_at IS NULL AND contract_no IS NOT NULL")),
+    )
 
     user_id: Mapped[int | None] = fk("users.id", nullable=True)
     full_name: Mapped[str] = mapped_column(String(255), index=True)
@@ -46,6 +50,8 @@ class Student(IdMixin, TimestampMixin, ArchiveMixin, Base):
     left_at: Mapped[DTN]
     stars: Mapped[Int]  # kids' stars for following the rules
     notes: Mapped[TextN]
+    contract_no: Mapped[StrN] = mapped_column(String(64), default=None)
+    contract_date: Mapped[DateN]
 
 
 class StudentGuardian(IdMixin, Base):
@@ -91,6 +97,8 @@ class Group(IdMixin, TimestampMixin, ArchiveMixin, Base):
     starts_on: Mapped[DateN]
     # recruiting | active | finished
     status: Mapped[str] = mapped_column(String(16), default="active")
+    # group | duo (2 students) | individual (1 student): icon and filter in the schedule, teacher pay rate
+    kind: Mapped[str] = mapped_column(String(16), default="group", server_default="group")
     chat_id: Mapped[int | None] = fk("chats.id", nullable=True, use_alter=True)
 
 

@@ -18,11 +18,18 @@ export interface Group {
   capacity: number
   starts_on: string | null
   status: 'recruiting' | 'active' | 'finished'
+  /** group | duo (2 students) | individual (1 student) */
+  kind?: CourseKind
   chat_id: number | null
   members: number
   teacher_name: string | null
   schedule: ScheduleRuleRef[]
 }
+
+export type CourseKind = 'group' | 'duo' | 'individual'
+export const COURSE_KINDS: CourseKind[] = ['group', 'duo', 'individual']
+/** Sprite icon per format: one person, two people, a group */
+export const KIND_ICON: Record<CourseKind, string> = { individual: 'user', duo: 'users', group: 'groups' }
 
 export interface GroupIn {
   name: string
@@ -33,6 +40,7 @@ export interface GroupIn {
   capacity: number
   starts_on: string | null
   status: Group['status']
+  kind?: CourseKind
 }
 
 export interface GroupMember {
@@ -68,6 +76,7 @@ export interface Lesson {
   attendance_marked_at: string | null
   topic: string | null
   group_name: string | null
+  kind?: CourseKind
   teacher_name: string | null
   room_name: string | null
   trials: number

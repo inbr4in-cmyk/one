@@ -99,6 +99,8 @@ RATES = {
     "teacher_lesson_base": 2500,
     "teacher_extra_per_student": 100,
     "teacher_extra_threshold": 5,
+    "teacher_individual_lesson": 2500,
+    "teacher_duo_lesson": 2500,
     "teacher_trial_retention": 500,
     "teacher_final_test_bonus": 1000,
     "final_test_bonus_threshold": 100,

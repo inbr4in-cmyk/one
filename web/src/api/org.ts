@@ -31,6 +31,17 @@ export interface Level {
   is_kids: boolean
 }
 
+export interface LevelIn {
+  name: string
+  code?: string | null
+  color: string
+  lesson_price: number
+  order: number
+  track: 'adults' | 'kids' | 'exam'
+  duration_months: number
+  next_level_id: number | null
+}
+
 export interface StaffMember {
   id: number
   full_name: string
@@ -61,6 +72,9 @@ export const orgApi = {
   branches: () => http.get<Branch[]>('/branches', { silent: true }),
   rooms: (branchId: number) => http.get<Room[]>(`/branches/${branchId}/rooms`),
   levels: () => http.get<Level[]>('/levels'),
+  createLevel: (body: LevelIn) => http.post<Level>('/levels', body),
+  updateLevel: (id: number, body: LevelIn) => http.patch<Level>(`/levels/${id}`, body),
+  archiveLevel: (id: number) => http.post<void>(`/levels/${id}/archive`),
   directory: (p: { role?: string; branch_id?: number } = {}) => http.get<DirectoryEntry[]>(`/staff-directory${qs(p)}`, { silent: true }),
   staff: (p: { role?: string; branch_id?: number; q?: string; limit?: number } = {}) =>
     http.get<Page<StaffMember>>(`/staff${qs({ limit: 200, ...p })}`, { silent: true }),

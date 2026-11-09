@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { UiAvatar, UiButton, UiCard, UiChip, UiEmptyState, UiInput, UiPager, UiTable, type TableColumn } from '@/components/ui'
 import RefundModal from '@/components/students/RefundModal.vue'
+import PaymentEditModal from '@/components/payments/PaymentEditModal.vue'
 import { paymentsApi, type Payment } from '@/api/payments'
 import { useAuthStore } from '@/stores/auth'
 import { useBranchStore } from '@/stores/branch'
@@ -23,6 +24,7 @@ const rows = ref<Payment[]>([])
 const total = ref(0)
 const loading = ref(true)
 const refundOf = ref<Payment | null>(null)
+const editOf = ref<Payment | null>(null)
 let seq = 0
 
 const columns = computed<TableColumn[]>(() => [
@@ -102,7 +104,10 @@ const methodIco = (m: string) => (m === 'kaspi' ? 'K' : m === 'cash' ? '₸' : '
       </template>
       <template #cell-branch_id="{ row }"><span class="muted">{{ refs.branchName(row.branch_id as number) }}</span></template>
       <template #cell-actions="{ row }">
-        <UiButton v-if="canRefund(row)" size="sm" variant="ghost" icon="history" @click="refundOf = row">{{ t('payments.refund') }}</UiButton>
+        <div class="row-acts nowrap">
+          <UiButton v-if="auth.can('payments.create')" size="sm" variant="ghost" icon="edit" :title="t('payEdit.action')" :aria-label="`${t('payEdit.action')}: ${row.student_name ?? ''}`" @click="editOf = row as Payment" />
+          <UiButton v-if="canRefund(row)" size="sm" variant="ghost" icon="history" @click="refundOf = row">{{ t('payments.refund') }}</UiButton>
+        </div>
       </template>
       <template #empty><UiEmptyState icon="wallet" :title="t('payments.empty')" /></template>
     </UiTable>
@@ -110,4 +115,5 @@ const methodIco = (m: string) => (m === 'kaspi' ? 'K' : m === 'cash' ? '₸' : '
   </UiCard>
 
   <RefundModal :payment="refundOf" @close="refundOf = null" @done="load" />
+  <PaymentEditModal :payment="editOf" @close="editOf = null" @done="load" />
 </template>

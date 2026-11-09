@@ -26,6 +26,8 @@ const blank = () => ({
   source: '',
   notes: '',
   create_account: true,
+  contract_no: '',
+  contract_date: '',
 })
 const form = reactive(blank())
 const guardians = ref<(GuardianIn & { key: number; relation: string; notify: boolean })[]>([])
@@ -77,13 +79,18 @@ async function submit() {
       source: form.source || null,
       notes: form.notes.trim() || null,
       create_account: form.create_account,
+      contract_no: form.contract_no.trim() || null,
+      contract_date: form.contract_date || null,
       guardians: guardians.value.map(({ key: _k, ...g }) => ({ ...g, relation: g.relation || null })),
     })
     toast.ok(t('students.created'))
     emit('created', s)
     open.value = false
   } catch (e) {
-    if (e instanceof ApiError && e.status === 409) errors.phone = e.detail
+    if (e instanceof ApiError && e.status === 409) {
+      if (/[Дд]оговор|[Шш]арт/.test(e.detail ?? '')) errors.contract = e.detail
+      else errors.phone = e.detail
+    }
   } finally {
     busy.value = false
   }
@@ -105,6 +112,10 @@ async function submit() {
         <UiField :label="t('students.form.level')">
           <UiSelect v-model="form.level_id" :options="levelOptions" :label="t('students.form.level')" block />
         </UiField>
+      </div>
+      <div class="form-2">
+        <UiInput v-model="form.contract_no" :label="t('contract.no')" :error="errors.contract" :maxlength="64" autocomplete="off" />
+        <UiInput v-model="form.contract_date" type="date" :label="t('contract.date')" />
       </div>
       <UiField :label="t('students.form.source')">
         <UiSelect v-model="form.source" :options="sourceOptions" :label="t('students.form.source')" block />

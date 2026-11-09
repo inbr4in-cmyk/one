@@ -11,6 +11,15 @@ export interface Stage {
   order: number
   is_won: boolean
   is_lost: boolean
+  stale_after_hours?: number | null
+  /** built-in: renamed and recoloured, never removed */
+  system?: boolean
+}
+
+export interface StageIn {
+  name: string
+  color: string
+  stale_after_hours: number | null
 }
 
 export interface Pipeline {
@@ -111,6 +120,10 @@ export interface Analytics {
 
 export const crmApi = {
   pipelines: () => http.get<Pipeline[]>('/crm/pipelines'),
+  addStage: (pipelineId: number, body: StageIn) => http.post<Stage>(`/crm/pipelines/${pipelineId}/stages`, body),
+  editStage: (id: number, body: StageIn) => http.patch<Stage>(`/crm/stages/${id}`, body),
+  orderStages: (pipelineId: number, ids: number[]) => http.put<Stage[]>(`/crm/pipelines/${pipelineId}/order`, { stage_ids: ids }),
+  archiveStage: (id: number) => http.post<void>(`/crm/stages/${id}/archive`),
   board: (p: { pipeline: string; branch_id?: number | null; source?: string; owner_id?: number | null; q?: string }) =>
     http.get<Board>(`/crm/board${qs(p)}`),
   create: (body: LeadIn) => http.post<Lead>('/crm/leads', body),

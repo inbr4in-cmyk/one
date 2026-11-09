@@ -50,7 +50,8 @@ class CategoryOut(ORM):
 
 class CategoryIn(In):
     name: str = Field(min_length=2, max_length=120)
-    code: str = Field(pattern=r"^[a-z0-9_]{2,32}$")
+    # Optional: generated when the category is added from the dictionaries page.
+    code: str | None = Field(default=None, pattern=r"^[a-z0-9_]{2,32}$")
 
 
 @router.get("/expense-categories", response_model=list[CategoryOut])
@@ -60,15 +61,50 @@ async def categories(db: DB, actor: Actor = require("finance", "view")) -> list:
 
 @router.post("/expense-categories", response_model=CategoryOut, status_code=201)
 async def create_category(body: CategoryIn, db: DB, actor: Actor = require("finance", "edit")):
-    if await db.scalar(select(ExpenseCategory).where(ExpenseCategory.code == body.code)):
+    if body.code and await db.scalar(select(ExpenseCategory).where(ExpenseCategory.code == body.code)):
         raise bad_request("Такой код уже есть")
-    c = ExpenseCategory(name=body.name, code=body.code)
+    if await db.scalar(select(ExpenseCategory.id).where(func.lower(ExpenseCategory.name) == body.name.strip().lower(),
+                                                        ExpenseCategory.archived_at.is_(None))):
+        raise bad_request("Такая статья расхода уже есть")
+    code = body.code or f"c{(await db.scalar(select(func.coalesce(func.max(ExpenseCategory.id), 0)))) + 1}"
+    while await db.scalar(select(ExpenseCategory.id).where(ExpenseCategory.code == code)):
+        code += "_"
+    c = ExpenseCategory(name=body.name.strip(), code=code)
     db.add(c)
     await db.flush()
     await write_audit(db, actor_id=actor.id, action="expense_category.create", entity="expense_category", entity_id=c.id,
                       ip=actor.ip, after={"name": c.name})
     await db.commit()
     return c
+
+
+class CategoryPatch(In):
+    name: str = Field(min_length=2, max_length=120)
+
+
+@router.patch("/expense-categories/{category_id}", response_model=CategoryOut)
+async def rename_category(category_id: int, body: CategoryPatch, db: DB, actor: Actor = require("finance", "edit")):
+    c = await db.get(ExpenseCategory, category_id)
+    if c is None or c.archived_at is not None:
+        raise not_found("Статья расхода")
+    before = c.name
+    c.name = body.name.strip()
+    await write_audit(db, actor_id=actor.id, action="expense_category.update", entity="expense_category", entity_id=c.id,
+                      ip=actor.ip, before={"name": before}, after={"name": c.name})
+    await db.commit()
+    return c
+
+
+@router.post("/expense-categories/{category_id}/archive", status_code=204)
+async def archive_category(category_id: int, db: DB, actor: Actor = require("finance", "edit")) -> None:
+    """Archived, never deleted: past expenses keep their category in reports."""
+    c = await db.get(ExpenseCategory, category_id)
+    if c is None or c.archived_at is not None:
+        raise not_found("Статья расхода")
+    c.archived_at = now()
+    await write_audit(db, actor_id=actor.id, action="expense_category.archive", entity="expense_category", entity_id=c.id,
+                      ip=actor.ip, before={"name": c.name})
+    await db.commit()
 
 
 class ExpenseIn(In):

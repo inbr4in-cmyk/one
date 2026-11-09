@@ -122,7 +122,7 @@ async def card(db: DB, s: Student, actor: Actor) -> StudentOut:
     )).all()
     return StudentOut(
         **_list_out(s, actor, [g.name for m, g in groups if m.left_on is None]).model_dump(),
-        birth_date=s.birth_date, photo_url=s.photo_url, source=s.source, notes=s.notes,
+        birth_date=s.birth_date, photo_url=s.photo_url, source=s.source, notes=s.notes, contract_no=s.contract_no, contract_date=s.contract_date,
         sales_user_id=s.sales_user_id, office_user_id=s.office_user_id, user_id=s.user_id, stars=s.stars,
         coins=await coin_balance(db, s.id),
         balance=BalanceOut(lessons_paid=s.lessons_paid, lessons_done=s.lessons_done, lessons_left=s.lessons_left,
@@ -162,6 +162,16 @@ async def list_students(
     return Page(items=[_list_out(s, actor, names.get(s.id, [])) for s in rows], total=total, limit=limit, offset=offset)
 
 
+async def _contract_free(db: DB, contract_no: str | None, student_id: int | None = None) -> None:
+    if not contract_no:
+        return
+    q = select(Student.id).where(Student.contract_no == contract_no, Student.archived_at.is_(None))
+    if student_id:
+        q = q.where(Student.id != student_id)
+    if await db.scalar(q):
+        raise conflict(f"Договор № {contract_no} уже есть у другого ученика")
+
+
 @router.post("", response_model=StudentOut, status_code=201)
 async def create_student(body: StudentIn, db: DB, actor: Actor = require("students", "create")) -> StudentOut:
     actor.ensure_branch("students", "create", body.branch_id)
@@ -170,8 +180,11 @@ async def create_student(body: StudentIn, db: DB, actor: Actor = require("studen
     phone = normalize_phone(body.phone) if body.phone else None
     if phone and await db.scalar(select(Student).where(Student.phone == phone, Student.archived_at.is_(None))):
         raise conflict("Ученик с таким телефоном уже есть")
+    contract_no = (body.contract_no or "").strip() or None
+    await _contract_free(db, contract_no)
     level = await db.get(Level, body.level_id) if body.level_id else None
     s = Student(full_name=body.full_name, birth_date=body.birth_date, phone=phone, branch_id=body.branch_id,
+                contract_no=contract_no, contract_date=body.contract_date,
                 level_id=body.level_id, source=body.source, status=body.status, notes=body.notes,
                 balance_lesson_price=level.lesson_price if level else 0)
     db.add(s)
@@ -195,9 +208,12 @@ async def get_student(student_id: int, db: DB, actor: Actor = require("students"
 @router.patch("/{student_id}", response_model=StudentOut)
 async def update_student(student_id: int, body: StudentPatch, db: DB, actor: Actor = require("students", "edit")) -> StudentOut:
     s = await get_student_scoped(db, actor, student_id, "students", "edit")
-    fields = ["full_name", "birth_date", "phone", "level_id", "source", "notes", "photo_url"]
+    fields = ["full_name", "birth_date", "phone", "level_id", "source", "notes", "photo_url", "contract_no", "contract_date"]
     before = snapshot(s, fields)
     data = body.model_dump(exclude_unset=True)
+    if "contract_no" in data:
+        data["contract_no"] = (data["contract_no"] or "").strip() or None
+        await _contract_free(db, data["contract_no"], s.id)
     if "phone" in data and data["phone"]:
         data["phone"] = normalize_phone(data["phone"])
     if data.get("phone") and data["phone"] != s.phone:

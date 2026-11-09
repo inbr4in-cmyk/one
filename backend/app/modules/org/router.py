@@ -2,13 +2,13 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter
 from pydantic import Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.core.audit import diff, snapshot, write_audit
 from app.core.deps import DB, Actor, CurrentActor, require, require_staff
 from app.core.errors import bad_request, forbidden, not_found
 from app.core.schemas import In, ORM
-from app.models import Branch, Level, Role, Room, User, UserBranch, UserRole
+from app.models import Branch, Group, Level, Role, Room, User, UserBranch, UserRole
 from app.models.identity import UserKind
 
 router = APIRouter(tags=["org"])
@@ -51,7 +51,8 @@ class RoomOut(ORM):
 
 class LevelIn(In):
     name: str = Field(max_length=255)
-    code: str = Field(pattern=r"^[A-Z0-9_-]{2,32}$")
+    # Optional: generated on create when the level is added from the dictionaries page; kept as is on edit.
+    code: str | None = Field(default=None, pattern=r"^[A-Z0-9_-]{2,32}$")
     color: str = Field(default="#1A6FD1", pattern=r"^#[0-9A-Fa-f]{6}$")
     lesson_price: int = Field(ge=0)
     order: int = 0
@@ -163,9 +164,12 @@ async def levels(db: DB, actor: CurrentActor) -> list[LevelOut]:
 
 @router.post("/levels", response_model=LevelOut, status_code=201)
 async def create_level(body: LevelIn, db: DB, actor: Actor = require("settings", "edit")) -> LevelOut:
-    if await db.scalar(select(Level).where(Level.code == body.code)):
+    if body.code and await db.scalar(select(Level).where(Level.code == body.code)):
         raise bad_request("Уровень с таким кодом уже есть")
-    lv = Level(**body.model_dump(), is_kids=body.track == "kids")
+    code = body.code or f"L{(await db.scalar(select(func.coalesce(func.max(Level.id), 0)))) + 1}"
+    while await db.scalar(select(Level.id).where(Level.code == code)):
+        code += "X"
+    lv = Level(**body.model_dump(exclude={"code"}), code=code, is_kids=body.track == "kids")
     db.add(lv)
     await db.flush()
     await write_audit(db, actor_id=actor.id, action="level.create", entity="level", entity_id=lv.id, ip=actor.ip, after=snapshot(lv))
@@ -180,13 +184,29 @@ async def update_level(level_id: int, body: LevelIn, db: DB, actor: Actor = requ
     if lv is None:
         raise not_found("Уровень")
     before = snapshot(lv)
-    for k, v in body.model_dump().items():
+    if body.code and body.code != lv.code and await db.scalar(select(Level.id).where(Level.code == body.code)):
+        raise bad_request("Уровень с таким кодом уже есть")
+    for k, v in body.model_dump(exclude={"code"} if not body.code else set()).items():
         setattr(lv, k, v)
     lv.is_kids = lv.track == "kids"
     bb, aa = diff(before, snapshot(lv))
     await write_audit(db, actor_id=actor.id, action="level.update", entity="level", entity_id=lv.id, ip=actor.ip, before=bb, after=aa)
     await db.commit()
     return LevelOut.model_validate(lv)
+
+
+@router.post("/levels/{level_id}/archive", status_code=204)
+async def archive_level(level_id: int, db: DB, actor: Actor = require("settings", "edit")) -> None:
+    """Archived, never deleted: students and payments keep their level. Not while active groups study at it."""
+    lv = await db.get(Level, level_id)
+    if lv is None or lv.archived_at is not None:
+        raise not_found("Уровень")
+    if await db.scalar(select(Group.id).where(Group.level_id == lv.id, Group.archived_at.is_(None)).limit(1)):
+        raise bad_request("На этом уровне есть действующие группы — сначала закройте или переведите их")
+    lv.archived_at = datetime.now(UTC)
+    await write_audit(db, actor_id=actor.id, action="level.archive", entity="level", entity_id=lv.id, ip=actor.ip,
+                      before={"name": lv.name})
+    await db.commit()
 
 
 @router.get("/staff-directory")

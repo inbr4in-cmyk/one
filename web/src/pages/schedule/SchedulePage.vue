@@ -5,7 +5,7 @@ import { useRoute } from 'vue-router'
 import { UiButton, UiIcon, UiSegmented, UiSkeleton } from '@/components/ui'
 import LessonModal from '@/components/schedule/LessonModal.vue'
 import LessonCreateModal from '@/components/schedule/LessonCreateModal.vue'
-import { academicsApi, type Group, type Lesson } from '@/api/academics'
+import { academicsApi, COURSE_KINDS, KIND_ICON, type CourseKind, type Group, type Lesson } from '@/api/academics'
 import type { Room } from '@/api/org'
 import { useAuthStore } from '@/stores/auth'
 import { useBranchStore } from '@/stores/branch'
@@ -43,6 +43,13 @@ const timer = setInterval(() => (now.value = new Date()), 60_000)
 onBeforeUnmount(() => clearInterval(timer))
 const teachers = useTeachers()
 
+/** Course format filter: all, group, duo, individual */
+const kind = ref<CourseKind | ''>('')
+const kindOf = (l: Lesson): CourseKind => l.kind ?? (l.group_id ? 'group' : 'individual')
+const kindOptions = computed(() => [
+  { value: '' as const, label: t('kind.all') },
+  ...COURSE_KINDS.map((k) => ({ value: k, label: t(`kind.${k}`), icon: KIND_ICON[k] })),
+])
 const viewOptions = computed(() => [
   { value: 'rooms' as const, label: t('schedule.byRooms') },
   { value: 'teachers' as const, label: t('schedule.byTeachers') },
@@ -85,13 +92,15 @@ const chips = computed(() => {
     return rooms.value.map((r) => ({ id: r.id, name: many ? `${r.name} · ${refs.branchName(r.branch_id)}` : r.name, n: count((l) => l.room_id === r.id), icon: 'door' }))
   }
   if (view.value === 'teachers') return teachers.value.map((x) => ({ id: x.id, name: x.name, n: count((l) => (l.actual_teacher_id ?? l.teacher_id) === x.id), icon: 'user' }))
-  return groups.value.map((g) => ({ id: g.id, name: g.name, n: count((l) => l.group_id === g.id), icon: 'groups' }))
+  return groups.value.filter((g) => !kind.value || (g.kind ?? 'group') === kind.value)
+    .map((g) => ({ id: g.id, name: g.name, n: count((l) => l.group_id === g.id), icon: KIND_ICON[g.kind ?? 'group'] }))
 })
 const shown = computed(() => {
-  if (!pick.value) return lessons.value
-  if (view.value === 'rooms') return lessons.value.filter((l) => l.room_id === pick.value)
-  if (view.value === 'teachers') return lessons.value.filter((l) => (l.actual_teacher_id ?? l.teacher_id) === pick.value)
-  return lessons.value.filter((l) => l.group_id === pick.value)
+  const base = kind.value ? lessons.value.filter((l) => kindOf(l) === kind.value) : lessons.value
+  if (!pick.value) return base
+  if (view.value === 'rooms') return base.filter((l) => l.room_id === pick.value)
+  if (view.value === 'teachers') return base.filter((l) => (l.actual_teacher_id ?? l.teacher_id) === pick.value)
+  return base.filter((l) => l.group_id === pick.value)
 })
 
 /* Conflicts: same room or same teacher at overlapping times (should not happen; flagged loudly if it does) */
@@ -192,6 +201,7 @@ const nConflicts = computed(() => shown.value.filter((l) => conflicts.value.has(
       <UiButton size="sm" :disabled="isThisWeek" @click="start = weekStart(new Date())">{{ t('schedule.thisWeek') }}</UiButton>
       <UiButton size="sm" icon="arrow" :aria-label="t('schedule.nextWeek')" @click="start = addDays(start, 7)" />
     </div>
+    <UiSegmented v-model="kind" :options="kindOptions" :label="t('kind.label')" size="sm" class="wrap" />
     <div class="legend">
       <span v-for="lv in legend" :key="lv.id" class="lv" :style="{ '--c': lv.c }">{{ lv.code }}</span>
       <span class="lv" style="--c: var(--red)">{{ t('schedule.trial') }}</span>
@@ -220,7 +230,7 @@ const nConflicts = computed(() => shown.value.filter((l) => conflicts.value.has(
       <TransitionGroup v-else name="fade" tag="div">
         <button v-for="l in dayLessons" :key="l.id" type="button" class="agenda" :class="{ conflict: conflicts.has(l.id), 'has-trial': l.trials }" :style="{ '--c': levelColor(l) }" @click="selected = l">
           <span class="tm num">{{ hm(l.starts_at, loc) }}<small>{{ hm(l.ends_at, loc) }}</small></span>
-          <span class="grow"><b>{{ l.group_name ?? t('schedule.individual') }}</b><small>{{ l.room_name }} · {{ l.teacher_name }}<template v-if="l.actual_teacher_id"> · {{ t('schedule.sub') }}</template></small></span>
+          <span class="grow"><b><UiIcon :name="KIND_ICON[kindOf(l)]" :size="14" class="kind-ico" :label="t(`kind.${kindOf(l)}`)" />{{ l.group_name ?? t('schedule.individual') }}</b><small>{{ l.room_name }} · {{ l.teacher_name }}<template v-if="l.actual_teacher_id"> · {{ t('schedule.sub') }}</template></small></span>
           <span v-if="conflicts.has(l.id)" class="chip red xs">{{ t('schedule.conflictShort') }}</span>
           <span v-else-if="l.trials" class="chip red xs">{{ t('schedule.trial') }}</span>
         </button>
@@ -246,7 +256,7 @@ const nConflicts = computed(() => shown.value.filter((l) => conflicts.value.has(
           :title="conflicts.get(p.l.id)?.join('\n')"
           @click="selected = p.l"
         >
-          <b>{{ p.l.group_name ?? t('schedule.individual') }}</b>
+          <b><UiIcon :name="KIND_ICON[kindOf(p.l)]" :size="11" class="kind-ico" :label="t(`kind.${kindOf(p.l)}`)" />{{ p.l.group_name ?? t('schedule.individual') }}</b>
           <span>{{ hm(p.l.starts_at, loc) }}–{{ hm(p.l.ends_at, loc) }} · {{ p.l.teacher_name }}</span>
           <span>{{ view === 'rooms' && pick ? (p.l.actual_teacher_id ? t('schedule.sub') : '') : p.l.room_name }}</span>
           <span v-if="conflicts.has(p.l.id)" class="trial conf"><UiIcon name="alert" :size="11" />{{ t('schedule.conflictShort') }}</span>
@@ -260,3 +270,7 @@ const nConflicts = computed(() => shown.value.filter((l) => conflicts.value.has(
   <LessonModal :lesson="selected" :teachers="teachers" :conflicts="selected ? conflicts.get(selected.id) ?? [] : []" @close="selected = null" @changed="load" />
   <LessonCreateModal v-model:open="creating" :groups="groups" :teachers="teachers" :room-id="view === 'rooms' ? pick || null : null" @created="load" />
 </template>
+
+<style scoped>
+.kind-ico { display: inline-block; vertical-align: -2px; margin-right: 4px; opacity: 0.85 }
+</style>

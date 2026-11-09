@@ -278,6 +278,43 @@ async def lessons_left_from(db: DB, p: Payment, s: Student) -> int:
     return max(0, min(own, s.lessons_left - later))
 
 
+class PaymentPatch(In):
+    method: str | None = Field(default=None, max_length=16)
+    note: str | None = Field(default=None, max_length=255)
+    paid_on: date | None = None
+
+
+@router.patch("/payments/{payment_id}", response_model=PaymentOut)
+async def edit_payment(payment_id: int, body: PaymentPatch, db: DB, actor: Actor = require("payments", "create")) -> PaymentOut:
+    """Fix a typo: payment method, comment, and (owner / branch admin) the date. The amount and lessons are not edited
+    here: they already changed the student's balance and bonuses — a refund and a new payment keep everything exact."""
+    p = await db.get(Payment, payment_id, with_for_update=True)
+    if p is None:
+        raise not_found("Оплата")
+    actor.ensure_branch("payments", "create", p.branch_id)
+    data = body.model_dump(exclude_unset=True)
+    before = {"method": p.method, "note": p.note, "paid_on": local(p.paid_at).date().isoformat()}
+    if "method" in data and data["method"] is not None:
+        if data["method"] not in PaymentMethod.ALL:
+            raise bad_request("Неизвестный способ оплаты")
+        p.method = data["method"]
+    if "note" in data:
+        p.note = (data["note"] or "").strip() or None
+    if data.get("paid_on") and data["paid_on"] != local(p.paid_at).date():
+        if not actor.can("finance", "edit"):
+            raise forbidden("Менять дату оплаты может только руководитель или админ филиала")
+        if data["paid_on"] > today() or data["paid_on"] < today() - timedelta(days=BACKDATE_DAYS):
+            raise bad_request(f"Дата оплаты — не в будущем и не раньше чем {BACKDATE_DAYS} дней назад")
+        p.paid_at = at_local(data["paid_on"], local(p.paid_at).time())
+    after = {"method": p.method, "note": p.note, "paid_on": local(p.paid_at).date().isoformat()}
+    if before != after:
+        await write_audit(db, actor_id=actor.id, action="payment.edit", entity="payment", entity_id=p.id, branch_id=p.branch_id,
+                          ip=actor.ip, before={k: v for k, v in before.items() if after[k] != v},
+                          after={k: v for k, v in after.items() if before[k] != v})
+    await db.commit()
+    return _out(p, await db.get(Student, p.student_id))
+
+
 @router.get("/payments/{payment_id}/refundable")
 async def refundable(payment_id: int, db: DB, actor: Actor = require("payments", "refund")) -> dict:
     """Limits for the refund form."""

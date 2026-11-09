@@ -20,7 +20,7 @@ const toast = useToastStore()
 
 const NETWORK = -1
 const form = reactive({ branch_id: 0, category_id: 0, amount: '', spent_on: '', note: '', recurring: false, recurring_day: '1' })
-const newCat = reactive({ open: false, name: '', code: '' })
+const newCat = reactive({ open: false, name: '' })
 const errors = reactive<Record<string, string | null>>({})
 const busy = ref(false)
 
@@ -44,16 +44,15 @@ watch(open, (v) => {
 async function addCategory() {
   errors.cat = null
   const name = newCat.name.trim()
-  const code = newCat.code.trim().toLowerCase()
-  if (name.length < 2 || !/^[a-z0-9_]{2,32}$/.test(code)) {
+  if (name.length < 2) {
     errors.cat = t('fin.catInvalid')
     return
   }
   try {
-    const c = await financeApi.createCategory({ name, code })
+    const c = await financeApi.createCategory({ name })
     emit('categoryAdded', c)
     form.category_id = c.id
-    Object.assign(newCat, { open: false, name: '', code: '' })
+    Object.assign(newCat, { open: false, name: '' })
   } catch (e) {
     errors.cat = e instanceof ApiError ? e.detail : t('errors.generic')
   }
@@ -96,10 +95,7 @@ async function submit() {
       </UiField>
       <button v-if="auth.can('finance.edit') && !newCat.open" type="button" class="linkbtn" style="align-self: flex-start" @click="newCat.open = true">{{ t('fin.addCategory') }}</button>
       <div v-if="newCat.open" class="subform">
-        <div class="form-2">
-          <UiInput v-model="newCat.name" :label="t('fin.catName')" :placeholder="t('fin.catNamePh')" />
-          <UiInput v-model="newCat.code" :label="t('fin.catCode')" placeholder="rent" :hint="t('fin.catCodeHint')" />
-        </div>
+        <UiInput v-model="newCat.name" :label="t('fin.catName')" :placeholder="t('fin.catNamePh')" />
         <p v-if="errors.cat" class="form-err" role="alert">{{ errors.cat }}</p>
         <div class="row-acts"><UiButton size="sm" @click="newCat.open = false">{{ t('common.cancel') }}</UiButton><UiButton size="sm" variant="navy" @click="addCategory">{{ t('common.add') }}</UiButton></div>
       </div>

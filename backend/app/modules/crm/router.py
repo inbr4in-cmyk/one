@@ -33,6 +33,9 @@ class StageOut(ORM):
     order: int
     is_won: bool
     is_lost: bool
+    stale_after_hours: int | None = None
+    # Built-in stages drive automation (trial booked, paid...): they can be renamed and recoloured, not removed.
+    system: bool = False
 
 
 class PipelineOut(ORM):
@@ -155,10 +158,98 @@ async def pipelines(db: DB, actor: Actor = require("crm", "view")) -> list[Pipel
     out = []
     for p in await db.scalars(select(Pipeline).where(Pipeline.archived_at.is_(None)).order_by(Pipeline.id)):
         o = PipelineOut.model_validate(p)
-        o.stages = [StageOut.model_validate(s) for s in await db.scalars(
+        o.stages = [_stage_out(s) for s in await db.scalars(
             select(LeadStage).where(LeadStage.pipeline_id == p.id, LeadStage.archived_at.is_(None)).order_by(LeadStage.order))]
         out.append(o)
     return out
+
+
+SYSTEM_STAGES = {"new", "contacted", "trial_booked", "trial_done", "paid", "lost", "left"}
+
+
+def _stage_out(st: LeadStage) -> StageOut:
+    o = StageOut.model_validate(st)
+    o.system = st.code in SYSTEM_STAGES or st.is_won or st.is_lost
+    return o
+
+
+class StageIn(In):
+    name: str = Field(min_length=1, max_length=120)
+    color: str = Field(default="#5B6782", pattern=r"^#[0-9A-Fa-f]{6}$")
+    stale_after_hours: int | None = Field(default=None, ge=1, le=24 * 365)
+
+
+@router.post("/pipelines/{pipeline_id}/stages", response_model=StageOut, status_code=201)
+async def add_stage(pipeline_id: int, body: StageIn, db: DB, actor: Actor = require("settings", "edit")) -> StageOut:
+    """A new column goes before the final ones (won / lost)."""
+    p = await db.get(Pipeline, pipeline_id)
+    if p is None or p.archived_at is not None:
+        raise not_found("Воронка")
+    stages = list(await db.scalars(select(LeadStage).where(LeadStage.pipeline_id == p.id, LeadStage.archived_at.is_(None))
+                                   .order_by(LeadStage.order)))
+    pos = next((i for i, x in enumerate(stages) if x.is_won or x.is_lost), len(stages))
+    n = await db.scalar(select(func.count()).select_from(LeadStage).where(LeadStage.pipeline_id == p.id))
+    st = LeadStage(pipeline_id=p.id, name=body.name.strip(), code=f"custom_{p.id}_{n + 1}", color=body.color,
+                   stale_after_hours=body.stale_after_hours, order=pos)
+    stages.insert(pos, st)
+    db.add(st)
+    for i, x in enumerate(stages):
+        x.order = i
+    await db.flush()
+    await write_audit(db, actor_id=actor.id, action="lead_stage.create", entity="lead_stage", entity_id=st.id, ip=actor.ip,
+                      after={"name": st.name, "pipeline": p.code})
+    await db.commit()
+    return _stage_out(st)
+
+
+@router.patch("/stages/{stage_id}", response_model=StageOut)
+async def edit_stage(stage_id: int, body: StageIn, db: DB, actor: Actor = require("settings", "edit")) -> StageOut:
+    st = await db.get(LeadStage, stage_id)
+    if st is None or st.archived_at is not None:
+        raise not_found("Этап")
+    before = snapshot(st, ["name", "color", "stale_after_hours"])
+    st.name, st.color, st.stale_after_hours = body.name.strip(), body.color, body.stale_after_hours
+    b, a = diff(before, snapshot(st, list(before)))
+    await write_audit(db, actor_id=actor.id, action="lead_stage.update", entity="lead_stage", entity_id=st.id, ip=actor.ip,
+                      before=b, after=a)
+    await db.commit()
+    return _stage_out(st)
+
+
+class StageOrderIn(In):
+    stage_ids: list[int] = Field(min_length=1, max_length=50)
+
+
+@router.put("/pipelines/{pipeline_id}/order", response_model=list[StageOut])
+async def order_stages(pipeline_id: int, body: StageOrderIn, db: DB, actor: Actor = require("settings", "edit")) -> list[StageOut]:
+    """New column order. Final stages (won / lost) always stay at the end."""
+    stages = {x.id: x for x in await db.scalars(select(LeadStage).where(LeadStage.pipeline_id == pipeline_id,
+                                                                         LeadStage.archived_at.is_(None)))}
+    if set(body.stage_ids) != set(stages) or len(body.stage_ids) != len(stages):
+        raise bad_request("Список этапов не совпадает — обновите страницу")
+    ordered = [stages[i] for i in body.stage_ids]
+    ordered = [x for x in ordered if not (x.is_won or x.is_lost)] + [x for x in ordered if x.is_won or x.is_lost]
+    for i, x in enumerate(ordered):
+        x.order = i
+    await write_audit(db, actor_id=actor.id, action="lead_stage.order", entity="pipeline", entity_id=pipeline_id, ip=actor.ip,
+                      after={"order": [x.name for x in ordered]})
+    await db.commit()
+    return [_stage_out(x) for x in ordered]
+
+
+@router.post("/stages/{stage_id}/archive", status_code=204)
+async def archive_stage(stage_id: int, db: DB, actor: Actor = require("settings", "edit")) -> None:
+    st = await db.get(LeadStage, stage_id)
+    if st is None or st.archived_at is not None:
+        raise not_found("Этап")
+    if _stage_out(st).system:
+        raise bad_request("Это встроенный этап, на нём работает автоматика. Его можно переименовать, но не убрать")
+    if await db.scalar(select(Lead.id).where(Lead.stage_id == st.id, Lead.archived_at.is_(None)).limit(1)):
+        raise bad_request("В этом этапе есть лиды — сначала перенесите их в другой этап")
+    st.archived_at = now()
+    await write_audit(db, actor_id=actor.id, action="lead_stage.archive", entity="lead_stage", entity_id=st.id, ip=actor.ip,
+                      before={"name": st.name})
+    await db.commit()
 
 
 @router.get("/board")

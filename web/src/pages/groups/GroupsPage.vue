@@ -2,10 +2,10 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import { UiButton, UiCard, UiChip, UiEmptyState, UiInput, UiSelect, UiTable, type TableColumn } from '@/components/ui'
+import { UiButton, UiCard, UiChip, UiEmptyState, UiIcon, UiInput, UiSelect, UiTable, type TableColumn } from '@/components/ui'
 import LevelTag from '@/components/students/LevelTag.vue'
 import GroupFormDrawer from '@/components/schedule/GroupFormDrawer.vue'
-import { academicsApi, type Group } from '@/api/academics'
+import { academicsApi, KIND_ICON, type Group } from '@/api/academics'
 import { useAuthStore } from '@/stores/auth'
 import { useBranchStore } from '@/stores/branch'
 import { useRefsStore } from '@/stores/refs'
@@ -82,7 +82,7 @@ const fill = (g: Group) => Math.min(100, Math.round((g.members / Math.max(1, g.c
       <template #cell-name="{ row }">
         <RouterLink :to="`/groups/${row.id}`" class="who2 rowlink" @click.stop>
           <span class="gav" :style="{ '--c': tone(refs.level(row.level_id)?.color) }">{{ row.name.slice(0, 2) }}</span>
-          <span><b>{{ row.name }}</b><small class="muted"> · {{ refs.branchName(row.branch_id) }}</small></span>
+          <span><b><UiIcon v-if="row.kind && row.kind !== 'group'" :name="KIND_ICON[row.kind]" :size="14" :label="t(`kind.${row.kind}`)" style="vertical-align: -2px; margin-right: 4px" />{{ row.name }}</b><small class="muted"> · {{ refs.branchName(row.branch_id) }}<template v-if="row.kind && row.kind !== 'group'"> · {{ t(`kind.${row.kind}`) }}</template></small></span>
         </RouterLink>
       </template>
       <template #cell-level_id="{ row }"><LevelTag :id="row.level_id" /></template>

@@ -43,7 +43,7 @@ const ops: typeof ru = {
     catNamePh: 'Жалдау ақысы',
     catCode: 'Коды',
     catCodeHint: 'латын әріптері, цифрлар және _',
-    catInvalid: 'Атауы кемінде 2 таңба, коды — латын әріптері, цифрлар және _',
+    catInvalid: 'Атауы кемінде 2 таңба',
     amount: 'Сомасы, ₸',
     amountInvalid: 'Нөлден үлкен соманы көрсетіңіз',
     spentOn: 'Күні',
@@ -634,6 +634,8 @@ const ops: typeof ru = {
     rate: {
       teacher_lesson_base: 'Мұғалім: сабақ үшін мөлшерлеме',
       teacher_extra_per_student: 'Мұғалім: шектен тыс әр оқушыға қосымша ақы',
+      teacher_individual_lesson: 'Мұғалім: жеке сабақ',
+      teacher_duo_lesson: 'Мұғалім: дуэт сабағы',
       teacher_extra_threshold: 'Мұғалім: қосымша ақы үшін оқушы шегі',
       teacher_trial_retention: 'Мұғалім: сынақтан кейін қалған оқушы үшін бонус',
       teacher_final_test_bonus: 'Мұғалім: қорытынды тест үшін бонус',

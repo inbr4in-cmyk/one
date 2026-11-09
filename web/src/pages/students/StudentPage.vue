@@ -185,6 +185,7 @@ const canRefund = (p: Payment) => auth.can('payments.refund') && p.refunded < p.
             <template v-if="s.age !== null">{{ t('students.age', { n: s.age }) }} · </template>
             <template v-if="s.phone">{{ formatPhone(s.phone) }} · </template>
             {{ t('students.since', { date: shortDate(s.created_at, loc) }) }}
+            <template v-if="s.contract_no"> · {{ t('contract.short', { no: s.contract_no }) }}<template v-if="s.contract_date"> {{ t('contract.from', { date: dmy(s.contract_date, loc) }) }}</template></template>
           </div>
           <div class="facts">
             <StatusChip :status="s.status" />

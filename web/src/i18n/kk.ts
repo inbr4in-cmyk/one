@@ -3,12 +3,14 @@ import modules from './modules.kk'
 import ops from './ops.kk'
 import tests from './tests.kk'
 import oldCrm from './oldcrm.kk'
+import dict from './dict.kk'
 
 const kk: Messages = {
   ...modules,
   ...ops,
   ...tests,
   ...oldCrm,
+  ...dict,
   app: {
     name: 'One English',
     tagline: 'Innovation in Learning',
@@ -73,6 +75,7 @@ const kk: Messages = {
     staff: 'Қызметкерлер',
     security: 'Қауіпсіздік',
     audit: 'Әрекеттер журналы',
+    dictionaries: 'Анықтамалықтар',
     settingsPage: 'Баптаулар мен мөлшерлемелер',
     documents: 'Ережелер мен келісімдер',
     feedback: 'Шағымдар мен ұсыныстар',

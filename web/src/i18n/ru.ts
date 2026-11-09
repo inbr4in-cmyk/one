@@ -2,12 +2,14 @@ import modules from './modules.ru'
 import ops from './ops.ru'
 import tests from './tests.ru'
 import oldCrm from './oldcrm.ru'
+import dict from './dict.ru'
 
 const ru = {
   ...modules,
   ...ops,
   ...tests,
   ...oldCrm,
+  ...dict,
   app: {
     name: 'One English',
     tagline: 'Innovation in Learning',
@@ -72,6 +74,7 @@ const ru = {
     staff: 'Сотрудники',
     security: 'Безопасность',
     audit: 'Журнал действий',
+    dictionaries: 'Справочники',
     settingsPage: 'Настройки и ставки',
     documents: 'Правила и согласия',
     feedback: 'Жалобы и предложения',

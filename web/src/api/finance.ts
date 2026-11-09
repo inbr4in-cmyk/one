@@ -81,7 +81,9 @@ export const financeApi = {
   ratings: (p: BranchQ & { period?: string } = {}) => http.get<Ratings>(`/payroll/ratings${qs(p)}`, { silent: true }),
   pnl: (p: BranchQ & { period: string }) => http.get<Pnl>(`/finance/pnl${qs(p)}`),
   categories: () => http.get<ExpenseCategory[]>('/expense-categories'),
-  createCategory: (body: { name: string; code: string }) => http.post<ExpenseCategory>('/expense-categories', body, { silent: true }),
+  createCategory: (body: { name: string; code?: string }) => http.post<ExpenseCategory>('/expense-categories', body, { silent: true }),
+  renameCategory: (id: number, name: string) => http.patch<ExpenseCategory>(`/expense-categories/${id}`, { name }),
+  archiveCategory: (id: number) => http.post<void>(`/expense-categories/${id}/archive`),
   expenses: (p: BranchQ & { period?: string; category_id?: number | null; limit?: number; offset?: number }) =>
     http.get<Page<Expense>>(`/expenses${qs(p)}`),
   createExpense: (body: ExpenseIn) => http.post<Expense>('/expenses', body, { silent: true }),
