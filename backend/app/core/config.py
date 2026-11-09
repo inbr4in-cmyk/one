@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     ig_page_id: str = ""
     # Approved WhatsApp Authentication template for login codes (Meta name). Empty = plain text (24 h window only).
     wa_otp_template: str = ""
+    # TESTING ONLY: while WhatsApp is not connected, students and parents sign in with this fixed 6-digit code
+    # instead of a sent one. Ignored as soon as WhatsApp is configured. Empty = off.
+    portal_test_code: str = Field(default="", pattern=r"^(\d{6})?$")
 
     # Push: Firebase service-account JSON (FCM HTTP v1 serves Android and iOS via APNs). Empty = log only.
     fcm_credentials_file: str = ""

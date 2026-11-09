@@ -170,7 +170,8 @@ async def otp_request(body: OtpRequestIn, request: Request, db: DB) -> None:
     """Students and parents sign in with a one-time code sent to WhatsApp."""
     ip = client_ip(request)
     s = get_settings()
-    if s.is_prod and not meta.wa_configured():
+    test_code = s.portal_test_code if not meta.wa_configured() else ""
+    if s.is_prod and not meta.wa_configured() and not test_code:
         # Checked before the phone lookup, so it reveals nothing about who is registered.
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Вход по коду WhatsApp пока не подключён. Обратитесь в школу.")
     phone = normalize_phone(body.phone)
@@ -180,10 +181,13 @@ async def otp_request(body: OtpRequestIn, request: Request, db: DB) -> None:
     # Same response whether or not the phone exists, so the endpoint can't be used to enumerate users.
     if user is None or not user.is_active or user.kind == UserKind.STAFF:
         return None
-    code = new_otp_code()
+    code = test_code or new_otp_code()
     await get_kv().set(f"otp:{phone}", sha256(code), 300)
     await get_kv().delete(f"otp-tries:{phone}")
-    await send_login_code(db, phone, code, to_user_id=user.id, locale=user.locale or "ru")
+    if test_code:  # testing mode: nothing is sent, the fixed code works; every use is in the audit log
+        await write_audit(db, actor_id=user.id, action="auth.test_code", entity="user", entity_id=user.id, ip=ip)
+    else:
+        await send_login_code(db, phone, code, to_user_id=user.id, locale=user.locale or "ru")
     await db.commit()
 
 

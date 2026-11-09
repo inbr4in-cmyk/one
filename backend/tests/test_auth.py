@@ -165,3 +165,29 @@ async def test_otp_login_for_parent(client, db):
     r = await client.post("/api/auth/otp/verify", json={"phone": "+77015550000", "code": "999999"})
     assert r.status_code == 401
     assert await get_kv().get("otp:+77015550000") is None  # burnt after the 6th try
+
+
+async def test_portal_test_code_only_while_whatsapp_not_connected(db, client, monkeypatch):
+    from app.core.config import get_settings
+    from app.models import User
+    from app.models.identity import UserKind
+
+    db.add(User(kind=UserKind.STUDENT, full_name="Тест Ученик", phone="+77059990011", locale="ru"))
+    await db.commit()
+    monkeypatch.setattr(get_settings(), "portal_test_code", "111111")
+    r = await client.post("/api/auth/otp/request", json={"phone": "+77059990011"})
+    assert r.status_code == 204
+    r = await client.post("/api/auth/otp/verify", json={"phone": "+77059990011", "code": "111111"})
+    assert r.status_code == 200, r.text
+    # Once WhatsApp is connected the fixed code no longer works.
+    monkeypatch.setattr(get_settings(), "wa_phone_number_id", "1")
+    monkeypatch.setattr(get_settings(), "wa_access_token", "x")
+    from app.services import meta
+
+    async def fake_send(*a, **k):
+        return meta.SendResult(True)
+    monkeypatch.setattr(meta, "wa_send_text", fake_send)
+    r = await client.post("/api/auth/otp/request", json={"phone": "+77059990011"})
+    assert r.status_code == 204
+    r = await client.post("/api/auth/otp/verify", json={"phone": "+77059990011", "code": "111111"})
+    assert r.status_code == 401
