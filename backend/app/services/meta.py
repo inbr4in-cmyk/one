@@ -129,4 +129,5 @@ async def ig_send_text(recipient_id: str, text: str, human_agent: bool = False) 
     payload: dict = {"recipient": {"id": recipient_id}, "message": {"text": text}}
     if human_agent:
         payload |= {"messaging_type": "MESSAGE_TAG", "tag": "HUMAN_AGENT"}
-    return await _post(f"{_ig_graph(s.ig_access_token)}/me/messages", s.ig_access_token, payload)
+    sender = s.ig_page_id if s.ig_page_id and not s.ig_access_token.startswith("IG") else "me"
+    return await _post(f"{_ig_graph(s.ig_access_token)}/{sender}/messages", s.ig_access_token, payload)

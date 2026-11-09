@@ -33,6 +33,8 @@ class Settings(BaseSettings):
     wa_phone_number_id: str = ""
     wa_access_token: str = ""
     ig_access_token: str = ""
+    # Facebook Page linked to the school's Instagram: replies go to /{page}/messages instead of /me/messages.
+    ig_page_id: str = ""
     # Approved WhatsApp Authentication template for login codes (Meta name). Empty = plain text (24 h window only).
     wa_otp_template: str = ""
 
