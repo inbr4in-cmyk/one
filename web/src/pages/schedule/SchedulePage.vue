@@ -174,9 +174,25 @@ const weekRows = computed(() => {
   const even = columns.value.filter((_, i) => i % 2 === 1 || i === 6)
   return [odd, even].filter((r) => r.length)
 })
+const capacityOf = (l: Lesson) => (l.group_id ? groups.value.find((g) => g.id === l.group_id)?.capacity : undefined)
+/** Slot table rows: lessons grouped by their exact start–end time. */
+const slotRows = computed(() => weekRows.value.map((row) => {
+  const slots = new Map<string, { key: string; from: string; to: string }>()
+  const days = row.map((c) => {
+    const bySlot = new Map<string, Lesson[]>()
+    for (const p of c.items) {
+      const from = hm(p.l.starts_at, loc.value)
+      const to = hm(p.l.ends_at, loc.value)
+      const key = `${from}-${to}`
+      slots.set(key, { key, from, to })
+      bySlot.set(key, [...(bySlot.get(key) ?? []), p.l])
+    }
+    return { d: c.d, bySlot }
+  })
+  const title = row.map((c) => dayLabel(c.d, loc.value, { weekday: 'short' })).join(' · ')
+  return { title, days, slots: [...slots.values()].sort((x, y) => x.key.localeCompare(y.key)) }
+}))
 const membersOf = (l: Lesson) => (l.group_id ? groups.value.find((g) => g.id === l.group_id)?.members : l.student_id ? 1 : undefined)
-const nowTop = computed(() => (hoursOf(now.value) - hours.value.h0) * PX)
-const nowVisible = computed(() => nowTop.value > 0 && nowTop.value < (hours.value.h1 - hours.value.h0) * PX)
 
 const levelColor = (l: Lesson) => tone(refs.level(l.level_id)?.color)
 const range = computed(() => {
@@ -189,6 +205,30 @@ const legend = computed(() => {
   const seen = new Map<number, string>()
   lessons.value.forEach((l) => l.level_id && seen.set(l.level_id, refs.level(l.level_id)?.code ?? ''))
   return [...seen].map(([id, code]) => ({ id, code, c: tone(refs.level(id)?.color) }))
+})
+/** Desktop layout: the week as two tables, or one day with rooms as columns. */
+const layout = ref<'week' | 'day'>('week')
+const layoutOptions = computed(() => [
+  { value: 'week' as const, label: t('schedule.layoutWeek') },
+  { value: 'day' as const, label: t('schedule.layoutDayRooms') },
+])
+const dayRooms = computed(() => {
+  const c = columns.value[Math.min(dayIdx.value, columns.value.length - 1)]
+  const list = c?.items.map((p) => p.l) ?? []
+  // All rooms of the branch, so free rooms are visible too (a picked room narrows it to one).
+  const roomMap = new Map<number, string>(rooms.value.filter((r) => !(view.value === 'rooms' && pick.value) || r.id === pick.value).map((r) => [r.id, r.name]))
+  const slots = new Map<string, { key: string; from: string; to: string }>()
+  const cell = new Map<string, Lesson[]>()
+  for (const l of list) {
+    roomMap.set(l.room_id, l.room_name ?? '')
+    const from = hm(l.starts_at, loc.value)
+    const to = hm(l.ends_at, loc.value)
+    const key = `${from}-${to}`
+    slots.set(key, { key, from, to })
+    cell.set(`${key}|${l.room_id}`, [...(cell.get(`${key}|${l.room_id}`) ?? []), l])
+  }
+  const roomsList = [...roomMap].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+  return { rooms: roomsList, slots: [...slots.values()].sort((a, b) => a.key.localeCompare(b.key)), cell }
 })
 const dayLessons = computed(() => columns.value[Math.min(dayIdx.value, columns.value.length - 1)]?.items.map((p) => p.l) ?? [])
 const nConflicts = computed(() => shown.value.filter((l) => conflicts.value.has(l.id)).length)
@@ -208,6 +248,7 @@ const nConflicts = computed(() => shown.value.filter((l) => conflicts.value.has(
       <UiButton size="sm" :disabled="isThisWeek" @click="start = weekStart(new Date())">{{ t('schedule.thisWeek') }}</UiButton>
       <UiButton size="sm" icon="arrow" :aria-label="t('schedule.nextWeek')" @click="start = addDays(start, 7)" />
     </div>
+    <UiSegmented v-if="!narrow" v-model="layout" :options="layoutOptions" :label="t('schedule.layout')" size="sm" />
     <UiSegmented v-model="kind" :options="kindOptions" :label="t('kind.label')" size="sm" class="wrap" />
     <div class="legend">
       <span v-for="lv in legend" :key="lv.id" class="lv" :style="{ '--c': lv.c }">{{ lv.code }}</span>
@@ -246,33 +287,77 @@ const nConflicts = computed(() => shown.value.filter((l) => conflicts.value.has(
     </div>
   </template>
 
-  <!-- Desktop: week grid -->
-  <div v-for="(row, ri) in narrow ? [] : weekRows" :key="ri" class="card sched-wrap scroll-x" style="margin-top: 12px">
-    <div class="sched" :style="{ gridTemplateColumns: `60px repeat(${row.length}, minmax(130px, 1fr))` }" :aria-busy="loading">
-      <div class="dh" style="padding: 0" />
-      <div v-for="c in row" :key="c.d.toISOString()" class="dh" :class="{ today: sameDay(c.d, now) }">
-        {{ dayLabel(c.d, loc, { weekday: 'short' }) }}<span>{{ dayLabel(c.d, loc, { day: 'numeric', month: 'short' }) }}<template v-if="sameDay(c.d, now)"> · {{ t('schedule.today') }}</template></span>
-      </div>
-      <div class="tc"><div v-for="h in hours.h1 - hours.h0" :key="h" class="hr">{{ hours.h0 + h - 1 }}:00</div></div>
-      <div v-for="c in row" :key="`c${c.d.toISOString()}`" class="day-col">
-        <div v-for="h in hours.h1 - hours.h0" :key="h" class="hr" />
-        <button
-          v-for="p in c.items" :key="p.l.id" type="button" class="blk"
-          :class="{ 'has-trial': p.l.trials, conflict: conflicts.has(p.l.id), cancelled: p.l.status === 'cancelled', marked: p.l.attendance_marked_at }"
-          :style="{ '--c': levelColor(p.l), top: `${p.top}px`, height: `${p.height}px`, left: `calc(${(p.lane / p.lanes) * 100}% + 4px)`, width: `calc(${100 / p.lanes}% - 8px)`, right: 'auto' }"
-          :title="conflicts.get(p.l.id)?.join('\n')"
-          @click="selected = p.l"
-        >
-          <b><UiIcon :name="KIND_ICON[kindOf(p.l)]" :size="11" class="kind-ico" :label="t(`kind.${kindOf(p.l)}`)" />{{ p.l.group_name ?? t('schedule.individual') }}<span v-if="membersOf(p.l) !== undefined" class="mem" :title="t('schedule.members', { n: membersOf(p.l) })"><UiIcon name="users" :size="11" />{{ membersOf(p.l) }}</span></b>
-          <span>{{ hm(p.l.starts_at, loc) }}–{{ hm(p.l.ends_at, loc) }} · {{ p.l.teacher_name }}</span>
-          <span>{{ view === 'rooms' && pick ? (p.l.actual_teacher_id ? t('schedule.sub') : '') : p.l.room_name }}</span>
-          <span v-if="conflicts.has(p.l.id)" class="trial conf"><UiIcon name="alert" :size="11" />{{ t('schedule.conflictShort') }}</span>
-          <span v-else-if="p.l.trials" class="trial"><UiIcon name="flag" :size="11" />{{ t('schedule.trial') }}</span>
-        </button>
-        <div v-if="sameDay(c.d, now) && nowVisible" class="nowline" :style="{ top: `${nowTop}px` }" />
-      </div>
+  <!-- Desktop: two tables (Mon/Wed/Fri, Tue/Thu/Sat): time slots as rows, days as columns, lessons stacked in full -->
+  <template v-if="!narrow && layout === 'day'">
+    <div class="day-tabs" role="tablist">
+      <button v-for="(c, i) in columns" :key="i" type="button" role="tab" :aria-selected="dayIdx === i" :class="{ today: sameDay(c.d, now) }" @click="dayIdx = i">
+        {{ dayLabel(c.d, loc, { weekday: 'short' }) }}<b class="num">{{ c.d.getDate() }}</b><i v-if="c.items.length" />
+      </button>
     </div>
-  </div>
+    <div v-if="loading" class="card" style="padding: 16px"><UiSkeleton :lines="6" /></div>
+    <section v-else class="card wk">
+      <div class="scroll-x">
+        <table class="wk-t" :style="{ minWidth: `${72 + dayRooms.rooms.length * 170}px` }">
+          <thead><tr><th class="wk-time" /><th v-for="r in dayRooms.rooms" :key="r.id">{{ r.name }}</th></tr></thead>
+          <tbody>
+            <tr v-for="sl in dayRooms.slots" :key="sl.key">
+              <td class="wk-time"><b>{{ sl.from }}</b><small>{{ sl.to }}</small></td>
+              <td v-for="r in dayRooms.rooms" :key="r.id">
+                <button
+                  v-for="l in dayRooms.cell.get(`${sl.key}|${r.id}`) ?? []" :key="l.id" type="button" class="wl"
+                  :class="{ 'has-trial': l.trials, conflict: conflicts.has(l.id), cancelled: l.status === 'cancelled', marked: l.attendance_marked_at }"
+                  :style="{ '--c': levelColor(l) }" @click="selected = l"
+                >
+                  <b><UiIcon :name="KIND_ICON[kindOf(l)]" :size="14" class="kind-ico" :label="t(`kind.${kindOf(l)}`)" />{{ l.group_name ?? t('schedule.individual') }}</b>
+                  <span v-if="membersOf(l) !== undefined" class="wl-n">{{ membersOf(l) }}<template v-if="capacityOf(l)">/{{ capacityOf(l) }}</template></span>
+                  <small>{{ l.teacher_name }}<template v-if="l.actual_teacher_id"> · {{ t('schedule.sub') }}</template></small>
+                </button>
+              </td>
+            </tr>
+            <tr v-if="!dayRooms.slots.length"><td class="muted" style="padding: 16px">{{ t('schedule.noLessonsDay') }}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </template>
+
+  <template v-else-if="!narrow">
+    <div v-if="loading" class="card" style="margin-top: 12px; padding: 16px"><UiSkeleton :lines="6" /></div>
+    <section v-for="(r, ri) in loading ? [] : slotRows" :key="ri" class="card wk" style="margin-top: 12px">
+      <div class="wk-title">{{ r.title }}</div>
+      <div class="scroll-x">
+        <table class="wk-t">
+          <thead>
+            <tr>
+              <th class="wk-time" />
+              <th v-for="c in r.days" :key="c.d.toISOString()" :class="{ today: sameDay(c.d, now) }">
+                {{ dayLabel(c.d, loc, { weekday: 'short' }) }} {{ dayLabel(c.d, loc, { day: 'numeric', month: 'short' }) }}<template v-if="sameDay(c.d, now)"> · {{ t('schedule.today') }}</template>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="sl in r.slots" :key="sl.key">
+              <td class="wk-time"><b>{{ sl.from }}</b><small>{{ sl.to }}</small></td>
+              <td v-for="c in r.days" :key="c.d.toISOString()">
+                <button
+                  v-for="l in c.bySlot.get(sl.key) ?? []" :key="l.id" type="button" class="wl"
+                  :class="{ 'has-trial': l.trials, conflict: conflicts.has(l.id), cancelled: l.status === 'cancelled', marked: l.attendance_marked_at }"
+                  :style="{ '--c': levelColor(l) }" :title="conflicts.get(l.id)?.join('\n')" @click="selected = l"
+                >
+                  <b><UiIcon :name="KIND_ICON[kindOf(l)]" :size="14" class="kind-ico" :label="t(`kind.${kindOf(l)}`)" />{{ l.group_name ?? t('schedule.individual') }}</b>
+                  <span v-if="membersOf(l) !== undefined" class="wl-n" :title="t('schedule.members', { n: membersOf(l) })">{{ membersOf(l) }}<template v-if="capacityOf(l)">/{{ capacityOf(l) }}</template></span>
+                  <small>{{ l.room_name }} · {{ l.teacher_name }}<template v-if="l.actual_teacher_id"> · {{ t('schedule.sub') }}</template></small>
+                  <span v-if="conflicts.has(l.id)" class="chip red xs">{{ t('schedule.conflictShort') }}</span>
+                  <span v-else-if="l.trials" class="chip red xs">{{ t('schedule.trial') }}</span>
+                </button>
+              </td>
+            </tr>
+            <tr v-if="!r.slots.length"><td :colspan="r.days.length + 1" class="muted" style="padding: 16px">{{ t('schedule.noLessonsDay') }}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </template>
 
   <LessonModal :lesson="selected" :teachers="teachers" :conflicts="selected ? conflicts.get(selected.id) ?? [] : []" @close="selected = null" @changed="load" />
   <LessonCreateModal v-model:open="creating" :groups="groups" :teachers="teachers" :room-id="view === 'rooms' ? pick || null : null" @created="load" />
@@ -280,5 +365,25 @@ const nConflicts = computed(() => shown.value.filter((l) => conflicts.value.has(
 
 <style scoped>
 .kind-ico { display: inline-block; vertical-align: -2px; margin-right: 4px; opacity: 0.85 }
+.wk { padding: 0; overflow: hidden }
+.wk-title { padding: 10px 16px; font-weight: 700; color: var(--accent-ink); background: var(--navy-50); border-bottom: 1px solid var(--line); text-transform: capitalize }
+.wk-t { width: 100%; border-collapse: collapse; table-layout: fixed; min-width: 760px }
+.wk-t th { text-align: left; padding: 10px 12px; font-size: 13.5px; font-weight: 600; border-bottom: 1px solid var(--line); text-transform: capitalize }
+.wk-t th.today { color: var(--red-ink) }
+.wk-t td { vertical-align: top; padding: 8px; border-bottom: 1px solid var(--grid); border-left: 1px solid var(--grid) }
+.wk-t tr:last-child td { border-bottom: 0 }
+.wk-t .wk-time { width: 72px; border-left: 0; font-size: 13px }
+.wk-t td.wk-time small { display: block; color: var(--muted) }
+.wl { position: relative; display: block; width: 100%; text-align: left; font: inherit; font-size: 13px; color: inherit; cursor: pointer; border: 0; border-left: 3px solid var(--c); border-radius: 8px; padding: 6px 54px 6px 10px; margin-bottom: 6px; background: color-mix(in srgb, var(--c) 10%, var(--surface)); transition: background var(--t-fast) var(--ease-out) }
+.wl:last-child { margin-bottom: 0 }
+.wl:hover { background: color-mix(in srgb, var(--c) 18%, var(--surface)) }
+.wl b { display: block; overflow-wrap: anywhere }
+.wl small { display: block; color: var(--muted) }
+.wl .wl-n { position: absolute; right: 8px; top: 6px; font-size: 12px; font-weight: 700; color: var(--accent-ink); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 0 7px }
+.wl .chip { margin-top: 4px }
+.wl.has-trial { outline: 1.5px dashed var(--red); outline-offset: -1.5px }
+.wl.conflict { outline: 2px solid var(--red); outline-offset: -2px }
+.wl.cancelled { opacity: 0.55; text-decoration: line-through }
+.wl.marked::after { content: ""; position: absolute; right: 9px; bottom: 8px; width: 7px; height: 7px; border-radius: 50%; background: var(--ok) }
 .mem { display: inline-flex; align-items: center; gap: 2px; margin-left: 6px; font-weight: 600; opacity: 0.8; white-space: nowrap }
 </style>
