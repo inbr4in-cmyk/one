@@ -24,11 +24,11 @@ def upgrade() -> None:
     op.add_column("students", sa.Column("contract_date", sa.Date(), nullable=True))
     op.create_index("students_contract_no_uq", "students", ["contract_no"], unique=True,
                     postgresql_where=sa.text("archived_at IS NULL AND contract_no IS NOT NULL"))
-    # Teacher pay for individual and duo lessons: a flat rate, same as the group base until the owner changes it.
-    for key in ("teacher_individual_lesson", "teacher_duo_lesson"):
+    # Teacher pay for individual and duo lessons: a flat rate per lesson (owner, 09.11: individual 2000).
+    for key, value in (("teacher_individual_lesson", 2000), ("teacher_duo_lesson", 2500)):
         op.execute(
             "INSERT INTO rate_settings (key, value, effective_from, created_at, updated_at) "
-            f"SELECT '{key}', 2500, DATE '2020-01-01', now(), now() "
+            f"SELECT '{key}', {value}, DATE '2020-01-01', now(), now() "
             f"WHERE NOT EXISTS (SELECT 1 FROM rate_settings WHERE key = '{key}')"
         )
 
