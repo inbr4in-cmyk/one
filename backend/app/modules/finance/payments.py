@@ -1,7 +1,7 @@
 """Course sale and payments (ТЗ 5.2, 9.2, 13.1). Sales staff can't take payments: payments.create is not in their role."""
 
 import re
-from datetime import datetime, timedelta
+from datetime import date, datetime, time, timedelta
 
 from fastapi import APIRouter, Header, Query, Response
 from pydantic import BaseModel, Field
@@ -20,7 +20,7 @@ from app.models.learning import AttendanceStatus, StudentStatus
 from app.modules.students.scope import get_student_scoped
 from app.services import balance as bal
 from app.services import crm
-from app.services.clock import local, local_range, now, parse_day
+from app.services.clock import at_local, local, local_range, now, parse_day, today
 from app.services.messaging import notify_guardians
 from app.services.payroll import accrue_once
 from app.services.values import rate
@@ -36,6 +36,8 @@ class PaymentIn(In):
     promo_code: str | None = Field(default=None, max_length=64)
     note: str | None = Field(default=None, max_length=255)
     level_id: int | None = Field(default=None, ge=1)
+    # Entering an earlier payment by hand (e.g. last month). Empty or today = now. Needs finance.edit.
+    paid_on: date | None = None
 
 
 class PaymentOut(ORM):
@@ -96,6 +98,7 @@ async def quote(body: PaymentIn, db: DB, actor: Actor = require("payments", "cre
 _IDEM_KEY = re.compile(r"^[A-Za-z0-9_\-:.]{8,64}$")
 # Without an Idempotency-Key, the same payment by the same person within this window is treated as a double tap.
 DOUBLE_TAP = timedelta(seconds=15)
+BACKDATE_DAYS = 180
 
 
 def _out(p: Payment, s: Student) -> PaymentOut:
@@ -135,13 +138,21 @@ async def take_payment(body: PaymentIn, db: DB, response: Response, actor: Actor
             Payment.lessons == body.lessons, Payment.method == body.method, Payment.paid_at > now() - DOUBLE_TAP))
         if recent:
             raise conflict("Такая оплата уже проведена только что. Обновите страницу")
+    backdated = body.paid_on is not None and body.paid_on != today()
+    if backdated:
+        if not actor.can("finance", "edit"):
+            raise forbidden("Указывать прошлую дату оплаты может только руководитель или админ филиала")
+        if body.paid_on > today():
+            raise bad_request("Дата оплаты не может быть в будущем")
+        if body.paid_on < today() - timedelta(days=BACKDATE_DAYS):
+            raise bad_request(f"Дата оплаты не может быть раньше чем {BACKDATE_DAYS} дней назад")
     q, level = await _quote(db, s, body, actor)
     prior = await db.scalar(select(func.count()).select_from(Payment).where(Payment.student_id == s.id, Payment.category == "course"))
     was_left = s.status == StudentStatus.LEFT
     p = Payment(student_id=s.id, branch_id=s.branch_id, level_id=level.id, category="course", amount=q.to_pay,
                 discount=q.discount, promo_code=body.promo_code, lessons=q.lessons, lesson_price=q.lesson_price,
-                method=body.method, received_by=actor.id, paid_at=now(), is_first=prior == 0, note=body.note,
-                idempotency_key=idempotency_key)
+                method=body.method, received_by=actor.id, paid_at=at_local(body.paid_on, time(12, 0)) if backdated else now(),
+                is_first=prior == 0, note=body.note, idempotency_key=idempotency_key)
     try:
         async with db.begin_nested():
             db.add(p)
@@ -154,18 +165,20 @@ async def take_payment(body: PaymentIn, db: DB, response: Response, actor: Actor
         return _out(done, await db.get(Student, done.student_id))
     await bal.apply(db, s, "payment", lessons=q.lessons, money=-q.money_balance_used, price=q.lesson_price,
                     ref=("payment", p.id), actor_id=actor.id, note=f"Оплата {q.lessons} × {q.lesson_price}")
-    s.last_payment_at = p.paid_at
+    s.last_payment_at = max(p.paid_at, s.last_payment_at) if s.last_payment_at else p.paid_at
     s.access_blocked_at = None
     if s.status in (StudentStatus.LEAD, StudentStatus.TRIAL, StudentStatus.LEFT, StudentStatus.FINISHED):
         s.status = StudentStatus.ACTIVE
     if not s.office_user_id:
         s.office_user_id = actor.id
-    await _sale_facts(db, s, p, actor, was_left)
-    await notify_guardians(db, s, "payment", {"amount": f"{p.amount:,}".replace(",", " "), "what": f"обучение ({level.name})",
-                                              "lessons": q.lessons, "left": s.lessons_left}, ref=("payment", p.id))
+    # An old payment typed in later: the parents were told back then, and no sales bonuses are paid retroactively.
+    if not backdated:
+        await _sale_facts(db, s, p, actor, was_left)
+        await notify_guardians(db, s, "payment", {"amount": f"{p.amount:,}".replace(",", " "), "what": f"обучение ({level.name})",
+                                                  "lessons": q.lessons, "left": s.lessons_left}, ref=("payment", p.id))
     await write_audit(db, actor_id=actor.id, action="payment.create", entity="payment", entity_id=p.id, branch_id=p.branch_id,
                       ip=actor.ip, after={"student_id": s.id, "amount": p.amount, "lessons": p.lessons, "method": p.method,
-                                          "discount": p.discount})
+                                          "discount": p.discount, "paid_on": body.paid_on.isoformat() if backdated else None})
     await db.commit()
     return _out(p, s)
 

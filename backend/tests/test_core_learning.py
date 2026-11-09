@@ -181,3 +181,49 @@ async def test_role_builder_privilege_escalation(db, client, owner_h):
     r = await client.post("/api/roles", headers=ah, json={"name": "Нормальная", "permissions": [
         {"module": "students", "action": "view", "scope": "branch"}]})
     assert r.status_code == 201
+
+
+async def test_edit_student_card_managers_only_and_login_follows_phone(db, client, owner_h):
+    from app.models import User
+
+    bid, teacher, room, g = await _setup(db, client, owner_h)
+    s = await _student(db, client, owner_h, bid)
+    other = await _student(db, client, owner_h, bid, name="Другой Ученик", phone="+77051119988")
+    office = await make_staff(db, "office_manager", [YANGI], "+77020000005", "Офис Менеджер")
+    th = await login(client, teacher.phone)
+    r = await client.patch(f"/api/students/{s['id']}", headers=th, json={"full_name": "Взлом"})
+    assert r.status_code == 403
+    oh = await login(client, office.phone)
+    r = await client.patch(f"/api/students/{s['id']}", headers=oh, json={"phone": other["phone"]})
+    assert r.status_code == 409
+    r = await client.patch(f"/api/students/{s['id']}", headers=oh, json={"full_name": "Алия Серикова", "phone": "+77051110000",
+                                                                           "notes": "перешла на утро"})
+    assert r.status_code == 200, r.text
+    assert r.json()["full_name"] == "Алия Серикова"
+    st = await db.get(Student, s["id"])
+    await db.refresh(st)
+    u = await db.get(User, st.user_id)
+    await db.refresh(u)
+    assert u.phone == "+77051110000" and u.full_name == "Алия Серикова"
+
+
+async def test_backdated_payment_admin_only_no_notification(db, client, owner_h):
+    from app.models import OutboundMessage, Payment
+    from app.services.clock import local
+
+    bid, teacher, room, g = await _setup(db, client, owner_h)
+    s = await _student(db, client, owner_h, bid)
+    office = await make_staff(db, "office_manager", [YANGI], "+77020000006", "Офис Два")
+    past = (today() - timedelta(days=20)).isoformat()
+    oh = await login(client, office.phone)
+    r = await client.post("/api/payments", headers=oh, json={"student_id": s["id"], "lessons": 8, "method": "cash", "paid_on": past})
+    assert r.status_code == 403
+    future = (today() + timedelta(days=1)).isoformat()
+    r = await client.post("/api/payments", headers=owner_h, json={"student_id": s["id"], "lessons": 8, "method": "cash", "paid_on": future})
+    assert r.status_code in (400, 422)
+    r = await client.post("/api/payments", headers=owner_h, json={"student_id": s["id"], "lessons": 8, "method": "cash", "paid_on": past})
+    assert r.status_code == 201, r.text
+    p = await db.get(Payment, r.json()["id"])
+    assert local(p.paid_at).date().isoformat() == past
+    sent = await db.scalar(select(OutboundMessage.id).where(OutboundMessage.template_code == "payment"))
+    assert sent is None

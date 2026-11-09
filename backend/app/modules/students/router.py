@@ -200,8 +200,20 @@ async def update_student(student_id: int, body: StudentPatch, db: DB, actor: Act
     data = body.model_dump(exclude_unset=True)
     if "phone" in data and data["phone"]:
         data["phone"] = normalize_phone(data["phone"])
+    if data.get("phone") and data["phone"] != s.phone:
+        if await db.scalar(select(Student.id).where(Student.phone == data["phone"], Student.id != s.id,
+                                                    Student.archived_at.is_(None))):
+            raise conflict("Ученик с таким телефоном уже есть")
+        if s.user_id and await db.scalar(select(User.id).where(User.phone == data["phone"], User.id != s.user_id)):
+            raise conflict("Этот телефон уже используется другим аккаунтом")
     for k, v in data.items():
         setattr(s, k, v)
+    # The student's own account follows the card: the phone is the portal login.
+    if s.user_id and (u := await db.get(User, s.user_id)) is not None:
+        if data.get("phone") and u.phone != s.phone:
+            u.phone = s.phone
+        if "full_name" in data and data["full_name"]:
+            u.full_name = s.full_name
     b, a = diff(before, snapshot(s, fields))
     await write_audit(db, actor_id=actor.id, action="student.update", entity="student", entity_id=s.id,
                       branch_id=s.branch_id, ip=actor.ip, before=b, after=a)

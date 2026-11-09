@@ -19,7 +19,11 @@ const toast = useToastStore()
 const loc = computed(() => locale.value as Locale)
 
 const PACKS = [8, 12, 24]
-const form = reactive({ lessons: '12', method: 'kaspi' as PaymentMethod, discount: '', promo: '', note: '' })
+const todayIso = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10) }
+const form = reactive({ lessons: '12', method: 'kaspi' as PaymentMethod, discount: '', promo: '', note: '', paid_on: todayIso() })
+/** Owners and branch admins may enter an earlier payment (backfilling past months). */
+const canBackdate = computed(() => auth.can('finance.edit'))
+const backdated = computed(() => canBackdate.value && !!form.paid_on && form.paid_on !== todayIso())
 const quote = ref<Quote | null>(null)
 const quoteError = ref<string | null>(null)
 const quoting = ref(false)
@@ -35,16 +39,17 @@ const body = computed(() => ({
   discount: auth.can('payments.discount') ? Math.max(0, Number(form.discount) || 0) : 0,
   promo_code: form.promo.trim() || null,
   note: form.note.trim() || null,
+  paid_on: backdated.value ? form.paid_on : null,
 }))
 
 watch(open, (v) => {
   if (!v) return
-  Object.assign(form, { lessons: '12', method: 'kaspi', discount: '', promo: '', note: '' })
+  Object.assign(form, { lessons: '12', method: 'kaspi', discount: '', promo: '', note: '', paid_on: todayIso() })
   quote.value = null
 })
 
 let timer: ReturnType<typeof setTimeout> | undefined
-watch([open, () => JSON.stringify({ ...body.value, method: '', note: '' })], () => {
+watch([open, () => JSON.stringify({ ...body.value, method: '', note: '', paid_on: '' })], () => {
   if (!open.value) return
   clearTimeout(timer)
   timer = setTimeout(fetchQuote, 250)
@@ -115,6 +120,8 @@ async function submit() {
         <UiInput v-if="auth.can('payments.discount')" v-model="form.discount" type="number" inputmode="numeric" :min="0" :label="t('payments.discount')" />
         <UiInput v-model="form.promo" :label="t('payments.promo')" autocomplete="off" />
       </div>
+      <UiInput v-if="canBackdate" v-model="form.paid_on" type="date" :max="todayIso()" :label="t('payments.paidOn')"
+        :hint="backdated ? t('payments.paidOnHint') : undefined" />
       <UiTextarea v-model="form.note" :label="t('payments.note')" :rows="2" />
 
       <div class="quote" aria-live="polite">

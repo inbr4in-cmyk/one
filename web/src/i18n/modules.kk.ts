@@ -142,6 +142,7 @@ const modules: typeof ru = {
       branchRequired: 'Филиалды таңдаңыз',
       guardianRequired: '18 жасқа толмаған оқушыға ата-ананы қосыңыз',
     },
+    edit: { action: 'Өңдеу', title: 'Оқушыны өңдеу', saved: 'Оқушы деректері сақталды', phoneHint: 'Оқушы кабинетке осы нөмір арқылы кіреді' },
     transfer: {
       action: 'Ауыстыру',
       title: 'Басқа топқа ауыстыру',
@@ -345,6 +346,8 @@ const modules: typeof ru = {
     methodLabel: 'Төлем тәсілі',
     discount: 'Жеңілдік, ₸',
     promo: 'Промокод',
+    paidOn: 'Төлем күні',
+    paidOnHint: 'Өткен күн: ата-анаға хабарлама жіберілмейді, сатылым бонусы есептелмейді',
     note: 'Пікір',
     first: 'алғашқы',
     from: 'Бастап',

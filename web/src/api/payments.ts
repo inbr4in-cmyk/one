@@ -12,6 +12,8 @@ export interface PaymentIn {
   promo_code?: string | null
   note?: string | null
   level_id?: number | null
+  /** ISO date; only for owners and branch admins (finance.edit) entering an earlier payment */
+  paid_on?: string | null
 }
 
 export interface Quote {

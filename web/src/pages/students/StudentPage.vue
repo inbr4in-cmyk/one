@@ -11,6 +11,7 @@ import TransferModal from '@/components/students/TransferModal.vue'
 import FreezeModal from '@/components/students/FreezeModal.vue'
 import GuardianModal from '@/components/students/GuardianModal.vue'
 import RefundModal from '@/components/students/RefundModal.vue'
+import StudentEditModal from '@/components/students/StudentEditModal.vue'
 import AttendanceCard from '@/components/students/AttendanceCard.vue'
 import StudentCoinsTab from '@/components/store/StudentCoinsTab.vue'
 import StudentBooksTab from '@/components/store/StudentBooksTab.vue'
@@ -44,7 +45,7 @@ const ledger = ref<LedgerEntry[] | null>(null)
 const payments = ref<Payment[] | null>(null)
 const attempts = ref<Attempt[] | null>(null)
 const marks = ref<AttendanceMark[] | null>(null)
-const modal = ref<'pay' | 'transfer' | 'freeze' | 'guardian' | 'unfreeze' | 'archive' | null>(null)
+const modal = ref<'pay' | 'transfer' | 'freeze' | 'guardian' | 'unfreeze' | 'archive' | 'edit' | null>(null)
 const refundOf = ref<Payment | null>(null)
 const busy = ref(false)
 
@@ -193,6 +194,7 @@ const canRefund = (p: Payment) => auth.can('payments.refund') && p.refunded < p.
           </div>
         </div>
         <div class="head-acts">
+          <UiButton v-if="auth.can('students.edit')" icon="edit" @click="modal = 'edit'">{{ t('students.edit.action') }}</UiButton>
           <UiButton v-if="auth.can('chats.use') && s.user_id" icon="chat" @click="message">{{ t('students.message') }}</UiButton>
           <UiButton v-if="auth.can('students.transfer') && s.status !== 'frozen'" icon="arrow" @click="modal = 'transfer'">{{ t('students.transfer.action') }}</UiButton>
           <UiButton v-if="auth.can('students.transfer') && s.status === 'active'" icon="clock" @click="modal = 'freeze'">{{ t('students.freeze.action') }}</UiButton>
@@ -330,6 +332,7 @@ const canRefund = (p: Payment) => auth.can('payments.refund') && p.refunded < p.
     <PaymentModal :open="modal === 'pay'" :student="s" @update:open="(v) => !v && (modal = null)" @paid="afterPayment" />
     <TransferModal :open="modal === 'transfer'" :student="s" @update:open="(v) => !v && (modal = null)" @done="updated" />
     <FreezeModal :open="modal === 'freeze'" :student="s" @update:open="(v) => !v && (modal = null)" @done="updated" />
+    <StudentEditModal :open="modal === 'edit'" :student="s" @update:open="(v) => !v && (modal = null)" @done="updated" />
     <GuardianModal :open="modal === 'guardian'" :student="s" @update:open="(v) => !v && (modal = null)" @done="updated" />
     <RefundModal :payment="refundOf" @close="refundOf = null" @done="afterPayment" />
     <UiPrompt :open="modal === 'unfreeze'" :title="t('students.unfreeze')" :text="t('students.unfreezeText')" :confirm-label="t('students.unfreeze')" :busy="busy" @update:open="(v) => !v && (modal = null)" @confirm="unfreeze" />
