@@ -117,3 +117,23 @@ async def test_level_create_without_code_and_edit_price(db, client, owner_h):
     r = await client.patch(f"/api/levels/{lv['id']}", headers=owner_h, json={"name": "Дуэт Elementary", "lesson_price": 5000})
     assert r.status_code == 200 and r.json()["lesson_price"] == 5000 and r.json()["code"] == lv["code"]
     assert (await client.post(f"/api/levels/{lv['id']}/archive", headers=owner_h)).status_code == 204
+
+
+async def test_lead_sources_dictionary(db, client, owner_h):
+    from tests.conftest import branch_id
+
+    r = await client.post("/api/crm/sources", headers=owner_h, json={"name": "TikTok"})
+    assert r.status_code == 201, r.text
+    code = r.json()["code"]
+    names = {s["code"]: s for s in (await client.get("/api/crm/sources", headers=owner_h)).json()}
+    assert names[code]["name"] == "TikTok" and names["instagram"]["system"]
+    assert (await client.patch("/api/crm/sources/site", headers=owner_h, json={"name": "Сайт школы"})).status_code == 200
+    assert (await client.post("/api/crm/sources/instagram/archive", headers=owner_h)).status_code == 400
+    bid = await branch_id(db, "Янги шахар")
+    r = await client.post("/api/crm/leads", headers=owner_h, json={"full_name": "Лид ТикТок", "phone": "+77051239911", "branch_id": bid, "source": code})
+    assert r.status_code == 201, r.text
+    r = await client.post("/api/crm/leads", headers=owner_h, json={"full_name": "Лид Нет", "phone": "+77051239912", "branch_id": bid, "source": "nope"})
+    assert r.status_code == 400
+    assert (await client.post(f"/api/crm/sources/{code}/archive", headers=owner_h)).status_code == 204
+    names = {s["code"]: s for s in (await client.get("/api/crm/sources", headers=owner_h)).json()}
+    assert names[code]["hidden"] and names["site"]["name"] == "Сайт школы"

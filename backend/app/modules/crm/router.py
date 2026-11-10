@@ -6,7 +6,7 @@ from sqlalchemy import func, select
 
 from app.core.query import icontains
 from app.core.audit import diff, snapshot, write_audit
-from app.core.deps import DB, Actor, require
+from app.core.deps import DB, Actor, require, require_staff
 from app.core.errors import bad_request, conflict, forbidden, not_found
 from app.core.permissions import NETWORK
 from app.core.schemas import In, ORM
@@ -285,7 +285,7 @@ async def board(db: DB, actor: Actor = require("crm", "view"), pipeline: str = "
 @router.post("/leads", response_model=LeadCard, status_code=201)
 async def new_lead(body: LeadIn, db: DB, actor: Actor = require("crm", "create")) -> LeadCard:
     actor.ensure_branch("crm", "create", body.branch_id)
-    if body.source not in LeadSource.ALL:
+    if not await valid_source(db, body.source):
         raise bad_request("Неизвестный источник")
     phone = normalize_phone(body.phone) if body.phone else None
     if dup := await find_by_phone(db, phone):
@@ -499,3 +499,111 @@ async def analytics(db: DB, actor: Actor = require("crm", "view"), date_from: da
             "by_owner": [{"user_id": int(k) if k != "None" else None, "name": names.get(int(k)) if k != "None" else None, **v}
                          for k, v in group_by(lambda x: x.owner_id).items()],
             "by_branch": group_by(lambda x: x.branch_id), "lost_reasons": dict(sorted(reasons.items(), key=lambda kv: -kv[1]))}
+
+
+# ---- «Откуда узнал»: lead sources, edited on the Справочники page ----
+# Built-in codes stay valid forever (the inbox, QR test, import and the «Возврат» funnel set them);
+# they can be renamed or hidden from pickers. Own sources get codes s1, s2… Stored in settings["lead_sources"].
+BUILTIN_SOURCES = {
+    LeadSource.INSTAGRAM: "Instagram", LeadSource.WHATSAPP: "WhatsApp", LeadSource.QR: "QR-тест", LeadSource.SITE: "Сайт",
+    LeadSource.REFERRAL: "Рекомендация", LeadSource.WALK_IN: "Пришёл сам", LeadSource.SALES: "Звонок / офис",
+    LeadSource.RETURN: "Возврат", LeadSource.IMPORT: "Импорт из таблицы",
+}
+# Set by the system itself: renamable, never hidden from lists.
+SYSTEM_SOURCES = {LeadSource.INSTAGRAM, LeadSource.WHATSAPP, LeadSource.QR, LeadSource.RETURN, LeadSource.IMPORT}
+SOURCES_KEY = "lead_sources"
+
+
+class SourceOut(BaseModel):
+    code: str
+    name: str
+    system: bool = False
+    builtin: bool = False
+    hidden: bool = False
+
+
+class SourceIn(In):
+    name: str = Field(min_length=2, max_length=60)
+
+
+async def _source_rows(db) -> tuple[list[dict], "Setting | None"]:
+    from app.models import Setting
+
+    row = await db.scalar(select(Setting).where(Setting.key == SOURCES_KEY))
+    import copy
+
+    # A deep copy: editing in place would make the JSON column look unchanged and nothing would be saved.
+    return (copy.deepcopy(list((row.value or {}).get("v") or [])) if row else []), row
+
+
+async def list_sources(db) -> list[SourceOut]:
+    stored, _ = await _source_rows(db)
+    by = {x["code"]: x for x in stored if isinstance(x, dict) and x.get("code")}
+    out = [SourceOut(code=c, name=by.get(c, {}).get("name") or n, system=c in SYSTEM_SOURCES, builtin=True,
+                     hidden=bool(by.get(c, {}).get("hidden")) and c not in SYSTEM_SOURCES)
+           for c, n in BUILTIN_SOURCES.items()]
+    out += [SourceOut(code=c, name=x.get("name") or c, hidden=bool(x.get("hidden"))) for c, x in by.items() if c not in BUILTIN_SOURCES]
+    return out
+
+
+async def valid_source(db, code: str) -> bool:
+    return code in LeadSource.ALL or any(s.code == code for s in await list_sources(db))
+
+
+async def _save_sources(db, actor: Actor, rows: list[dict], note: str) -> None:
+    from app.models import Setting
+
+    _, row = await _source_rows(db)
+    if row is None:
+        row = Setting(key=SOURCES_KEY, value={"v": rows}, updated_by=actor.id)
+        db.add(row)
+    else:
+        row.value, row.updated_by = {"v": rows}, actor.id
+    await db.flush()
+    await write_audit(db, actor_id=actor.id, action="lead_source." + note, entity="setting", entity_id=row.id, ip=actor.ip,
+                      after={"v": rows})
+    await db.commit()
+
+
+@router.get("/sources", response_model=list[SourceOut])
+async def get_sources(db: DB, actor: Actor = require_staff()) -> list[SourceOut]:
+    return await list_sources(db)
+
+
+@router.post("/sources", response_model=SourceOut, status_code=201)
+async def add_source(body: SourceIn, db: DB, actor: Actor = require("settings", "edit")) -> SourceOut:
+    name = body.name.strip()
+    if any(s.name.lower() == name.lower() and not s.hidden for s in await list_sources(db)):
+        raise bad_request("Такой источник уже есть")
+    stored, _ = await _source_rows(db)
+    n = 1 + max([int(x["code"][1:]) for x in stored if str(x.get("code", "")).startswith("s") and x["code"][1:].isdigit()] or [0])
+    stored.append({"code": f"s{n}", "name": name})
+    await _save_sources(db, actor, stored, "create")
+    return SourceOut(code=f"s{n}", name=name)
+
+
+async def _update_source(db, actor: Actor, code: str, **changes) -> None:
+    if not any(s.code == code for s in await list_sources(db)):
+        raise not_found("Источник")
+    stored, _ = await _source_rows(db)
+    for x in stored:
+        if x.get("code") == code:
+            x.update(changes)
+            break
+    else:
+        stored.append({"code": code, **changes})
+    await _save_sources(db, actor, stored, "update")
+
+
+@router.patch("/sources/{code}", response_model=SourceOut)
+async def rename_source(code: str, body: SourceIn, db: DB, actor: Actor = require("settings", "edit")) -> SourceOut:
+    await _update_source(db, actor, code, name=body.name.strip())
+    return next(s for s in await list_sources(db) if s.code == code)
+
+
+@router.post("/sources/{code}/archive", status_code=204)
+async def archive_source(code: str, db: DB, actor: Actor = require("settings", "edit")) -> None:
+    """Hidden from pickers; leads that already have it keep it and still show its name."""
+    if code in SYSTEM_SOURCES:
+        raise bad_request("Этот источник система ставит сама, его можно только переименовать")
+    await _update_source(db, actor, code, hidden=True)

@@ -1,6 +1,7 @@
 import { http, qs } from './http'
 
-export type LeadSource = 'sales' | 'qr' | 'site' | 'instagram' | 'whatsapp' | 'referral' | 'return' | 'walk_in' | 'import'
+/** Built-in codes; the school can add its own (s1, s2…) on the Справочники page, so any string is possible. */
+export type LeadSource = string
 export const LEAD_SOURCES: LeadSource[] = ['instagram', 'whatsapp', 'qr', 'site', 'referral', 'walk_in', 'sales', 'return']
 
 export interface Stage {
@@ -139,4 +140,13 @@ export const crmApi = {
   archive: (id: number) => http.post<null>(`/crm/leads/${id}/archive`),
   analytics: (p: { date_from?: string; date_to?: string; branch_id?: number | null }) =>
     http.get<Analytics>(`/crm/analytics${qs(p)}`),
+}
+
+/** «Откуда узнал»: built-in and the school's own sources */
+export interface SourceItem { code: string; name: string; system: boolean; builtin: boolean; hidden: boolean }
+export const sourcesApi = {
+  list: () => http.get<SourceItem[]>('/crm/sources', { silent: true }),
+  add: (name: string) => http.post<SourceItem>('/crm/sources', { name }),
+  rename: (code: string, name: string) => http.patch<SourceItem>(`/crm/sources/${code}`, { name }),
+  archive: (code: string) => http.post<void>(`/crm/sources/${code}/archive`, {}),
 }

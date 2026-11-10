@@ -3,7 +3,7 @@ import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { UiButton, UiField, UiInput, UiModal, UiPhoneInput, UiSelect, UiTextarea } from '@/components/ui'
 import { studentsApi, type Student } from '@/api/students'
-import { LEAD_SOURCES } from '@/api/crm'
+import { useSourcesStore } from '@/stores/sources'
 import { ApiError } from '@/api/http'
 import { useRefsStore } from '@/stores/refs'
 import { useToastStore } from '@/stores/toast'
@@ -21,10 +21,13 @@ const errors = reactive<{ full_name: string | null; phone: string | null; contra
 const busy = ref(false)
 
 const levelOptions = computed(() => [{ value: 0, label: t('students.noLevel') }, ...refs.levels.map((l) => ({ value: l.id, label: l.name }))])
+const sources = useSourcesStore()
+void sources.load()
 const sourceOptions = computed(() => {
-  const list: string[] = [...LEAD_SOURCES]
-  if (form.source && !list.includes(form.source)) list.push(form.source)
-  return [{ value: '', label: '—' }, ...list.map((s) => ({ value: s, label: (LEAD_SOURCES as readonly string[]).includes(s) ? t(`crm.source.${s}`) : s }))]
+  const list = sources.options(form.source)
+  // An old free-text value (e.g. from the old CRM) stays selectable
+  if (form.source && !list.some((o) => o.value === form.source)) list.push({ value: form.source, label: form.source })
+  return [{ value: '', label: '—' }, ...list]
 })
 const age = computed(() => ageOf(form.birth_date || null))
 

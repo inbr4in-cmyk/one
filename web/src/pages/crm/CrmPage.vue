@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useSourceLabel } from '@/composables/useSourceLabel'
+import { useSourcesStore } from '@/stores/sources'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
@@ -8,7 +9,7 @@ import LevelTag from '@/components/students/LevelTag.vue'
 import LeadCreateDrawer from '@/components/crm/LeadCreateDrawer.vue'
 import LeadDrawer from '@/components/crm/LeadDrawer.vue'
 import CrmAnalytics from '@/components/crm/CrmAnalytics.vue'
-import { crmApi, LEAD_SOURCES, type Board, type Lead, type Pipeline, type Stage } from '@/api/crm'
+import { crmApi, type Board, type Lead, type Pipeline, type Stage } from '@/api/crm'
 import { ApiError } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
 import { useBranchStore } from '@/stores/branch'
@@ -51,7 +52,9 @@ const tabs = computed(() => [
   })),
   { value: 'analytics', label: t('crm.tabAnalytics') },
 ])
-const sourceOptions = computed(() => [{ value: '', label: t('crm.allSources') }, ...LEAD_SOURCES.map((s) => ({ value: s, label: t(`crm.source.${s}`) }))])
+const sourcesStore = useSourcesStore()
+void sourcesStore.load()
+const sourceOptions = computed(() => [{ value: '', label: t('crm.allSources') }, ...sourcesStore.items.map((s) => ({ value: s.code, label: s.name }))])
 const owners = computed(() => {
   const m = new Map<number, string>()
   board.value?.columns.forEach((c) => c.leads.forEach((l) => l.owner_id && l.owner_name && m.set(l.owner_id, l.owner_name)))

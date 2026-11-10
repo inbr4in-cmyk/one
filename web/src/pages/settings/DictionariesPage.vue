@@ -4,7 +4,8 @@ import { useI18n } from 'vue-i18n'
 import { UiButton, UiCard, UiEmptyState, UiField, UiInput, UiModal, UiPrompt, UiSelect, UiSkeleton, UiTabs } from '@/components/ui'
 import { financeApi, type ExpenseCategory } from '@/api/finance'
 import { orgApi, type Branch, type Level, type LevelIn, type Room } from '@/api/org'
-import { crmApi, type Pipeline, type Stage } from '@/api/crm'
+import { crmApi, sourcesApi, type Pipeline, type Stage } from '@/api/crm'
+import { useSourcesStore } from '@/stores/sources'
 import { packagesApi, type SubscriptionPackage } from '@/api/payments'
 import { useAuthStore } from '@/stores/auth'
 import { useRefsStore } from '@/stores/refs'
@@ -15,7 +16,7 @@ import type { Locale } from '@/i18n'
 
 /** Reference lists the school edits itself: expense items, levels with the lesson price, lead funnel columns.
  *  Nothing is deleted: removed items go to the archive so past payments, expenses and leads keep their names. */
-type Tab = 'expenses' | 'levels' | 'packages' | 'rooms' | 'stages'
+type Tab = 'expenses' | 'levels' | 'packages' | 'sources' | 'rooms' | 'stages'
 const { t, locale } = useI18n()
 const auth = useAuthStore()
 const refs = useRefsStore()
@@ -24,12 +25,12 @@ const loc = computed(() => locale.value as Locale)
 
 const tabs = computed(() => [
   ...(auth.can('finance.edit') ? [{ value: 'expenses' as Tab, label: t('dict.tab.expenses') }] : []),
-  ...(auth.can('settings.edit') ? [{ value: 'levels' as Tab, label: t('dict.tab.levels') }, { value: 'packages' as Tab, label: t('dict.tab.packages') }, { value: 'stages' as Tab, label: t('dict.tab.stages') }] : []),
+  ...(auth.can('settings.edit') ? [{ value: 'levels' as Tab, label: t('dict.tab.levels') }, { value: 'packages' as Tab, label: t('dict.tab.packages') }, { value: 'stages' as Tab, label: t('dict.tab.stages') }, { value: 'sources' as Tab, label: t('dict.tab.sources') }] : []),
   ...(auth.can('branches.edit') ? [{ value: 'rooms' as Tab, label: t('dict.tab.rooms') }] : []),
 ])
 const tab = ref<Tab>(tabs.value[0]?.value ?? 'levels')
 const busy = ref(false)
-const confirm = ref<{ kind: Tab; id: number; name: string } | null>(null)
+const confirm = ref<{ kind: Tab; id: number; name: string; code?: string } | null>(null)
 
 /* ---------- expense items ---------- */
 const cats = ref<ExpenseCategory[] | null>(null)
@@ -60,6 +61,37 @@ async function saveCat() {
     cats.value = (cats.value ?? []).map((x) => (x.id === c.id ? c : x))
     catEdit.id = null
     toast.ok(t('dict.saved'))
+  } finally {
+    busy.value = false
+  }
+}
+
+/* ---------- «Откуда узнал» (lead sources) ---------- */
+const sources = useSourcesStore()
+const srcNew = ref('')
+const srcEdit = reactive<{ code: string | null; name: string }>({ code: null, name: '' })
+const srcShown = computed(() => sources.items.filter((x) => !x.hidden && x.code !== 'import'))
+async function addSrc() {
+  const name = srcNew.value.trim()
+  if (name.length < 2) return toast.error(t('dict.nameMin'))
+  busy.value = true
+  try {
+    await sourcesApi.add(name)
+    srcNew.value = ''
+    toast.ok(t('dict.added'))
+    await sources.load(true)
+  } finally {
+    busy.value = false
+  }
+}
+async function saveSrc() {
+  if (!srcEdit.code || srcEdit.name.trim().length < 2) return
+  busy.value = true
+  try {
+    await sourcesApi.rename(srcEdit.code, srcEdit.name.trim())
+    srcEdit.code = null
+    toast.ok(t('dict.saved'))
+    await sources.load(true)
   } finally {
     busy.value = false
   }
@@ -253,6 +285,9 @@ async function doArchive() {
     } else if (c.kind === 'packages') {
       await packagesApi.archive(c.id)
       packages.value = (packages.value ?? []).filter((x) => x.id !== c.id)
+    } else if (c.kind === 'sources' && c.code) {
+      await sourcesApi.archive(c.code)
+      await sources.load(true)
     } else if (c.kind === 'rooms') {
       await orgApi.archiveRoom(c.id)
       await loadRooms()
@@ -271,6 +306,7 @@ function loadTab() {
   if (tab.value === 'expenses' && !cats.value) loadCats()
   if (tab.value === 'stages' && !pipelines.value) loadPipelines()
   if (tab.value === 'packages' && !packages.value) loadPackages()
+  if (tab.value === 'sources') void sources.load(true)
   if (tab.value === 'rooms' && !roomsBy.value) loadRooms()
 }
 onMounted(() => {
@@ -316,6 +352,29 @@ watch(tab, loadTab)
         <UiButton size="sm" variant="ghost" icon="archive" :aria-label="`${t('dict.archive')}: ${c.name}`" @click="confirm = { kind: 'expenses', id: c.id, name: c.name }" />
       </template>
     </div>
+  </UiCard>
+
+  <!-- «Откуда узнал» -->
+  <UiCard v-else-if="tab === 'sources'">
+    <form class="add-row" @submit.prevent="addSrc">
+      <UiInput v-model="srcNew" :label="t('dict.newSource')" :placeholder="t('dict.sourcePh')" :maxlength="60" />
+      <UiButton type="submit" variant="navy" icon="plus" :loading="busy">{{ t('common.add') }}</UiButton>
+    </form>
+    <div v-for="x in srcShown" :key="x.code" class="list-row">
+      <template v-if="srcEdit.code === x.code">
+        <form class="grow edit-row" @submit.prevent="saveSrc">
+          <UiInput v-model="srcEdit.name" :label="t('dict.name')" :maxlength="60" autofocus />
+          <UiButton type="submit" size="sm" variant="navy" :loading="busy">{{ t('common.save') }}</UiButton>
+          <UiButton size="sm" @click="srcEdit.code = null">{{ t('common.cancel') }}</UiButton>
+        </form>
+      </template>
+      <template v-else>
+        <div class="grow"><b>{{ x.name }}</b><span v-if="x.system">{{ t('dict.systemSource') }}</span></div>
+        <UiButton size="sm" variant="ghost" icon="edit" :aria-label="`${t('common.edit')}: ${x.name}`" @click="srcEdit.code = x.code; srcEdit.name = x.name" />
+        <UiButton v-if="!x.system" size="sm" variant="ghost" icon="archive" :aria-label="`${t('dict.archive')}: ${x.name}`" @click="confirm = { kind: 'sources', id: 0, code: x.code, name: x.name }" />
+      </template>
+    </div>
+    <p class="muted m0" style="font-size: 13px; margin-top: 10px">{{ t('dict.sourceNote') }}</p>
   </UiCard>
 
   <!-- levels and prices -->

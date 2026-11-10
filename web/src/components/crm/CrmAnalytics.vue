@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useSourceLabel } from '@/composables/useSourceLabel'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { UiCard, UiEmptyState, UiInput, UiSkeleton } from '@/components/ui'
@@ -7,7 +8,7 @@ import { useBranchStore } from '@/stores/branch'
 import { useRefsStore } from '@/stores/refs'
 import { isoDate } from '@/utils/dates'
 
-const { t, te } = useI18n()
+const { t } = useI18n()
 const branch = useBranchStore()
 const refs = useRefsStore()
 const now = new Date()
@@ -40,7 +41,8 @@ const funnel = computed(() => {
 })
 const rows = (rec: Record<string, Funnel> | undefined, label: (k: string) => string) =>
   Object.entries(rec ?? {}).map(([k, v]) => ({ k, name: label(k), ...v })).sort((a, b) => b.new - a.new)
-const bySource = computed(() => rows(data.value?.by_source, (k) => (te(`crm.source.${k}`) ? t(`crm.source.${k}`) : k)))
+const srcLabel = useSourceLabel()
+const bySource = computed(() => rows(data.value?.by_source, (k) => srcLabel(k)))
 const byOwner = computed(() => (data.value?.by_owner ?? []).map((r) => ({ ...r, k: String(r.user_id ?? 'none'), name: r.name ?? t('crm.unassigned') })).sort((a, b) => b.new - a.new))
 const byBranch = computed(() => rows(data.value?.by_branch, (k) => (/^\d+$/.test(k) ? refs.branchName(Number(k)) : k)))
 const lost = computed(() => {

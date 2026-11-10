@@ -3,7 +3,7 @@ import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { UiButton, UiCheck, UiDrawer, UiField, UiInput, UiPhoneInput, UiSelect, UiTextarea, UiIcon } from '@/components/ui'
 import { studentsApi, type GuardianIn, type Student } from '@/api/students'
-import { LEAD_SOURCES } from '@/api/crm'
+import { useSourcesStore } from '@/stores/sources'
 import { useBranchStore } from '@/stores/branch'
 import { useRefsStore } from '@/stores/refs'
 import { useToastStore } from '@/stores/toast'
@@ -37,7 +37,9 @@ let seq = 0
 
 const branchOptions = computed(() => branch.options.filter((o) => o.id !== null).map((o) => ({ value: o.id as number, label: o.name })))
 const levelOptions = computed(() => [{ value: 0, label: t('students.noLevel') }, ...refs.levels.map((l) => ({ value: l.id, label: l.name }))])
-const sourceOptions = computed(() => [{ value: '', label: '—' }, ...LEAD_SOURCES.map((s) => ({ value: s, label: t(`crm.source.${s}`) }))])
+const sources = useSourcesStore()
+void sources.load()
+const sourceOptions = computed(() => [{ value: '', label: '—' }, ...sources.options(form.source)])
 const age = computed(() => ageOf(form.birth_date || null))
 /** Children under 18 need a guardian to receive notifications. */
 const needsGuardian = computed(() => age.value !== null && age.value < 18)

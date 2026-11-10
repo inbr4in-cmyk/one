@@ -2,7 +2,8 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { UiButton, UiDrawer, UiField, UiInput, UiPhoneInput, UiSelect, UiTextarea } from '@/components/ui'
-import { crmApi, LEAD_SOURCES, type Lead, type LeadSource } from '@/api/crm'
+import { crmApi, type Lead, type LeadSource } from '@/api/crm'
+import { useSourcesStore } from '@/stores/sources'
 import { ApiError } from '@/api/http'
 import { useBranchStore } from '@/stores/branch'
 import { useRefsStore } from '@/stores/refs'
@@ -19,7 +20,9 @@ const errors = reactive<{ name: string | null; phone: string | null }>({ name: n
 const busy = ref(false)
 
 const branchOptions = computed(() => branch.options.filter((o) => o.id !== null).map((o) => ({ value: o.id as number, label: o.name })))
-const sourceOptions = computed(() => LEAD_SOURCES.map((s) => ({ value: s, label: t(`crm.source.${s}`) })))
+const sources = useSourcesStore()
+void sources.load()
+const sourceOptions = computed(() => sources.options(form.source).filter((o) => o.value !== 'import' && o.value !== 'return'))
 const levelOptions = computed(() => [{ value: 0, label: t('students.noLevel') }, ...refs.levels.map((l) => ({ value: l.id, label: l.name }))])
 const isChild = computed(() => Number(form.age) > 0 && Number(form.age) < 18)
 
