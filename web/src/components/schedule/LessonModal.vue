@@ -22,7 +22,7 @@ const refs = useRefsStore()
 const toast = useToastStore()
 const loc = computed(() => locale.value as Locale)
 
-type Mode = 'view' | 'cancel' | 'move' | 'sub'
+type Mode = 'view' | 'cancel' | 'move' | 'sub' | 'delete'
 const mode = ref<Mode>('view')
 const error = ref<string | null>(null)
 const busy = ref(false)
@@ -31,6 +31,8 @@ const form = reactive({ reason: '', date: '', start: '', end: '', room_id: 0, te
 
 const open = computed({ get: () => props.lesson !== null, set: (v) => !v && emit('close') })
 const l = computed(() => props.lesson)
+/** «Удалить урок»: admins only, for a lesson created by mistake (no marks yet). */
+const canDelete = computed(() => auth.can('students.archive') && !l.value?.attendance_marked_at)
 const canEdit = computed(() => auth.can('schedule.edit') && l.value?.status === 'planned')
 const past = computed(() => (l.value ? new Date(l.value.ends_at) < new Date() : false))
 const roomOptions = computed(() => rooms.value.filter((r) => r.status === 'active').map((r) => ({ value: r.id, label: r.name })))
@@ -62,6 +64,20 @@ async function submit() {
   const x = l.value
   if (!x) return
   error.value = null
+  if (mode.value === 'delete') {
+    busy.value = true
+    try {
+      await academicsApi.deleteLesson(x.id)
+      toast.ok(t('schedule.deletedToast'))
+      emit('changed')
+      emit('close')
+    } catch (e) {
+      error.value = e instanceof ApiError ? e.detail || t('errors.generic') : t('errors.generic')
+    } finally {
+      busy.value = false
+    }
+    return
+  }
   if ((mode.value === 'cancel' || mode.value === 'move') && form.reason.trim().length < 3) {
     error.value = t('common.reasonRequired')
     return
@@ -124,8 +140,9 @@ async function submit() {
             <UiField v-if="mode === 'sub'" :label="t('schedule.subTeacher')">
               <UiSelect v-model="form.teacher_id" :options="teacherOptions" :label="t('schedule.subTeacher')" block />
             </UiField>
-            <UiTextarea v-if="mode !== 'sub'" v-model="form.reason" :label="t('common.reason')" :rows="2" />
-            <p v-if="mode !== 'sub'" class="form-note">{{ t('schedule.notifyNote') }}</p>
+            <p v-if="mode === 'delete'" class="m0">{{ t('schedule.deleteText') }}</p>
+            <UiTextarea v-if="mode === 'cancel' || mode === 'move'" v-model="form.reason" :label="t('common.reason')" :rows="2" />
+            <p v-if="mode === 'cancel' || mode === 'move'" class="form-note">{{ t('schedule.notifyNote') }}</p>
           </form>
         </Transition>
         <div v-if="error" class="alert red" role="alert"><UiIcon name="alert" /><div class="grow"><b>{{ error }}</b></div></div>
@@ -134,6 +151,7 @@ async function submit() {
     <template #footer="{ close }">
       <template v-if="l && mode === 'view'">
         <UiButton v-if="auth.can('attendance.view') && l.status !== 'cancelled'" :to="`/attendance/${l.id}`" icon="check">{{ t('nav.attendance') }}</UiButton>
+        <UiButton v-if="canDelete" variant="ghost" danger icon="delete" @click="start('delete')">{{ t('schedule.delete') }}</UiButton>
         <span class="sp" />
         <template v-if="canEdit && !past">
           <UiButton variant="ghost" @click="start('sub')">{{ t('schedule.substitute') }}</UiButton>
@@ -144,8 +162,8 @@ async function submit() {
       </template>
       <template v-else>
         <UiButton @click="mode = 'view'">{{ t('common.back') }}</UiButton>
-        <UiButton :variant="mode === 'cancel' ? 'primary' : 'navy'" type="submit" form="lsn-form" :loading="busy">
-          {{ mode === 'cancel' ? t('schedule.cancelConfirm') : mode === 'move' ? t('schedule.moveConfirm') : t('schedule.subConfirm') }}
+        <UiButton :variant="mode === 'cancel' || mode === 'delete' ? 'primary' : 'navy'" type="submit" form="lsn-form" :loading="busy">
+          {{ mode === 'delete' ? t('schedule.delete') : mode === 'cancel' ? t('schedule.cancelConfirm') : mode === 'move' ? t('schedule.moveConfirm') : t('schedule.subConfirm') }}
         </UiButton>
       </template>
     </template>

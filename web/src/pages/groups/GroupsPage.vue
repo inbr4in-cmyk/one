@@ -2,11 +2,12 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import { UiButton, UiCard, UiChip, UiEmptyState, UiIcon, UiInput, UiSelect, UiTable, type TableColumn } from '@/components/ui'
+import { UiButton, UiCard, UiChip, UiEmptyState, UiIcon, UiInput, UiPrompt, UiSelect, UiTable, type TableColumn } from '@/components/ui'
 import LevelTag from '@/components/students/LevelTag.vue'
 import GroupFormDrawer from '@/components/schedule/GroupFormDrawer.vue'
 import { academicsApi, KIND_ICON, type Group } from '@/api/academics'
 import { useAuthStore } from '@/stores/auth'
+import { useToastStore } from '@/stores/toast'
 import { useBranchStore } from '@/stores/branch'
 import { useRefsStore } from '@/stores/refs'
 import { useTeachers } from '@/composables/useTeachers'
@@ -36,6 +37,7 @@ const columns = computed<TableColumn[]>(() => [
   { key: 'schedule', label: t('nav.schedule') },
   { key: 'members', label: t('groups.members'), align: 'right' },
   { key: 'status', label: t('students.col.status') },
+  ...(auth.can('students.archive') ? [{ key: 'actions', label: '', align: 'right' as const }] : []),
 ])
 const levelOptions = computed(() => [{ value: 0, label: t('students.allLevels') }, ...refs.levels.map((l) => ({ value: l.id, label: l.name }))])
 const statusOptions = computed(() => [{ value: '' as const, label: t('students.allStatuses') }, ...(['recruiting', 'active', 'finished'] as const).map((s) => ({ value: s, label: t(`groups.status.${s}`) }))])
@@ -46,6 +48,23 @@ const shown = computed(() => {
     (!s || g.name.toLowerCase().includes(s) || (g.teacher_name ?? '').toLowerCase().includes(s)) &&
     (!level.value || g.level_id === level.value) && (!status.value || g.status === status.value))
 })
+
+/** «Удалить группу» (owner, branch admin): archive, future lessons are cancelled, history stays. */
+const toast = useToastStore()
+const del = ref<Group | null>(null)
+const delBusy = ref(false)
+async function doDelete() {
+  if (!del.value) return
+  delBusy.value = true
+  try {
+    await academicsApi.archiveGroup(del.value.id)
+    toast.ok(t('groups.archived'))
+    del.value = null
+    await load()
+  } finally {
+    delBusy.value = false
+  }
+}
 
 async function load() {
   loading.value = true
@@ -95,9 +114,14 @@ const fill = (g: Group) => Math.min(100, Math.round((g.members / Math.max(1, g.c
         <div class="fill-cell"><b class="num">{{ row.members }}/{{ row.capacity }}</b><span class="bar-track"><i :style="{ width: `${fill(row)}%`, background: fill(row) >= 100 ? 'var(--red)' : undefined }" /></span></div>
       </template>
       <template #cell-status="{ row }"><UiChip :tone="STATUS_TONE[row.status]" small>{{ t(`groups.status.${row.status}`) }}</UiChip></template>
+      <template #cell-actions="{ row }">
+        <UiButton size="sm" variant="ghost" danger icon="delete" :aria-label="`${t('groups.archive')}: ${row.name}`" @click.stop="del = row" />
+      </template>
       <template #empty><UiEmptyState icon="groups" :title="t('groups.empty')" /></template>
     </UiTable>
   </UiCard>
 
   <GroupFormDrawer v-model:open="creating" :teachers="teachers" @saved="(g) => router.push(`/groups/${g.id}`)" />
+  <UiPrompt :open="!!del" :title="t('groups.archive')" :text="t('groups.archiveText', { name: del?.name ?? '' })" :confirm-label="t('groups.archive')"
+    danger :busy="delBusy" @update:open="(v) => !v && (del = null)" @confirm="doDelete" />
 </template>

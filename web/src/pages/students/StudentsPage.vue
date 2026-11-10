@@ -1,14 +1,15 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
-import { UiAvatar, UiButton, UiCard, UiChip, UiEmptyState, UiInput, UiPager, UiSelect, UiTable, type TableColumn } from '@/components/ui'
+import { useRoute, useRouter } from 'vue-router'
+import { UiAvatar, UiButton, UiCard, UiChip, UiEmptyState, UiInput, UiPager, UiPrompt, UiSelect, UiTable, type TableColumn } from '@/components/ui'
 import StatusChip from '@/components/students/StatusChip.vue'
 import LevelTag from '@/components/students/LevelTag.vue'
 import StudentCreateDrawer from '@/components/students/StudentCreateDrawer.vue'
 import { studentsApi, STUDENT_STATUSES, type StudentListItem } from '@/api/students'
 import { academicsApi, type Group } from '@/api/academics'
 import { useAuthStore } from '@/stores/auth'
+import { useToastStore } from '@/stores/toast'
 import { useBranchStore } from '@/stores/branch'
 import { useRefsStore } from '@/stores/refs'
 import { dmy, money } from '@/utils/dates'
@@ -24,6 +25,9 @@ const auth = useAuthStore()
 const branch = useBranchStore()
 const refs = useRefsStore()
 const f = saved
+// A link from the dashboard (?status=left / frozen) opens the list with that filter.
+const route = useRoute()
+if (typeof route.query.status === 'string') Object.assign(f, { q: '', status: route.query.status, level_id: 0, group_id: 0, debt: false, offset: 0 })
 const rows = ref<StudentListItem[]>([])
 const total = ref(0)
 const loading = ref(true)
@@ -40,10 +44,28 @@ const columns = computed<TableColumn[]>(() => [
   { key: 'money_balance', label: t('students.col.money'), align: 'right' },
   { key: 'last_visit_at', label: t('students.col.visit') },
   { key: 'status', label: t('students.col.status') },
+  ...(auth.can('students.archive') ? [{ key: 'actions', label: '', align: 'right' as const }] : []),
 ])
 const statusOptions = computed(() => [{ value: '', label: t('students.allStatuses') }, ...STUDENT_STATUSES.map((s) => ({ value: s, label: t(`students.status.${s}`) }))])
 const levelOptions = computed(() => [{ value: 0, label: t('students.allLevels') }, ...refs.levels.map((l) => ({ value: l.id, label: l.name }))])
 const groupOptions = computed(() => [{ value: 0, label: t('students.allGroups') }, ...groups.value.map((g) => ({ value: g.id, label: g.name }))])
+
+/** «Удалить» in the list (owner, branch admin): the student goes to the archive, history stays. */
+const toast = useToastStore()
+const del = ref<StudentListItem | null>(null)
+const delBusy = ref(false)
+async function doDelete() {
+  if (!del.value) return
+  delBusy.value = true
+  try {
+    await studentsApi.archive(del.value.id)
+    toast.ok(t('students.archived'))
+    del.value = null
+    await load()
+  } finally {
+    delBusy.value = false
+  }
+}
 
 async function load() {
   const my = ++seq
@@ -132,6 +154,9 @@ function resetFilters() {
         <StatusChip :status="row.status" small />
         <UiChip v-if="row.lessons_left <= 0 && row.status === 'active'" tone="red" small>{{ t('students.debt') }}</UiChip>
       </template>
+      <template #cell-actions="{ row }">
+        <UiButton size="sm" variant="ghost" danger icon="delete" :aria-label="`${t('students.archive')}: ${row.full_name}`" @click.stop="del = row" />
+      </template>
       <template #empty>
         <UiEmptyState icon="users" :title="t('students.empty')" :text="hasFilters ? t('students.emptyFiltered') : undefined" />
       </template>
@@ -140,4 +165,6 @@ function resetFilters() {
   </UiCard>
 
   <StudentCreateDrawer v-model:open="creating" @created="(s) => open(s)" />
+  <UiPrompt :open="!!del" :title="t('students.archive')" :text="t('students.archiveText', { name: del?.full_name ?? '' })" :confirm-label="t('students.archive')"
+    danger :busy="delBusy" @update:open="(v) => !v && (del = null)" @confirm="doDelete" />
 </template>

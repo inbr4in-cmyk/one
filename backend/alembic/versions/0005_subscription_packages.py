@@ -1,4 +1,4 @@
-"""Subscription packages (абонементы)
+"""Subscription packages (абонементы); branch admins manage rooms
 
 Revision ID: 0005
 Revises: 0004
@@ -32,6 +32,13 @@ def upgrade() -> None:
     op.add_column("payments", sa.Column("package_id", sa.BigInteger(), sa.ForeignKey("subscription_packages.id", ondelete="RESTRICT"), nullable=True))
     op.create_index("ix_payments_package_id", "payments", ["package_id"])
     op.add_column("payments", sa.Column("valid_to", sa.Date(), nullable=True))
+    # Branch admins manage the rooms of their branch (Справочники → Кабинеты); creating a branch stays network-only.
+    for action in ("create", "edit", "archive"):
+        op.execute(
+            "INSERT INTO role_permissions (role_id, module, action, scope) "
+            f"SELECT r.id, 'branches', '{action}', 'branch' FROM roles r WHERE r.code = 'branch_admin' "
+            f"AND NOT EXISTS (SELECT 1 FROM role_permissions p WHERE p.role_id = r.id AND p.module = 'branches' AND p.action = '{action}')"
+        )
 
 
 def downgrade() -> None:

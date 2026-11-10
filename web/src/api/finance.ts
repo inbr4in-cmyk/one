@@ -9,6 +9,9 @@ export interface Dashboard {
   revenue_trend?: { period: string; revenue: number }[]
   sales_month?: number
   students_active: number
+  students_left?: number
+  students_frozen?: number
+  left_month?: number
   debtors: number
   low_balance: number
   lessons_today: number

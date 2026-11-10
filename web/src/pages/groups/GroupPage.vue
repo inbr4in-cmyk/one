@@ -208,7 +208,7 @@ const lessonState = (l: Lesson) => (l.status === 'cancelled' ? 'red' : l.attenda
         <div class="head-acts">
           <UiButton v-if="auth.can('chats.use') && g.chat_id" icon="chat" :to="`/chats/${g.chat_id}`">{{ t('groups.chat') }}</UiButton>
           <UiButton v-if="auth.can('schedule.edit')" icon="edit" @click="modal = 'edit'">{{ t('common.edit') }}</UiButton>
-          <UiButton v-if="auth.can('schedule.edit')" variant="ghost" danger icon="archive" :aria-label="t('groups.archive')" @click="modal = 'archive'" />
+          <UiButton v-if="auth.can('students.archive')" variant="ghost" danger icon="delete" :aria-label="t('groups.archive')" @click="modal = 'archive'">{{ t('groups.archive') }}</UiButton>
         </div>
       </div>
     </div>

@@ -18,6 +18,9 @@ export interface Room {
   status: 'active' | 'repair'
 }
 
+export type BranchIn = Omit<Branch, 'id'>
+export type RoomIn = Omit<Room, 'id' | 'branch_id'>
+
 export interface Level {
   id: number
   name: string
@@ -71,6 +74,11 @@ export interface Page<T> {
 export const orgApi = {
   branches: () => http.get<Branch[]>('/branches', { silent: true }),
   rooms: (branchId: number) => http.get<Room[]>(`/branches/${branchId}/rooms`),
+  createBranch: (body: BranchIn) => http.post<Branch>('/branches', body),
+  updateBranch: (id: number, body: BranchIn) => http.patch<Branch>(`/branches/${id}`, body),
+  createRoom: (branchId: number, body: RoomIn) => http.post<Room>(`/branches/${branchId}/rooms`, body),
+  updateRoom: (id: number, body: RoomIn) => http.patch<Room>(`/rooms/${id}`, body),
+  archiveRoom: (id: number) => http.post<void>(`/rooms/${id}/archive`, {}),
   levels: () => http.get<Level[]>('/levels'),
   createLevel: (body: LevelIn) => http.post<Level>('/levels', body),
   updateLevel: (id: number, body: LevelIn) => http.patch<Level>(`/levels/${id}`, body),

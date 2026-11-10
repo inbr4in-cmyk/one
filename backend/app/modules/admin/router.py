@@ -547,10 +547,13 @@ async def add_rate(body: RateIn, db: DB, actor: Actor = require("settings", "edi
         raise bad_request("Неизвестная ставка")
     if body.effective_from < school_today():
         raise bad_request("Новая ставка действует только с сегодняшнего дня или позже")
-    if await db.scalar(select(RateSetting).where(RateSetting.key == body.key, RateSetting.effective_from == body.effective_from)):
-        raise conflict("На эту дату ставка уже задана")
-    r = RateSetting(key=body.key, value=body.value, effective_from=body.effective_from, created_by=actor.id)
-    db.add(r)
+    r = await db.scalar(select(RateSetting).where(RateSetting.key == body.key, RateSetting.effective_from == body.effective_from))
+    if r is not None:
+        # A second change on the same day (or for the same future date) corrects that entry.
+        r.value, r.created_by = body.value, actor.id
+    else:
+        r = RateSetting(key=body.key, value=body.value, effective_from=body.effective_from, created_by=actor.id)
+        db.add(r)
     await write_audit(db, actor_id=actor.id, action="rates.add", entity="rate", ip=actor.ip,
                       after={"key": body.key, "value": body.value, "from": body.effective_from.isoformat()})
     await db.commit()

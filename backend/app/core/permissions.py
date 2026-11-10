@@ -104,7 +104,7 @@ DEFAULT_ROLES: dict[str, dict] = {
             "payments.view,create,discount,refund finance.view,edit,export payroll.view,adjust,approve "
             "tasks.view,create books.view,sell,stock coins.view,award,writeoff shop.view,edit,issue "
             "chats.use,message_students,message_parents,message_staff,monitor tests.view,review "
-            "training.view,progress complaints.view,answer staff.view branches.view",
+            "training.view,progress complaints.view,answer staff.view branches.view,create,edit,archive",
             BRANCH,
         ),
         "coin_limit": 1000,

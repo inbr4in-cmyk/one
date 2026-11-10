@@ -295,6 +295,12 @@ async def dashboard(db: DB, actor: Actor = require("dashboard", "view"), branch_
     out["students_active"] = await db.scalar(active)
     out["debtors"] = await db.scalar(active.where(Student.lessons_left <= 0))
     out["low_balance"] = await db.scalar(active.where(Student.lessons_left > 0, Student.lessons_left <= 2))
+    # Left and paused students: totals now, and how many left during the month (the tile opens the list).
+    base = select(func.count()).select_from(Student).where(br(Student.branch_id), Student.archived_at.is_(None))
+    out["students_left"] = await db.scalar(base.where(Student.status == StudentStatus.LEFT))
+    out["students_frozen"] = await db.scalar(base.where(Student.status == StudentStatus.FROZEN))
+    out["left_month"] = await db.scalar(base.where(Student.status == StudentStatus.LEFT, Student.left_at >= m_start,
+                                                   Student.left_at < m_end))
     out["lessons_today"] = await db.scalar(select(func.count()).select_from(Lesson).where(
         br(Lesson.branch_id), Lesson.starts_at >= day_start, Lesson.starts_at < day_start + timedelta(days=1),
         Lesson.status != LessonStatus.CANCELLED))

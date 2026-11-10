@@ -1,6 +1,6 @@
 /* Module screens — ported from docs/design/web.html (dashboard, CRM, inbox, chats, schedule, student, attendance, finance). */
 /* Dashboard */
-.kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:16px;margin-bottom:16px}
+.kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:16px;margin-bottom:16px}
 .kpi{padding:16px 18px}
 .kpi .k{font-size:13px;color:var(--muted);display:flex;align-items:center;gap:8px}
 .kpi .k .ico{color:var(--kpi-ico)}

@@ -3,7 +3,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { UiButton, UiCard, UiEmptyState, UiField, UiInput, UiModal, UiPrompt, UiSelect, UiSkeleton, UiTabs } from '@/components/ui'
 import { financeApi, type ExpenseCategory } from '@/api/finance'
-import { orgApi, type Level, type LevelIn } from '@/api/org'
+import { orgApi, type Branch, type Level, type LevelIn, type Room } from '@/api/org'
 import { crmApi, type Pipeline, type Stage } from '@/api/crm'
 import { packagesApi, type SubscriptionPackage } from '@/api/payments'
 import { useAuthStore } from '@/stores/auth'
@@ -15,7 +15,7 @@ import type { Locale } from '@/i18n'
 
 /** Reference lists the school edits itself: expense items, levels with the lesson price, lead funnel columns.
  *  Nothing is deleted: removed items go to the archive so past payments, expenses and leads keep their names. */
-type Tab = 'expenses' | 'levels' | 'packages' | 'stages'
+type Tab = 'expenses' | 'levels' | 'packages' | 'rooms' | 'stages'
 const { t, locale } = useI18n()
 const auth = useAuthStore()
 const refs = useRefsStore()
@@ -25,6 +25,7 @@ const loc = computed(() => locale.value as Locale)
 const tabs = computed(() => [
   ...(auth.can('finance.edit') ? [{ value: 'expenses' as Tab, label: t('dict.tab.expenses') }] : []),
   ...(auth.can('settings.edit') ? [{ value: 'levels' as Tab, label: t('dict.tab.levels') }, { value: 'packages' as Tab, label: t('dict.tab.packages') }, { value: 'stages' as Tab, label: t('dict.tab.stages') }] : []),
+  ...(auth.can('branches.edit') ? [{ value: 'rooms' as Tab, label: t('dict.tab.rooms') }] : []),
 ])
 const tab = ref<Tab>(tabs.value[0]?.value ?? 'levels')
 const busy = ref(false)
@@ -92,6 +93,62 @@ async function saveLevel() {
     refs.levels = levelId.value ? refs.levels.map((l) => (l.id === saved.id ? saved : l)) : [...refs.levels, saved]
     levelModal.value = false
     toast.ok(t('dict.saved'))
+  } finally {
+    busy.value = false
+  }
+}
+
+/* ---------- branches and rooms ---------- */
+const roomsBy = ref<Record<number, Room[]> | null>(null)
+async function loadRooms() {
+  const entries = await Promise.all(refs.branches.map(async (b) => [b.id, await orgApi.rooms(b.id).catch(() => [])] as const))
+  roomsBy.value = Object.fromEntries(entries)
+  refs.rooms = { ...refs.rooms, ...roomsBy.value }
+}
+const roomModal = ref(false)
+const roomId = ref<number | null>(null)
+const roomBranch = ref(0)
+const rf = reactive({ name: '', capacity: '12', equipment: '', status: 'active' as Room['status'] })
+const statusOptions = computed(() => (['active', 'repair'] as const).map((v) => ({ value: v, label: t(`dict.roomStatus.${v}`) })))
+function openRoom(branchId: number, r: Room | null) {
+  roomBranch.value = branchId
+  roomId.value = r?.id ?? null
+  Object.assign(rf, r ? { name: r.name, capacity: String(r.capacity), equipment: r.equipment ?? '', status: r.status } : { name: '', capacity: '12', equipment: '', status: 'active' })
+  roomModal.value = true
+}
+async function saveRoom() {
+  const body = { name: rf.name.trim(), capacity: Math.round(Number(rf.capacity)), equipment: rf.equipment.trim() || null, status: rf.status }
+  if (!body.name || !(body.capacity >= 1)) return toast.error(t('dict.roomInvalid'))
+  busy.value = true
+  try {
+    if (roomId.value) await orgApi.updateRoom(roomId.value, body)
+    else await orgApi.createRoom(roomBranch.value, body)
+    roomModal.value = false
+    toast.ok(t('dict.saved'))
+    await loadRooms()
+  } finally {
+    busy.value = false
+  }
+}
+const branchModal = ref(false)
+const branchId = ref<number | null>(null)
+const bf = reactive({ name: '', address: '', phone: '', hours: '' })
+function openBranch(b: Branch | null) {
+  branchId.value = b?.id ?? null
+  Object.assign(bf, { name: b?.name ?? '', address: b?.address ?? '', phone: b?.phone ?? '', hours: b?.hours ?? '' })
+  branchModal.value = true
+}
+async function saveBranch() {
+  if (bf.name.trim().length < 2) return toast.error(t('dict.nameMin'))
+  const cur = branchId.value ? refs.branches.find((b) => b.id === branchId.value) : null
+  const body = { name: bf.name.trim(), address: bf.address.trim() || null, phone: bf.phone.trim() || null, hours: bf.hours.trim() || null, admin_id: cur?.admin_id ?? null }
+  busy.value = true
+  try {
+    const saved = branchId.value ? await orgApi.updateBranch(branchId.value, body) : await orgApi.createBranch(body)
+    refs.branches = branchId.value ? refs.branches.map((b) => (b.id === saved.id ? saved : b)) : [...refs.branches, saved]
+    branchModal.value = false
+    toast.ok(t('dict.saved'))
+    await loadRooms()
   } finally {
     busy.value = false
   }
@@ -196,6 +253,9 @@ async function doArchive() {
     } else if (c.kind === 'packages') {
       await packagesApi.archive(c.id)
       packages.value = (packages.value ?? []).filter((x) => x.id !== c.id)
+    } else if (c.kind === 'rooms') {
+      await orgApi.archiveRoom(c.id)
+      await loadRooms()
     } else {
       await crmApi.archiveStage(c.id)
       await loadPipelines()
@@ -211,6 +271,7 @@ function loadTab() {
   if (tab.value === 'expenses' && !cats.value) loadCats()
   if (tab.value === 'stages' && !pipelines.value) loadPipelines()
   if (tab.value === 'packages' && !packages.value) loadPackages()
+  if (tab.value === 'rooms' && !roomsBy.value) loadRooms()
 }
 onMounted(() => {
   refs.load()
@@ -224,6 +285,7 @@ watch(tab, loadTab)
     <div><h1>{{ t('nav.dictionaries') }}</h1><p>{{ t('dict.subtitle') }}</p></div>
     <span class="sp" />
     <UiButton v-if="tab === 'levels'" variant="primary" icon="plus" @click="openLevel(null)">{{ t('dict.addLevel') }}</UiButton>
+    <UiButton v-if="tab === 'rooms' && auth.can('branches.create', 'network')" variant="primary" icon="plus" @click="openBranch(null)">{{ t('dict.addBranch') }}</UiButton>
     <UiButton v-if="tab === 'packages'" variant="primary" icon="plus" @click="openPkg(null)">{{ t('dict.addPkg') }}</UiButton>
     <UiButton v-if="tab === 'stages' && pipeline" variant="primary" icon="plus" @click="openStage(null)">{{ t('dict.addStage') }}</UiButton>
   </div>
@@ -281,6 +343,38 @@ watch(tab, loadTab)
     <p class="muted card-pad m0" style="font-size: 13px">{{ t('dict.priceNote') }}</p>
   </UiCard>
 
+  <!-- branches and rooms -->
+  <template v-else-if="tab === 'rooms'">
+    <UiCard v-if="!roomsBy"><UiSkeleton :lines="5" /></UiCard>
+    <UiCard v-for="b in roomsBy ? refs.branches : []" :key="b.id" flush class="br-card">
+      <div class="br-head">
+        <div class="grow"><b>{{ b.name }}</b><span class="muted">{{ [b.address, b.phone, b.hours].filter(Boolean).join(' · ') || t('dict.noAddress') }}</span></div>
+        <UiButton size="sm" variant="ghost" icon="edit" @click="openBranch(b)">{{ t('dict.editBranch') }}</UiButton>
+        <UiButton size="sm" icon="plus" @click="openRoom(b.id, null)">{{ t('dict.addRoom') }}</UiButton>
+      </div>
+      <p v-if="!(roomsBy?.[b.id] ?? []).length" class="muted card-pad m0">{{ t('dict.noRooms') }}</p>
+      <div v-else class="scroll-x">
+        <table class="tbl" style="min-width: 520px">
+          <thead><tr><th>{{ t('dict.room') }}</th><th class="r">{{ t('dict.capacity') }}</th><th>{{ t('dict.equipment') }}</th><th>{{ t('dict.status') }}</th><th class="r"><span class="sr">{{ t('books.actions') }}</span></th></tr></thead>
+          <tbody>
+            <tr v-for="r in roomsBy?.[b.id] ?? []" :key="r.id">
+              <td><b>{{ r.name }}</b></td>
+              <td class="r num">{{ r.capacity }}</td>
+              <td class="muted">{{ r.equipment || '—' }}</td>
+              <td><span class="chip xs" :class="{ red: r.status === 'repair' }">{{ t(`dict.roomStatus.${r.status}`) }}</span></td>
+              <td class="r">
+                <div class="row-acts nowrap">
+                  <UiButton size="sm" variant="ghost" icon="edit" :aria-label="`${t('common.edit')}: ${r.name}`" @click="openRoom(b.id, r)" />
+                  <UiButton size="sm" variant="ghost" icon="archive" :aria-label="`${t('dict.archive')}: ${r.name}`" @click="confirm = { kind: 'rooms', id: r.id, name: r.name }" />
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </UiCard>
+  </template>
+
   <!-- subscriptions -->
   <UiCard v-else-if="tab === 'packages'" flush>
     <div v-if="!packages" class="card-pad"><UiSkeleton :lines="4" /></div>
@@ -330,6 +424,36 @@ watch(tab, loadTab)
       </div>
     </template>
   </UiCard>
+
+  <UiModal v-model:open="roomModal" :title="roomId ? t('dict.editRoom') : t('dict.addRoom')">
+    <form id="room-form" class="stack" @submit.prevent="saveRoom">
+      <div class="form-2">
+        <UiInput v-model="rf.name" :label="t('dict.room')" :placeholder="t('dict.roomPh')" :maxlength="64" autofocus />
+        <UiInput v-model="rf.capacity" type="number" inputmode="numeric" :min="1" :max="200" :label="t('dict.capacity')" />
+      </div>
+      <UiInput v-model="rf.equipment" :label="t('dict.equipment')" :placeholder="t('dict.equipmentPh')" :maxlength="255" />
+      <UiField :label="t('dict.status')"><UiSelect v-model="rf.status" :options="statusOptions" :label="t('dict.status')" block /></UiField>
+    </form>
+    <template #footer="{ close }">
+      <UiButton @click="close">{{ t('common.cancel') }}</UiButton>
+      <UiButton variant="navy" type="submit" form="room-form" :loading="busy">{{ t('common.save') }}</UiButton>
+    </template>
+  </UiModal>
+
+  <UiModal v-model:open="branchModal" :title="branchId ? t('dict.editBranch') : t('dict.addBranch')">
+    <form id="branch-form" class="stack" @submit.prevent="saveBranch">
+      <UiInput v-model="bf.name" :label="t('dict.branchName')" :maxlength="120" autofocus />
+      <UiInput v-model="bf.address" :label="t('dict.address')" :maxlength="255" />
+      <div class="form-2">
+        <UiInput v-model="bf.phone" :label="t('dict.phone')" :maxlength="32" />
+        <UiInput v-model="bf.hours" :label="t('dict.hours')" :placeholder="t('dict.hoursPh')" :maxlength="255" />
+      </div>
+    </form>
+    <template #footer="{ close }">
+      <UiButton @click="close">{{ t('common.cancel') }}</UiButton>
+      <UiButton variant="navy" type="submit" form="branch-form" :loading="busy">{{ t('common.save') }}</UiButton>
+    </template>
+  </UiModal>
 
   <UiModal v-model:open="pkgModal" :title="pkgId ? t('dict.editPkg') : t('dict.addPkg')">
     <form id="pkg-form" class="stack" @submit.prevent="savePkg">
@@ -394,4 +518,7 @@ watch(tab, loadTab)
 .color-row { display: flex; align-items: center; gap: 10px; font-size: 14px }
 .color-row input { width: 44px; height: 32px; border: 1px solid var(--line); border-radius: 8px; background: none; padding: 2px }
 @media (max-width: 560px) { .add-row, .edit-row { flex-direction: column; align-items: stretch } }
+.br-card { margin-bottom: 12px }
+.br-head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 14px 16px; border-bottom: 1px solid var(--line) }
+.br-head .grow { display: grid; gap: 2px }
 </style>

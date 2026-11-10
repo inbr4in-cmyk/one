@@ -11,6 +11,7 @@ from app.core.errors import bad_request, conflict, forbidden, not_found
 from app.core.permissions import NETWORK, OWN
 from app.core.schemas import In, ORM
 from app.models import (
+    Accrual,
     Attendance,
     Group,
     GroupMember,
@@ -20,6 +21,7 @@ from app.models import (
     Level,
     UserBranch,
     Lesson,
+    LessonRating,
     Room,
     ScheduleRule,
     Student,
@@ -182,7 +184,8 @@ async def update_group(group_id: int, body: GroupIn, db: DB, actor: Actor = requ
 
 
 @router.post("/groups/{group_id}/archive", status_code=204)
-async def archive_group(group_id: int, db: DB, actor: Actor = require("schedule", "edit")) -> None:
+async def archive_group(group_id: int, db: DB, actor: Actor = require("students", "archive")) -> None:
+    """«Удалить группу»: only admins (owner, branch admin). The group goes to the archive, history stays."""
     g = await _get_group(db, actor, group_id)
     g.archived_at = now()
     g.status = "finished"
@@ -475,6 +478,28 @@ async def cancel_lesson(lesson_id: int, body: CancelIn, db: DB, actor: Actor = r
                       branch_id=lesson.branch_id, ip=actor.ip, after={"reason": body.reason})
     await db.commit()
     return (await _lesson_outs(db, [lesson]))[0]
+
+
+@router.delete("/lessons/{lesson_id}", status_code=204)
+async def delete_lesson(lesson_id: int, db: DB, actor: Actor = require("students", "archive")) -> None:
+    """«Удалить урок» (admins only): a lesson created by mistake. A lesson that already has attendance, ratings,
+    homework, a trial visitor or pay can only be cancelled, so that history and money stay correct."""
+    lesson = await _get_lesson(db, actor, lesson_id)
+    actor.ensure_branch("students", "archive", lesson.branch_id)
+    used = any([
+        await db.scalar(select(Attendance.id).where(Attendance.lesson_id == lesson.id).limit(1)),
+        await db.scalar(select(LessonRating.id).where(LessonRating.lesson_id == lesson.id).limit(1)),
+        await db.scalar(select(Homework.id).where(Homework.lesson_id == lesson.id).limit(1)),
+        await db.scalar(select(Lead.id).where(Lead.trial_lesson_id == lesson.id).limit(1)),
+        await db.scalar(select(Lesson.id).where(Lesson.moved_from_id == lesson.id).limit(1)),
+        await db.scalar(select(Accrual.id).where(Accrual.ref_type == "lesson", Accrual.ref_id == lesson.id).limit(1)),
+    ])
+    if used:
+        raise conflict("У урока уже есть отметки, оценки или начисления: его можно только отменить")
+    await write_audit(db, actor_id=actor.id, action="lesson.delete", entity="lesson", entity_id=lesson.id,
+                      branch_id=lesson.branch_id, ip=actor.ip, before=snapshot(lesson))
+    await db.delete(lesson)
+    await db.commit()
 
 
 class MoveIn(In):

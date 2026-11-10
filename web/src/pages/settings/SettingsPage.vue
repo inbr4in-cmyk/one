@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { UiButton, UiCard, UiField, UiInput, UiSegmented, UiSelect, UiSkeleton, UiSwitch } from '@/components/ui'
 import { adminApi, type Rate } from '@/api/admin'
@@ -117,6 +117,24 @@ const rateKeys = computed(() => rateGroups.value.map((g) => ({ value: g.key, lab
 const rateLabel = (k: string) => (te(`settingsPage.rate.${k}`) ? t(`settingsPage.rate.${k}`) : k)
 const isMoneyRate = (k: string) => !/threshold/.test(k)
 
+/** Inline editing: the typed value applies from today (a second change today corrects it). */
+const rateDraft = reactive<Record<string, string>>({})
+watch(rateGroups, (gs) => gs.forEach((g) => { if (rateDraft[g.key] === undefined) rateDraft[g.key] = String(g.current?.value ?? '') }), { immediate: true })
+const rateSaving = ref<string | null>(null)
+const rateDirty = (g: { key: string; current: Rate | null }) => rateDraft[g.key] !== String(g.current?.value ?? '')
+async function saveRate(key: string) {
+  const v = Math.round(Number(rateDraft[key]))
+  if (!(v >= 0) || rateDraft[key] === '') return toast.error(t('settingsPage.numInvalid'))
+  rateSaving.value = key
+  try {
+    const r = await adminApi.addRate({ key, value: v, effective_from: today })
+    rates.value = [...(rates.value ?? []).filter((x) => !(x.key === key && x.effective_from === today)), r]
+    toast.ok(t('settingsPage.rateAdded'))
+  } finally {
+    rateSaving.value = null
+  }
+}
+
 async function addRate() {
   const v = Math.round(Number(rateForm.value))
   rateErr.value = !rateForm.key ? t('settingsPage.pickRate') : !(v >= 0) || rateForm.value === '' ? t('settingsPage.numInvalid') : rateForm.effective_from < today ? t('settingsPage.dateFuture') : null
@@ -186,11 +204,15 @@ async function addRate() {
             <span v-if="g.upcoming.length">{{ g.upcoming.map((r) => t('settingsPage.from', { v: isMoneyRate(g.key) ? money(r.value, loc) : r.value, date: dmy(r.effective_from, loc) })).join('; ') }}</span>
             <span v-if="g.history.length" class="muted">{{ t('settingsPage.was', { list: g.history.slice(0, 2).map((r) => `${isMoneyRate(g.key) ? money(r.value, loc) : r.value} (${dmy(r.effective_from, loc)})`).join(', ') }) }}</span>
           </div>
-          <b class="num">{{ g.current ? (isMoneyRate(g.key) ? money(g.current.value, loc) : g.current.value) : '—' }}</b>
+          <template v-if="canEdit">
+            <input v-model="rateDraft[g.key]" class="inp set-inp" type="number" min="0" inputmode="numeric" :aria-label="rateLabel(g.key)" @keydown.enter.prevent="rateDirty(g) && saveRate(g.key)" />
+            <UiButton v-if="rateDirty(g)" size="sm" variant="navy" :loading="rateSaving === g.key" @click="saveRate(g.key)">{{ t('common.save') }}</UiButton>
+          </template>
+          <b v-else class="num">{{ g.current ? (isMoneyRate(g.key) ? money(g.current.value, loc) : g.current.value) : '—' }}</b>
         </div>
       </div>
       <form v-if="canEdit && rates?.length" class="stack subform" style="margin-top: 14px" @submit.prevent="addRate">
-        <b>{{ t('settingsPage.newRate') }}</b>
+        <b>{{ t('settingsPage.newRateFuture') }}</b>
         <UiField :label="t('settingsPage.rateKey')"><UiSelect v-model="rateForm.key" :options="rateKeys" :label="t('settingsPage.rateKey')" block /></UiField>
         <div class="form-2">
           <UiInput v-model="rateForm.value" type="number" :min="0" :label="t('settingsPage.value')" inputmode="numeric" />

@@ -123,7 +123,7 @@ async function exportExcel() {
 
   <template v-else>
     <div class="kpis stagger">
-      <template v-if="!data"><div v-for="i in 5" :key="i" class="card kpi"><UiSkeleton :lines="3" /></div></template>
+      <template v-if="!data"><div v-for="i in 6" :key="i" class="card kpi"><UiSkeleton :lines="3" /></div></template>
       <template v-else>
         <div class="card kpi">
           <div class="k"><UiIcon name="users" :size="18" />{{ t('dash.k.students') }}</div>
@@ -145,6 +145,14 @@ async function exportExcel() {
           <div class="v num">{{ data.attendance_rate === null ? '—' : num(data.attendance_rate, loc, 1) }}<small v-if="data.attendance_rate !== null">%</small></div>
           <span v-if="isCurrent" class="muted" style="font-size: 12px">{{ t('dash.k.lessonsToday', { n: data.lessons_today }) }}</span>
           <div v-if="data.attendance_rate !== null" class="bar-track"><i :style="{ width: `${data.attendance_rate}%` }" /></div>
+        </div>
+        <div class="card kpi">
+          <div class="k"><UiIcon name="refusal" :size="18" />{{ t('dash.k.leftPaused') }}</div>
+          <div class="kpi-split">
+            <RouterLink :to="{ path: '/students', query: { status: 'left' } }" class="kpi-link"><b class="v num">{{ num(data.students_left ?? 0, loc) }}</b><span>{{ t('dash.k.left') }}</span></RouterLink>
+            <RouterLink :to="{ path: '/students', query: { status: 'frozen' } }" class="kpi-link"><b class="v num">{{ num(data.students_frozen ?? 0, loc) }}</b><span>{{ t('dash.k.paused') }}</span></RouterLink>
+          </div>
+          <span class="muted" style="font-size: 12px">{{ t('dash.k.leftMonth', { n: data.left_month ?? 0 }) }}</span>
         </div>
         <div class="card kpi">
           <div class="k"><UiIcon name="alert" :size="18" :style="data.debtors ? { color: 'var(--red)' } : undefined" />{{ t('dash.k.debtors') }}</div>
@@ -227,3 +235,10 @@ async function exportExcel() {
     </div>
   </template>
 </template>
+
+<style scoped>
+.kpi-split { display: flex; gap: 18px }
+.kpi-link { display: grid; color: inherit; text-decoration: none; border-radius: 8px }
+.kpi-link span { font-size: 12px; color: var(--muted) }
+.kpi-link:hover b { color: var(--red-ink); text-decoration: underline }
+</style>

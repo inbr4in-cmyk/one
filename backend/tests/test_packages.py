@@ -31,3 +31,28 @@ async def test_package_sale_adds_lessons_and_end_date(db, client, owner_h):
     assert (await client.get("/api/packages", headers=owner_h)).json() == []
     r = await client.post("/api/payments/quote", headers=owner_h, json={"student_id": s["id"], "package_id": pkg["id"], "method": "kaspi"})
     assert r.status_code == 404
+
+
+async def test_admin_deletes_unused_lesson_only(db, client, owner_h):
+    from datetime import timedelta
+
+    from app.models import Attendance, Lesson, Room
+    from app.services.clock import now
+    from tests.conftest import make_staff
+
+    bid = await branch_id(db, YANGI)
+    teacher = await make_staff(db, "teacher", [YANGI], "+77020000091")
+    room = await db.scalar(select(Room).where(Room.branch_id == bid))
+    a = Lesson(branch_id=bid, teacher_id=teacher.id, room_id=room.id, starts_at=now() + timedelta(days=2), ends_at=now() + timedelta(days=2, hours=1))
+    b = Lesson(branch_id=bid, teacher_id=teacher.id, room_id=room.id, starts_at=now() + timedelta(days=3), ends_at=now() + timedelta(days=3, hours=1))
+    db.add_all([a, b])
+    await db.flush()
+    s = (await client.post("/api/students", headers=owner_h, json={"full_name": "Урок Удаление", "phone": "+77051230078", "branch_id": bid})).json()
+    db.add(Attendance(lesson_id=b.id, student_id=s["id"], status="absent", marked_by=teacher.id))
+    await db.commit()
+    assert (await client.delete(f"/api/lessons/{a.id}", headers=owner_h)).status_code == 204
+    assert (await client.delete(f"/api/lessons/{b.id}", headers=owner_h)).status_code == 409
+    from tests.conftest import login
+
+    teacher_h = await login(client, "+77020000091")
+    assert (await client.delete(f"/api/lessons/{b.id}", headers=teacher_h)).status_code == 403

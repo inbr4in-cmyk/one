@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from app.core.audit import diff, snapshot, write_audit
 from app.core.deps import DB, Actor, CurrentActor, require, require_staff
 from app.core.errors import bad_request, forbidden, not_found
+from app.core.permissions import NETWORK
 from app.core.schemas import In, ORM
 from app.models import Branch, Group, Level, Role, Room, User, UserBranch, UserRole
 from app.models.identity import UserKind
@@ -84,6 +85,8 @@ async def branches(db: DB, actor: CurrentActor) -> list[BranchOut]:
 
 @router.post("/branches", response_model=BranchOut, status_code=201)
 async def create_branch(body: BranchIn, db: DB, actor: Actor = require("branches", "create")) -> BranchOut:
+    if actor.scope("branches", "create") != NETWORK:
+        raise forbidden("Новый филиал создаёт только руководитель сети")
     b = Branch(**body.model_dump())
     db.add(b)
     await db.flush()
@@ -100,7 +103,10 @@ async def update_branch(branch_id: int, body: BranchIn, db: DB, actor: Actor = r
         raise not_found("Филиал")
     actor.ensure_branch("branches", "edit", b.id)
     before = snapshot(b)
-    for k, v in body.model_dump().items():
+    data = body.model_dump()
+    if actor.scope("branches", "edit") != NETWORK:
+        data.pop("admin_id")  # who runs the branch is decided by the network owner
+    for k, v in data.items():
         setattr(b, k, v)
     bb, aa = diff(before, snapshot(b))
     await write_audit(db, actor_id=actor.id, action="branch.update", entity="branch", entity_id=b.id, branch_id=b.id,
