@@ -16,8 +16,10 @@ from app.models import (
     Group,
     GroupMember,
     Level,
+    Payment,
     Student,
     StudentGuardian,
+    SubscriptionPackage,
     Transfer,
     User,
 )
@@ -120,8 +122,14 @@ async def card(db: DB, s: Student, actor: Actor) -> StudentOut:
         select(GroupMember, Group).join(Group, Group.id == GroupMember.group_id)
         .where(GroupMember.student_id == s.id).order_by(GroupMember.joined_on.desc())
     )).all()
+    sub = (await db.execute(
+        select(Payment.valid_to, SubscriptionPackage.name).join(SubscriptionPackage, SubscriptionPackage.id == Payment.package_id)
+        .where(Payment.student_id == s.id, Payment.valid_to >= today(), Payment.refunded < Payment.amount)
+        .order_by(Payment.valid_to.desc()).limit(1)
+    )).first()
     return StudentOut(
         **_list_out(s, actor, [g.name for m, g in groups if m.left_on is None]).model_dump(),
+        subscription={"name": sub[1], "valid_to": sub[0].isoformat()} if sub else None,
         birth_date=s.birth_date, photo_url=s.photo_url, source=s.source, notes=s.notes, contract_no=s.contract_no, contract_date=s.contract_date,
         sales_user_id=s.sales_user_id, office_user_id=s.office_user_id, user_id=s.user_id, stars=s.stars,
         coins=await coin_balance(db, s.id),

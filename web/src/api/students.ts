@@ -49,6 +49,8 @@ export interface Student extends StudentListItem {
   user_id: number | null
   stars: number
   coins: number
+  /** current subscription (абонемент), if any */
+  subscription?: { name: string; valid_to: string } | null
   balance: { lessons_paid: number; lessons_done: number; lessons_left: number; money_balance: number; lesson_price: number }
   guardians: Guardian[]
   groups: StudentGroupRef[]

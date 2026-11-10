@@ -5,6 +5,7 @@ import { UiButton, UiCard, UiEmptyState, UiField, UiInput, UiModal, UiPrompt, Ui
 import { financeApi, type ExpenseCategory } from '@/api/finance'
 import { orgApi, type Level, type LevelIn } from '@/api/org'
 import { crmApi, type Pipeline, type Stage } from '@/api/crm'
+import { packagesApi, type SubscriptionPackage } from '@/api/payments'
 import { useAuthStore } from '@/stores/auth'
 import { useRefsStore } from '@/stores/refs'
 import { useToastStore } from '@/stores/toast'
@@ -14,7 +15,7 @@ import type { Locale } from '@/i18n'
 
 /** Reference lists the school edits itself: expense items, levels with the lesson price, lead funnel columns.
  *  Nothing is deleted: removed items go to the archive so past payments, expenses and leads keep their names. */
-type Tab = 'expenses' | 'levels' | 'stages'
+type Tab = 'expenses' | 'levels' | 'packages' | 'stages'
 const { t, locale } = useI18n()
 const auth = useAuthStore()
 const refs = useRefsStore()
@@ -23,7 +24,7 @@ const loc = computed(() => locale.value as Locale)
 
 const tabs = computed(() => [
   ...(auth.can('finance.edit') ? [{ value: 'expenses' as Tab, label: t('dict.tab.expenses') }] : []),
-  ...(auth.can('settings.edit') ? [{ value: 'levels' as Tab, label: t('dict.tab.levels') }, { value: 'stages' as Tab, label: t('dict.tab.stages') }] : []),
+  ...(auth.can('settings.edit') ? [{ value: 'levels' as Tab, label: t('dict.tab.levels') }, { value: 'packages' as Tab, label: t('dict.tab.packages') }, { value: 'stages' as Tab, label: t('dict.tab.stages') }] : []),
 ])
 const tab = ref<Tab>(tabs.value[0]?.value ?? 'levels')
 const busy = ref(false)
@@ -96,6 +97,45 @@ async function saveLevel() {
   }
 }
 
+/* ---------- subscriptions (абонементы) ---------- */
+const packages = ref<SubscriptionPackage[] | null>(null)
+async function loadPackages() {
+  packages.value = await packagesApi.list().catch(() => [])
+}
+const pkgModal = ref(false)
+const pkgId = ref<number | null>(null)
+const pf = reactive({ name: '', months: '3', price: '', lessons: '36', lessonsTouched: false })
+function openPkg(p: SubscriptionPackage | null) {
+  pkgId.value = p?.id ?? null
+  Object.assign(pf, p
+    ? { name: p.name, months: String(p.months), price: String(p.price), lessons: String(p.lessons), lessonsTouched: true }
+    : { name: '', months: '3', price: '', lessons: '36', lessonsTouched: false })
+  pkgModal.value = true
+}
+// 3 lessons a week ≈ 12 a month: suggested until the lessons field is edited by hand
+watch(() => pf.months, (m) => {
+  if (!pf.lessonsTouched) pf.lessons = String(Math.max(1, Math.round(Number(m) || 1)) * 12)
+})
+const pkgPerLesson = computed(() => {
+  const price = Number(pf.price)
+  const n = Number(pf.lessons)
+  return price > 0 && n > 0 ? money(Math.floor(price / n), loc.value) : '—'
+})
+async function savePkg() {
+  const body = { name: pf.name.trim(), months: Math.round(Number(pf.months)), price: Math.round(Number(pf.price)), lessons: Math.round(Number(pf.lessons)) }
+  if (body.name.length < 2 || !(body.months >= 1) || !(body.price >= 1) || !(body.lessons >= 1)) return toast.error(t('dict.pkgInvalid'))
+  busy.value = true
+  try {
+    if (pkgId.value) await packagesApi.update(pkgId.value, body)
+    else await packagesApi.create(body)
+    pkgModal.value = false
+    toast.ok(t('dict.saved'))
+    await loadPackages()
+  } finally {
+    busy.value = false
+  }
+}
+
 /* ---------- lead funnel columns ---------- */
 const pipelines = ref<Pipeline[] | null>(null)
 const pipelineId = ref(0)
@@ -153,6 +193,9 @@ async function doArchive() {
     } else if (c.kind === 'levels') {
       await orgApi.archiveLevel(c.id)
       refs.levels = refs.levels.filter((l) => l.id !== c.id)
+    } else if (c.kind === 'packages') {
+      await packagesApi.archive(c.id)
+      packages.value = (packages.value ?? []).filter((x) => x.id !== c.id)
     } else {
       await crmApi.archiveStage(c.id)
       await loadPipelines()
@@ -167,6 +210,7 @@ async function doArchive() {
 function loadTab() {
   if (tab.value === 'expenses' && !cats.value) loadCats()
   if (tab.value === 'stages' && !pipelines.value) loadPipelines()
+  if (tab.value === 'packages' && !packages.value) loadPackages()
 }
 onMounted(() => {
   refs.load()
@@ -180,6 +224,7 @@ watch(tab, loadTab)
     <div><h1>{{ t('nav.dictionaries') }}</h1><p>{{ t('dict.subtitle') }}</p></div>
     <span class="sp" />
     <UiButton v-if="tab === 'levels'" variant="primary" icon="plus" @click="openLevel(null)">{{ t('dict.addLevel') }}</UiButton>
+    <UiButton v-if="tab === 'packages'" variant="primary" icon="plus" @click="openPkg(null)">{{ t('dict.addPkg') }}</UiButton>
     <UiButton v-if="tab === 'stages' && pipeline" variant="primary" icon="plus" @click="openStage(null)">{{ t('dict.addStage') }}</UiButton>
   </div>
   <div class="toolbar">
@@ -236,6 +281,33 @@ watch(tab, loadTab)
     <p class="muted card-pad m0" style="font-size: 13px">{{ t('dict.priceNote') }}</p>
   </UiCard>
 
+  <!-- subscriptions -->
+  <UiCard v-else-if="tab === 'packages'" flush>
+    <div v-if="!packages" class="card-pad"><UiSkeleton :lines="4" /></div>
+    <UiEmptyState v-else-if="!packages.length" icon="wallet" :title="t('dict.pkgEmpty')" :text="t('dict.pkgEmptyText')" />
+    <div v-else class="scroll-x">
+      <table class="tbl" style="min-width: 560px">
+        <thead><tr><th>{{ t('dict.pkgName') }}</th><th class="r">{{ t('dict.months') }}</th><th class="r">{{ t('dict.pkgLessons') }}</th><th class="r">{{ t('dict.pkgPrice') }}</th><th class="r">{{ t('dict.pkgPerLesson') }}</th><th class="r"><span class="sr">{{ t('books.actions') }}</span></th></tr></thead>
+        <tbody>
+          <tr v-for="p in packages" :key="p.id">
+            <td><b>{{ p.name }}</b></td>
+            <td class="r num">{{ p.months }}</td>
+            <td class="r num">{{ p.lessons }}</td>
+            <td class="r num"><b>{{ money(p.price, loc) }}</b></td>
+            <td class="r num muted">{{ money(Math.floor(p.price / p.lessons), loc) }}</td>
+            <td class="r">
+              <div class="row-acts nowrap">
+                <UiButton size="sm" variant="ghost" icon="edit" :aria-label="`${t('common.edit')}: ${p.name}`" @click="openPkg(p)" />
+                <UiButton size="sm" variant="ghost" icon="archive" :aria-label="`${t('dict.archive')}: ${p.name}`" @click="confirm = { kind: 'packages', id: p.id, name: p.name }" />
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="muted card-pad m0" style="font-size: 13px">{{ t('dict.pkgNote') }}</p>
+  </UiCard>
+
   <!-- lead funnel columns -->
   <UiCard v-else-if="tab === 'stages'">
     <UiSkeleton v-if="!pipelines" :lines="6" />
@@ -258,6 +330,23 @@ watch(tab, loadTab)
       </div>
     </template>
   </UiCard>
+
+  <UiModal v-model:open="pkgModal" :title="pkgId ? t('dict.editPkg') : t('dict.addPkg')">
+    <form id="pkg-form" class="stack" @submit.prevent="savePkg">
+      <UiInput v-model="pf.name" :label="t('dict.pkgName')" :placeholder="t('dict.pkgPh')" :maxlength="120" autofocus />
+      <div class="form-2">
+        <UiInput v-model="pf.months" type="number" inputmode="numeric" :min="1" :max="36" :label="t('dict.months')" />
+        <UiInput v-model="pf.price" type="number" inputmode="numeric" :min="1" :label="t('dict.pkgPrice')" />
+      </div>
+      <UiInput v-model="pf.lessons" type="number" inputmode="numeric" :min="1" :label="t('dict.pkgLessons')"
+        :hint="t('dict.pkgLessonsHint', { price: pkgPerLesson })" @input="pf.lessonsTouched = true" />
+      <p class="form-note">{{ t('dict.pkgNote') }}</p>
+    </form>
+    <template #footer="{ close }">
+      <UiButton @click="close">{{ t('common.cancel') }}</UiButton>
+      <UiButton variant="navy" type="submit" form="pkg-form" :loading="busy">{{ t('common.save') }}</UiButton>
+    </template>
+  </UiModal>
 
   <UiModal v-model:open="levelModal" :title="levelId ? t('dict.editLevel') : t('dict.addLevel')">
     <form id="lvl-form" class="stack" @submit.prevent="saveLevel">

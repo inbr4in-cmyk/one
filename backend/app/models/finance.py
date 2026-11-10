@@ -1,4 +1,6 @@
-from sqlalchemy import Boolean, Index, String, text
+from datetime import date
+
+from sqlalchemy import Boolean, Date, Index, Integer, String, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import ArchiveMixin, Base, IdMixin, TimestampMixin
@@ -38,10 +40,24 @@ class Payment(IdMixin, TimestampMixin, Base):
     idempotency_key: Mapped[str | None] = mapped_column(String(64), default=None)
     # "import" = brought in from the old CRM: history only, no balance change, no bonuses/KPI, no messages.
     source: Mapped[str | None] = mapped_column(String(16), default=None)
+    # Subscription (абонемент) sale: the package and the last day it covers.
+    package_id: Mapped[int | None] = fk("subscription_packages.id", nullable=True)
+    valid_to: Mapped[date | None] = mapped_column(Date, default=None)
 
     __table_args__ = (
         Index("payments_idempotency_key_uq", "idempotency_key", unique=True, postgresql_where=text("idempotency_key IS NOT NULL")),
     )
+
+
+class SubscriptionPackage(IdMixin, TimestampMixin, ArchiveMixin, Base):
+    """Абонемент: N months for a fixed price; sold as a payment that adds `lessons` to the balance."""
+
+    __tablename__ = "subscription_packages"
+
+    name: Mapped[str] = mapped_column(String(120))
+    months: Mapped[int] = mapped_column(Integer)
+    price: Mapped[Money]
+    lessons: Mapped[int] = mapped_column(Integer)
 
 
 class Refund(IdMixin, TimestampMixin, Base):

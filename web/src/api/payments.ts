@@ -14,6 +14,8 @@ export interface PaymentIn {
   promo_code?: string | null
   note?: string | null
   level_id?: number | null
+  /** selling a subscription (абонемент): price and lessons come from the package */
+  package_id?: number | null
   /** ISO date; only for owners and branch admins (finance.edit) entering an earlier payment */
   paid_on?: string | null
 }
@@ -43,6 +45,8 @@ export interface Payment {
   refunded: number
   is_first: boolean
   note: string | null
+  package_id?: number | null
+  valid_to?: string | null
   student_name: string | null
   /** The student's current balance, so a refund never defaults to more than is left */
   student_lessons_left?: number | null
@@ -58,4 +62,21 @@ export const paymentsApi = {
     http.get<Page<Payment>>(`/payments${qs(p)}`),
   refund: (id: number, body: { lessons: number; amount: number; reason: string }) =>
     http.post<{ refund_id: number; bonuses_reversed: number }>(`/payments/${id}/refund`, body, { silent: true }),
+}
+
+/** Абонемент: N months for a fixed price; selling it adds `lessons` to the student's balance. */
+export interface SubscriptionPackage {
+  id: number
+  name: string
+  months: number
+  price: number
+  lessons: number
+}
+export type PackageIn = Omit<SubscriptionPackage, 'id'>
+
+export const packagesApi = {
+  list: () => http.get<SubscriptionPackage[]>('/packages'),
+  create: (body: PackageIn) => http.post<SubscriptionPackage>('/packages', body),
+  update: (id: number, body: PackageIn) => http.patch<SubscriptionPackage>(`/packages/${id}`, body),
+  archive: (id: number) => http.post<void>(`/packages/${id}/archive`, {}),
 }

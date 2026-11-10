@@ -90,6 +90,8 @@ class StudentOut(StudentListOut):
     groups: list[dict] = []
     created_at: datetime
     archived_at: datetime | None
+    # Current subscription (абонемент): {name, valid_to} or None
+    subscription: dict | None = None
 
 
 class LedgerOut(ORM):

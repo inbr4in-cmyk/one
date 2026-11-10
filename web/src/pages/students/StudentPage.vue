@@ -45,7 +45,7 @@ const ledger = ref<LedgerEntry[] | null>(null)
 const payments = ref<Payment[] | null>(null)
 const attempts = ref<Attempt[] | null>(null)
 const marks = ref<AttendanceMark[] | null>(null)
-const modal = ref<'pay' | 'transfer' | 'freeze' | 'guardian' | 'unfreeze' | 'archive' | 'edit' | null>(null)
+const modal = ref<'pay' | 'package' | 'transfer' | 'freeze' | 'guardian' | 'unfreeze' | 'archive' | 'edit' | null>(null)
 const refundOf = ref<Payment | null>(null)
 const busy = ref(false)
 
@@ -185,7 +185,7 @@ const canRefund = (p: Payment) => auth.can('payments.refund') && p.refunded < p.
             <template v-if="s.age !== null">{{ t('students.age', { n: s.age }) }} · </template>
             <template v-if="s.phone">{{ formatPhone(s.phone) }} · </template>
             {{ t('students.since', { date: shortDate(s.created_at, loc) }) }}
-            <template v-if="s.contract_no"> · {{ t('contract.short', { no: s.contract_no }) }}<template v-if="s.contract_date"> {{ t('contract.from', { date: dmy(s.contract_date, loc) }) }}</template></template>
+            <template v-if="s.subscription"> · <b>{{ t('payments.subscription', { name: s.subscription.name, date: dmy(s.subscription.valid_to, loc) }) }}</b></template><template v-if="s.contract_no"> · {{ t('contract.short', { no: s.contract_no }) }}<template v-if="s.contract_date"> {{ t('contract.from', { date: dmy(s.contract_date, loc) }) }}</template></template>
           </div>
           <div class="facts">
             <StatusChip :status="s.status" />
@@ -200,6 +200,7 @@ const canRefund = (p: Payment) => auth.can('payments.refund') && p.refunded < p.
           <UiButton v-if="auth.can('students.transfer') && s.status !== 'frozen'" icon="arrow" @click="modal = 'transfer'">{{ t('students.transfer.action') }}</UiButton>
           <UiButton v-if="auth.can('students.transfer') && s.status === 'active'" icon="clock" @click="modal = 'freeze'">{{ t('students.freeze.action') }}</UiButton>
           <UiButton v-if="auth.can('students.transfer') && s.status === 'frozen'" icon="play" @click="modal = 'unfreeze'">{{ t('students.unfreeze') }}</UiButton>
+          <UiButton v-if="auth.can('payments.create')" icon="card" @click="modal = 'package'">{{ t('payments.sellPackage') }}</UiButton>
           <UiButton v-if="auth.can('payments.create')" variant="primary" icon="wallet" @click="modal = 'pay'">{{ t('payments.take') }}</UiButton>
         </div>
       </div>
@@ -331,6 +332,7 @@ const canRefund = (p: Payment) => auth.can('payments.refund') && p.refunded < p.
     </Transition>
 
     <PaymentModal :open="modal === 'pay'" :student="s" @update:open="(v) => !v && (modal = null)" @paid="afterPayment" />
+    <PaymentModal :open="modal === 'package'" :student="s" mode="package" @update:open="(v) => !v && (modal = null)" @paid="afterPayment" />
     <TransferModal :open="modal === 'transfer'" :student="s" @update:open="(v) => !v && (modal = null)" @done="updated" />
     <FreezeModal :open="modal === 'freeze'" :student="s" @update:open="(v) => !v && (modal = null)" @done="updated" />
     <StudentEditModal :open="modal === 'edit'" :student="s" @update:open="(v) => !v && (modal = null)" @done="updated" />
