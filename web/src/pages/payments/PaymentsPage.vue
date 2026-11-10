@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { UiAvatar, UiButton, UiCard, UiChip, UiEmptyState, UiInput, UiPager, UiTable, type TableColumn } from '@/components/ui'
+import { UiAvatar, UiButton, UiCard, UiChip, UiEmptyState, UiInput, UiModal, UiPager, UiTable, type TableColumn } from '@/components/ui'
+import PaymentModal from '@/components/students/PaymentModal.vue'
+import StudentPicker from '@/components/students/StudentPicker.vue'
+import { studentsApi, type Student, type StudentListItem } from '@/api/students'
 import RefundModal from '@/components/students/RefundModal.vue'
 import PaymentEditModal from '@/components/payments/PaymentEditModal.vue'
 import { paymentsApi, type Payment } from '@/api/payments'
@@ -26,6 +29,13 @@ const loading = ref(true)
 const refundOf = ref<Payment | null>(null)
 const editOf = ref<Payment | null>(null)
 let seq = 0
+/** «Принять оплату» right from this page: pick the student, then the usual payment window. */
+const picking = ref(false)
+const payFor = ref<Student | null>(null)
+async function pickStudent(item: StudentListItem) {
+  picking.value = false
+  payFor.value = await studentsApi.get(item.id).catch(() => null)
+}
 
 const columns = computed<TableColumn[]>(() => [
   { key: 'paid_at', label: t('students.col.date') },
@@ -68,7 +78,13 @@ const methodIco = (m: string) => (m === 'kaspi' ? 'K' : m === 'cash' ? '₸' : '
 <template>
   <div class="ph">
     <div><h1>{{ t('payments.title') }}</h1><p>{{ t('payments.subtitle', { n: total }) }}</p></div>
+    <span class="sp" />
+    <UiButton v-if="auth.can('payments.create')" variant="primary" icon="plus" @click="picking = true">{{ t('payments.take') }}</UiButton>
   </div>
+  <UiModal v-model:open="picking" :title="t('payments.pickStudent')">
+    <StudentPicker :branch-id="branch.filterId" @pick="pickStudent" />
+  </UiModal>
+  <PaymentModal v-if="payFor" :open="!!payFor" :student="payFor" @update:open="(v) => !v && (payFor = null)" @paid="load" />
 
   <div class="toolbar">
     <UiInput v-model="f.from" type="date" :max="f.to" class="tb-date" :aria-label="t('payments.from')" />
