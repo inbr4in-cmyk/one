@@ -1,6 +1,6 @@
 """Lesson generation and conflict checks (ТЗ 4.2)."""
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,7 +13,7 @@ HORIZON_WEEKS = 8
 
 
 async def conflicts(db: AsyncSession, *, room_id: int, teacher_id: int, starts_at: datetime, ends_at: datetime,
-                    exclude_id: int | None = None) -> list[str]:
+                    exclude_id: int | None = None, exclude_group_id: int | None = None) -> list[str]:
     q = select(Lesson, Group.name).outerjoin(Group, Group.id == Lesson.group_id).where(
         Lesson.status != LessonStatus.CANCELLED,
         Lesson.starts_at < ends_at,
@@ -22,6 +22,8 @@ async def conflicts(db: AsyncSession, *, room_id: int, teacher_id: int, starts_a
     )
     if exclude_id:
         q = q.where(Lesson.id != exclude_id)
+    if exclude_group_id:
+        q = q.where(or_(Lesson.group_id.is_(None), Lesson.group_id != exclude_group_id))
     out = []
     for lesson, gname in (await db.execute(q)).all():
         who = gname or "индивидуальный урок"
@@ -39,13 +41,18 @@ async def generate(db: AsyncSession, rule: ScheduleRule, group: Group, until: da
     start = max(rule.valid_from, today())
     end = min(rule.valid_to or date.max, until or today() + timedelta(weeks=HORIZON_WEEKS))
     existing = set((await db.scalars(select(Lesson.starts_at).where(Lesson.rule_id == rule.id))).all())
+    # The group's own lessons (imported from the old CRM, or made by another rule or by hand) are not a conflict:
+    # where the group already has a lesson overlapping the slot, the slot counts as scheduled and is skipped.
+    own = (await db.execute(select(Lesson.starts_at, Lesson.ends_at).where(
+        Lesson.group_id == group.id, Lesson.status != LessonStatus.CANCELLED, Lesson.ends_at > at_local(start, time(0))))).all()
     created, problems = 0, []
     d = start
     while d <= end:
         if d.weekday() in rule.weekdays:
             s, e = at_local(d, rule.start_time), at_local(d, rule.end_time)
-            if s not in existing:
-                c = await conflicts(db, room_id=rule.room_id, teacher_id=rule.teacher_id, starts_at=s, ends_at=e)
+            if s not in existing and not any(a < e and b > s for a, b in own):
+                c = await conflicts(db, room_id=rule.room_id, teacher_id=rule.teacher_id, starts_at=s, ends_at=e,
+                                    exclude_group_id=group.id)
                 if c:
                     problems.append(f"{d:%d.%m}: {c[0]}")
                 else:

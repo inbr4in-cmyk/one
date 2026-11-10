@@ -28,7 +28,8 @@ export const useToastStore = defineStore('toast', () => {
     if (items.value.some((t) => t.text === text)) return
     const id = ++seq
     items.value = [...items.value.slice(-(MAX - 1)), { id, text, tone }]
-    timers.set(id, setTimeout(() => dismiss(id), duration))
+    // duration 0 = stays until closed (save errors must not slip by unnoticed)
+    if (duration > 0) timers.set(id, setTimeout(() => dismiss(id), duration))
   }
 
   return {
@@ -36,6 +37,6 @@ export const useToastStore = defineStore('toast', () => {
     show,
     dismiss,
     ok: (text: string) => show(text, 'ok'),
-    error: (text: string) => show(text, 'error', 6000),
+    error: (text: string) => show(text, 'error', 0),
   }
 })

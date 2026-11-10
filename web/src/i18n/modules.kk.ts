@@ -338,6 +338,8 @@ const modules: typeof ru = {
     },
   },
   payments: {
+    pickLevel: 'Деңгейді таңдаңыз',
+    pickLevelFirst: 'Оқушының деңгейі көрсетілмеген: бағаны есептеу үшін таңдаңыз.',
     title: 'Төлемдер',
     subtitle: 'Кезеңдегі төлемдер: {n}',
     take: 'Төлем қабылдау',

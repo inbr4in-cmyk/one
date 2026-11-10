@@ -173,6 +173,10 @@ td.r, th.r { text-align: right } td.c, th.c { text-align: center }
 .toast .srcico { background: var(--info) }
 .toast.ok .srcico { background: var(--ok) }
 .toast.error .srcico { background: var(--red) }
+/* Errors stay until closed and stand out: a red card with larger text. */
+.toast.error { background: var(--red); color: #fff; font-size: 15px; font-weight: 600; padding: 14px 18px; max-width: 560px }
+.toast.error .srcico { background: rgba(255,255,255,.22) }
+.toast.error .x { opacity: .9 }
 .toast .x { border: 0; background: none; color: inherit; opacity: .6; padding: 2px; display: grid; margin-left: 4px }
 .toast .x:hover { opacity: 1 }
 @media (max-width:820px) { .toasts { bottom: 84px } }

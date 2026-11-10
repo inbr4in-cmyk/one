@@ -163,6 +163,9 @@ async def take_payment(body: PaymentIn, db: DB, response: Response, actor: Actor
         if body.paid_on < today() - timedelta(days=BACKDATE_DAYS):
             raise bad_request(f"Дата оплаты не может быть раньше чем {BACKDATE_DAYS} дней назад")
     q, level = await _quote(db, s, body, actor)
+    if s.level_id is None:
+        # A student without a level (e.g. imported) gets the level chosen at the first payment.
+        s.level_id = level.id
     prior = await db.scalar(select(func.count()).select_from(Payment).where(Payment.student_id == s.id, Payment.category == "course"))
     was_left = s.status == StudentStatus.LEFT
     p = Payment(student_id=s.id, branch_id=s.branch_id, level_id=level.id, category="course", amount=q.to_pay,

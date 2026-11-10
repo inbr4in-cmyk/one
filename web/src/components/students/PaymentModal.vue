@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { UiButton, UiField, UiInput, UiModal, UiSegmented, UiSkeleton, UiTextarea } from '@/components/ui'
+import { UiButton, UiField, UiInput, UiModal, UiSegmented, UiSelect, UiSkeleton, UiTextarea } from '@/components/ui'
+import { useRefsStore } from '@/stores/refs'
 import { paymentsApi, PAYMENT_METHODS, type PaymentMethod, type Quote } from '@/api/payments'
 import type { Student } from '@/api/students'
 import { ApiError } from '@/api/http'
@@ -17,6 +18,11 @@ const { t, locale } = useI18n()
 const auth = useAuthStore()
 const toast = useToastStore()
 const loc = computed(() => locale.value as Locale)
+const refs = useRefsStore()
+/** A student without a level (e.g. imported from the old CRM) needs one to price the lessons: chosen here. */
+const needLevel = computed(() => !props.student.level_id)
+const levelPick = ref(0)
+const levelOptions = computed(() => [{ value: 0, label: t('payments.pickLevel') }, ...refs.levels.map((l) => ({ value: l.id, label: l.lesson_price ? `${l.name} · ${money(l.lesson_price, loc.value)}` : l.name }))])
 
 const PACKS = [8, 12, 24]
 const todayIso = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10) }
@@ -37,6 +43,7 @@ const lessons = computed(() => Math.max(0, Math.floor(Number(form.lessons) || 0)
 const byAmount = computed(() => form.by === 'amount')
 const body = computed(() => ({
   student_id: props.student.id,
+  level_id: needLevel.value && levelPick.value ? levelPick.value : null,
   lessons: byAmount.value ? 0 : lessons.value,
   amount: byAmount.value ? amount.value : null,
   method: form.method,
@@ -49,6 +56,7 @@ const body = computed(() => ({
 watch(open, (v) => {
   if (!v) return
   Object.assign(form, { by: 'lessons', lessons: '12', amount: '', method: 'kaspi', discount: '', promo: '', note: '', paid_on: todayIso() })
+  levelPick.value = 0
   quote.value = null
 })
 
@@ -60,6 +68,11 @@ watch([open, () => JSON.stringify({ ...body.value, method: '', note: '', paid_on
 })
 
 async function fetchQuote() {
+  if (needLevel.value && !levelPick.value) {
+    quote.value = null
+    quoteError.value = t('payments.pickLevelFirst')
+    return
+  }
   if (byAmount.value ? amount.value < 1 : lessons.value < 1) {
     quote.value = null
     quoteError.value = byAmount.value ? t('payments.amountMin') : t('payments.lessonsMin')
@@ -111,6 +124,9 @@ async function submit() {
   <UiModal v-model:open="open" :title="t('payments.take')">
     <form id="pay-form" class="stack" @submit.prevent="submit">
       <p class="muted m0">{{ student.full_name }} · {{ t('payments.left', { n: student.balance.lessons_left }) }}</p>
+      <UiField v-if="needLevel" :label="t('students.form.level')">
+        <UiSelect v-model="levelPick" :options="levelOptions" :label="t('students.form.level')" block />
+      </UiField>
       <UiSegmented v-model="form.by" :options="byOptions" :label="t('payments.byLabel')" size="sm" />
       <UiInput v-if="byAmount" v-model="form.amount" type="number" inputmode="numeric" :min="1" :label="t('payments.amount')"
         :hint="t('payments.amountHint')" autofocus />

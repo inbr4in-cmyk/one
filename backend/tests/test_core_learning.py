@@ -60,6 +60,22 @@ async def test_schedule_generation_and_conflicts(db, client, owner_h):
     assert r.status_code == 409 and "Учитель занят" in r.json()["detail"]
 
 
+async def test_schedule_skips_group_own_imported_lessons(db, client, owner_h):
+    """Lessons of the same group (e.g. imported from the old CRM) are not a conflict for its new schedule."""
+    bid, teacher, room, g = await _setup(db, client, owner_h)
+    start = today() + timedelta(days=1)
+    nxt = next(start + timedelta(days=i) for i in range(7) if (start + timedelta(days=i)).weekday() == 1)
+    db.add(Lesson(branch_id=bid, group_id=g["id"], level_id=g["level_id"], teacher_id=teacher.id, room_id=room.id,
+                  starts_at=at_local(nxt, time(10)), ends_at=at_local(nxt, time(11, 30))))
+    await db.commit()
+    r = await client.post(f"/api/groups/{g['id']}/schedule", headers=owner_h, json={
+        "weekdays": [1], "start_time": "10:00", "end_time": "11:30", "room_id": room.id, "valid_from": start.isoformat()})
+    assert r.status_code == 201, r.text
+    assert r.json()["conflicts"] == [] and r.json()["created"] >= 5
+    n = len((await db.scalars(select(Lesson).where(Lesson.group_id == g["id"], Lesson.starts_at == at_local(nxt, time(10))))).all())
+    assert n == 1  # the imported lesson is kept, no duplicate
+
+
 async def _student(db, client, h, bid, name="Алия Нурланова", phone="+77051112233"):
     r = await client.post("/api/students", headers=h, json={
         "full_name": name, "phone": phone, "branch_id": bid, "level_id": await level_id(db, "ELE"),
