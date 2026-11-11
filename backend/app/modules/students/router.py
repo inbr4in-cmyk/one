@@ -31,6 +31,7 @@ from app.modules.students.schemas import (
     FreezeIn,
     GuardianIn,
     GuardianOut,
+    GuardianPatch,
     LedgerOut,
     StudentIn,
     StudentListOut,
@@ -258,6 +259,64 @@ async def post_guardian(student_id: int, body: GuardianIn, db: DB, actor: Actor 
     return await card(db, s, actor)
 
 
+async def _guardian(db: DB, s: Student, guardian_id: int) -> tuple[StudentGuardian, User]:
+    link = await db.get(StudentGuardian, guardian_id)
+    if link is None or link.student_id != s.id:
+        raise not_found("Родитель")
+    return link, await db.get(User, link.user_id)
+
+
+@router.patch("/{student_id}/guardians/{guardian_id}", response_model=StudentOut)
+async def edit_guardian(student_id: int, guardian_id: int, body: GuardianPatch, db: DB,
+                        actor: Actor = require("students", "edit")) -> StudentOut:
+    """Fix a parent's name, phone (= their portal login), relation or WhatsApp notifications. The name and phone
+    belong to the parent's account, so a brother or sister of the student sees the same change."""
+    s = await get_student_scoped(db, actor, student_id, "students", "edit")
+    link, u = await _guardian(db, s, guardian_id)
+    data = body.model_dump(exclude_unset=True)
+    before = {"name": u.full_name, "phone": u.phone, "relation": link.relation, "notify": link.notify}
+    if data.get("phone"):
+        if not (actor.can("students", "view_contacts") or actor.is_owner):
+            raise forbidden("Телефон меняет сотрудник с доступом к контактам")
+        phone = normalize_phone(data["phone"])
+        if len(phone) != 12 or not phone.startswith("+7"):
+            raise bad_request("Неверный телефон")
+        if phone != u.phone:
+            if await db.scalar(select(User.id).where(User.phone == phone, User.id != u.id)):
+                raise conflict("Этот телефон уже используется другим аккаунтом")
+            u.phone = phone
+            if link.whatsapp:
+                link.whatsapp = phone
+    if data.get("full_name"):
+        u.full_name = data["full_name"].strip()
+    if "relation" in data:
+        link.relation = (data["relation"] or "").strip() or None
+    if data.get("notify") is not None:
+        link.notify = data["notify"]
+    after = {"name": u.full_name, "phone": u.phone, "relation": link.relation, "notify": link.notify}
+    b, a = diff(before, after)
+    if a:
+        for k in ("phone",):
+            if k in a:
+                b[k], a[k] = mask_phone(b[k]) if b.get(k) else None, mask_phone(a[k])
+        await write_audit(db, actor_id=actor.id, action="student.guardian_edit", entity="student", entity_id=s.id,
+                          branch_id=s.branch_id, ip=actor.ip, before=b, after=a)
+    await db.commit()
+    return await card(db, s, actor)
+
+
+@router.delete("/{student_id}/guardians/{guardian_id}", response_model=StudentOut)
+async def remove_guardian(student_id: int, guardian_id: int, db: DB, actor: Actor = require("students", "edit")) -> StudentOut:
+    """Unlink a parent from this student (the parent's account and other children stay)."""
+    s = await get_student_scoped(db, actor, student_id, "students", "edit")
+    link, u = await _guardian(db, s, guardian_id)
+    await db.delete(link)
+    await write_audit(db, actor_id=actor.id, action="student.guardian_remove", entity="student", entity_id=s.id,
+                      branch_id=s.branch_id, ip=actor.ip, before={"name": u.full_name, "relation": link.relation})
+    await db.commit()
+    return await card(db, s, actor)
+
+
 @router.post("/{student_id}/archive", status_code=204)
 async def archive_student(student_id: int, db: DB, actor: Actor = require("students", "archive")) -> None:
     s = await get_student_scoped(db, actor, student_id, "students", "archive")
@@ -300,6 +359,8 @@ SIMPLE_EVENTS = {
     "student.freeze_ended": ("freeze", "Заморозка закончилась"),
     "student.archive": ("status", "Удалён (в архиве)"),
     "student.guardian_add": ("other", "Добавлен родитель"),
+    "student.guardian_edit": ("other", "Изменены данные родителя"),
+    "student.guardian_remove": ("other", "Родитель убран из карточки"),
     "student.import_balance": ("other", "Перенесён остаток уроков"),
 }
 

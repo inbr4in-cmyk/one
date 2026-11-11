@@ -43,6 +43,13 @@ class StudentPatch(In):
     status: str | None = Field(default=None, pattern="^(active|finished|left)$")
 
 
+class GuardianPatch(In):
+    full_name: str | None = Field(default=None, min_length=2, max_length=255)
+    phone: str | None = Field(default=None, max_length=32)
+    relation: str | None = Field(default=None, max_length=255)
+    notify: bool | None = None
+
+
 class GuardianOut(BaseModel):
     id: int
     user_id: int

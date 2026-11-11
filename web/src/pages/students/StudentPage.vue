@@ -11,11 +11,12 @@ import TransferModal from '@/components/students/TransferModal.vue'
 import FreezeModal from '@/components/students/FreezeModal.vue'
 import GuardianModal from '@/components/students/GuardianModal.vue'
 import RefundModal from '@/components/students/RefundModal.vue'
+import PaymentEditModal from '@/components/payments/PaymentEditModal.vue'
 import StudentEditModal from '@/components/students/StudentEditModal.vue'
 import AttendanceCard from '@/components/students/AttendanceCard.vue'
 import StudentCoinsTab from '@/components/store/StudentCoinsTab.vue'
 import StudentBooksTab from '@/components/store/StudentBooksTab.vue'
-import { studentsApi, type Attempt, type AttendanceMark, type HistoryItem, type LedgerEntry, type Student } from '@/api/students'
+import { studentsApi, type Attempt, type AttendanceMark, type Guardian, type HistoryItem, type LedgerEntry, type Student } from '@/api/students'
 import { paymentsApi, type Payment } from '@/api/payments'
 import { chatsApi } from '@/api/chats'
 import { ApiError } from '@/api/http'
@@ -49,6 +50,14 @@ const attempts = ref<Attempt[] | null>(null)
 const marks = ref<AttendanceMark[] | null>(null)
 const modal = ref<'pay' | 'package' | 'transfer' | 'freeze' | 'guardian' | 'unfreeze' | 'archive' | 'edit' | null>(null)
 const refundOf = ref<Payment | null>(null)
+const editPay = ref<Payment | null>(null)
+const editG = ref<Guardian | null>(null)
+const delG = ref<Guardian | null>(null)
+async function removeGuardian() {
+  if (!s.value || !delG.value) return
+  busy.value = true
+  try { updated(await studentsApi.removeGuardian(s.value.id, delG.value.id)); delG.value = null } finally { busy.value = false }
+}
 const busy = ref(false)
 
 const id = computed(() => Number(route.params.id))
@@ -265,6 +274,10 @@ const canRefund = (p: Payment) => auth.can('payments.refund') && p.refunded < p.
               <UiAvatar :name="g.full_name" />
               <div class="grow"><b>{{ g.full_name }}<template v-if="g.relation"> · {{ g.relation }}</template></b><span>{{ g.phone ? formatPhone(g.phone) : '—' }}</span></div>
               <span v-if="g.notify" class="srcico wa" :title="t('students.notifyOn')"><svg><use href="#i-wa" /></svg></span>
+              <template v-if="auth.can('students.edit')">
+                <UiButton size="sm" variant="ghost" icon="edit" :aria-label="`${t('common.edit')}: ${g.full_name}`" :title="t('common.edit')" @click="editG = g" />
+                <UiButton size="sm" variant="ghost" icon="delete" :aria-label="`${t('students.removeGuardian')}: ${g.full_name}`" :title="t('students.removeGuardian')" @click="delG = g" />
+              </template>
             </div>
             <p v-if="!s.guardians.length" class="muted m0">{{ t('students.noGuardians') }}</p>
           </UiCard>
@@ -277,6 +290,7 @@ const canRefund = (p: Payment) => auth.can('payments.refund') && p.refunded < p.
                 <tr v-for="p in recentPayments" :key="p.id">
                   <td class="num">{{ dmy(p.paid_at, loc) }}</td>
                   <td class="r num">{{ money(p.amount, loc) }}<div class="muted" style="font-size: 12px">{{ t('students.nLessons', { n: p.lessons }) }}</div></td>
+                  <td v-if="auth.can('payments.create')" class="r"><UiButton size="sm" variant="ghost" icon="edit" :aria-label="t('payEdit.action')" :title="t('payEdit.action')" @click="editPay = p" /></td>
                   <td><span class="method"><i :class="p.method === 'kaspi' && 'kaspi'" :style="p.method !== 'kaspi' ? { background: `var(--${p.method === 'cash' ? 'ok' : 'info'})` } : undefined">{{ p.method === 'kaspi' ? 'K' : p.method === 'cash' ? '₸' : '▭' }}</i>{{ t(`payments.method.${p.method}`) }}</span></td>
                 </tr>
               </tbody>
@@ -322,6 +336,7 @@ const canRefund = (p: Payment) => auth.can('payments.refund') && p.refunded < p.
           </template>
           <template #cell-method="{ row }">{{ t(`payments.method.${row.method}`) }}</template>
           <template #cell-actions="{ row }">
+            <UiButton v-if="auth.can('payments.create')" size="sm" variant="ghost" icon="edit" :title="t('payEdit.action')" @click="editPay = row as Payment">{{ t('common.edit') }}</UiButton>
             <UiButton v-if="canRefund(row)" size="sm" variant="ghost" icon="history" @click="refundOf = row">{{ t('payments.refund') }}</UiButton>
           </template>
           <template #empty><UiEmptyState icon="wallet" :title="t('students.noPayments')" /></template>
@@ -353,6 +368,10 @@ const canRefund = (p: Payment) => auth.can('payments.refund') && p.refunded < p.
     <StudentEditModal :open="modal === 'edit'" :student="s" @update:open="(v) => !v && (modal = null)" @done="updated" />
     <GuardianModal :open="modal === 'guardian'" :student="s" @update:open="(v) => !v && (modal = null)" @done="updated" />
     <RefundModal :payment="refundOf" @close="refundOf = null" @done="afterPayment" />
+    <PaymentEditModal :payment="editPay" @close="editPay = null" @done="afterPayment" />
+    <GuardianModal :open="editG !== null" :student="s" :guardian="editG" @update:open="(v) => !v && (editG = null)" @done="updated" />
+    <UiPrompt :open="delG !== null" :title="t('students.removeGuardian')" :text="t('students.removeGuardianText', { name: delG?.full_name ?? '' })"
+      :confirm-label="t('students.removeGuardian')" danger :busy="busy" @update:open="(v) => !v && (delG = null)" @confirm="removeGuardian" />
     <UiPrompt :open="modal === 'unfreeze'" :title="t('students.unfreeze')" :text="t('students.unfreezeText')" :confirm-label="t('students.unfreeze')" :busy="busy" @update:open="(v) => !v && (modal = null)" @confirm="unfreeze" />
     <UiPrompt :open="modal === 'archive'" :title="t('students.archive')" :text="t('students.archiveText', { name: s.full_name })" :confirm-label="t('students.archive')" danger :busy="busy" @update:open="(v) => !v && (modal = null)" @confirm="archive" />
   </template>

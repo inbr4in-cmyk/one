@@ -150,6 +150,9 @@ export const studentsApi = {
   create: (body: StudentIn) => http.post<Student>('/students', body),
   update: (id: number, body: Partial<StudentIn> & { status?: 'active' | 'finished' | 'left' }) => http.patch<Student>(`/students/${id}`, body),
   addGuardian: (id: number, g: GuardianIn) => http.post<Student>(`/students/${id}/guardians`, g),
+  editGuardian: (id: number, gid: number, g: { full_name?: string; phone?: string; relation?: string | null; notify?: boolean }) =>
+    http.patch<Student>(`/students/${id}/guardians/${gid}`, g, { silent: true }),
+  removeGuardian: (id: number, gid: number) => http.delete<Student>(`/students/${id}/guardians/${gid}`),
   history: (id: number) => http.get<HistoryItem[]>(`/students/${id}/history`),
   ledger: (id: number) => http.get<LedgerEntry[]>(`/students/${id}/ledger`),
   transferPreview: (id: number, to_group_id: number) =>

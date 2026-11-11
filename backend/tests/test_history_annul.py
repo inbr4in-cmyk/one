@@ -60,3 +60,21 @@ async def test_annul_imported_money(db, client, owner_h):
     assert len((await db.scalars(select(BalanceEntry).where(BalanceEntry.student_id == sa.id))).all()) == n
     h = await client.get(f"/api/students/{sa.id}/history", headers=owner_h)
     assert any("Аннулирован остаток" in x["text"] for x in h.json())
+
+
+async def test_edit_and_remove_guardian(db, client, owner_h):
+    from tests.conftest import branch_id
+    bid = await branch_id(db, YANGI)
+    s = await _student(db, client, owner_h, bid, "Родитель Тест", "+77051112290")
+    g = s["guardians"][0]
+    r = await client.patch(f"/api/students/{s['id']}/guardians/{g['id']}", headers=owner_h,
+                           json={"full_name": "Сауле Иванова", "phone": "+77079998877", "relation": "мама", "notify": False})
+    assert r.status_code == 200, r.text
+    g2 = r.json()["guardians"][0]
+    assert g2["full_name"] == "Сауле Иванова" and g2["phone"].endswith("8877") and g2["notify"] is False
+    other = await _student(db, client, owner_h, bid, "Другой Ученик", "+77051112280")
+    taken = other["guardians"][0]["phone"]
+    r = await client.patch(f"/api/students/{s['id']}/guardians/{g['id']}", headers=owner_h, json={"phone": taken})
+    assert r.status_code == 409
+    r = await client.delete(f"/api/students/{s['id']}/guardians/{g['id']}", headers=owner_h)
+    assert r.status_code == 200 and r.json()["guardians"] == []
