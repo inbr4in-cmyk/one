@@ -176,6 +176,7 @@ class StaffIn(In):
     email: str | None = Field(default=None, max_length=255)
     position: str | None = Field(default=None, max_length=255)
     salary: int = Field(default=0, ge=0)
+    pay_scheme: str = Field(default="rates", pattern="^(rates|salary|both)$")
     password: str | None = Field(default=None, max_length=255)
     role_ids: list[int] = []
     branch_ids: list[int] = []
@@ -188,6 +189,7 @@ class StaffPatch(In):
     email: str | None = Field(default=None, max_length=255)
     position: str | None = Field(default=None, max_length=255)
     salary: int | None = Field(default=None, ge=0)
+    pay_scheme: str | None = Field(default=None, pattern="^(rates|salary|both)$")
     role_ids: list[int] | None = None
     branch_ids: list[int] | None = None
     is_active: bool | None = None
@@ -199,6 +201,7 @@ class StaffOut(BaseModel):
     phone: str | None
     position: str | None
     salary: int | None
+    pay_scheme: str | None = None
     is_active: bool
     totp_enabled: bool
     last_login_at: datetime | None
@@ -213,6 +216,7 @@ def staff_out(u: User, actor: Actor) -> StaffOut:
         id=u.id, full_name=u.full_name,
         phone=u.phone if actor.can("students", "view_contacts") or actor.is_owner else mask_phone(u.phone),
         position=u.position, salary=u.salary if see_salary or u.id == actor.id else None,
+        pay_scheme=u.pay_scheme if see_salary or u.id == actor.id else None,
         is_active=u.is_active, totp_enabled=u.totp_enabled, last_login_at=u.last_login_at,
         roles=[{"id": ur.role.id, "name": ur.role.name, "code": ur.role.code} for ur in u.roles],
         branch_ids=[b.branch_id for b in u.branches], archived_at=u.archived_at,
@@ -269,13 +273,18 @@ async def create_staff(body: StaffIn, db: DB, actor: Actor = require("staff", "c
     if body.password and (err := validate_password_strength(body.password)):
         raise bad_request(err)
     u = User(kind=UserKind.STAFF, full_name=body.full_name, phone=phone, email=body.email, position=body.position,
-             salary=body.salary, password_hash=hash_password(body.password) if body.password else None)
+             salary=body.salary, pay_scheme=body.pay_scheme, password_hash=hash_password(body.password) if body.password else None)
     db.add(u)
     await db.flush()
     for r in roles:
         db.add(UserRole(user_id=u.id, role_id=r.id))
     for b in set(body.branch_ids):
         db.add(UserBranch(user_id=u.id, branch_id=b))
+    await db.flush()
+    if u.salary and u.pay_scheme != "rates":
+        from app.services.clock import period_of, today
+        from app.services.payroll import accrue_salary
+        await accrue_salary(db, u, period_of(today()))
     await write_audit(db, actor_id=actor.id, action="staff.create", entity="user", entity_id=u.id, ip=actor.ip,
                       after={"full_name": u.full_name, "roles": [r.code for r in roles], "branches": body.branch_ids})
     await db.commit()
@@ -289,13 +298,14 @@ async def update_staff(user_id: int, body: StaffPatch, db: DB, actor: Actor = re
     if u is None or u.kind != UserKind.STAFF or not _staff_visible(actor, u):
         raise not_found("Сотрудник")
     if u.id == actor.id and (body.role_ids is not None or body.branch_ids is not None or body.salary is not None
+                             or body.pay_scheme is not None
                              or body.is_active is not None):
         raise forbidden("Нельзя менять собственные роли, филиалы, оклад и статус")
     if u.id != actor.id:
         await _ensure_outranks(db, actor, u)
-    if body.salary is not None and not actor.can("payroll", "adjust"):
+    if (body.salary is not None or body.pay_scheme is not None) and not actor.can("payroll", "adjust"):
         raise forbidden("Оклад меняет сотрудник с правом на зарплату")
-    before = snapshot(u, ["full_name", "email", "position", "salary", "is_active"])
+    before = snapshot(u, ["full_name", "email", "position", "salary", "pay_scheme", "is_active"])
     before["roles"] = sorted(ur.role.code for ur in u.roles)
     if "owner" in before["roles"] and not actor.is_owner:
         raise forbidden("Супер-админа может менять только супер-админ")
@@ -309,7 +319,7 @@ async def update_staff(user_id: int, body: StaffPatch, db: DB, actor: Actor = re
             raise conflict("Пользователь с таким телефоном уже есть")
         u.phone = phone
         await write_audit(db, actor_id=actor.id, action="staff.phone_set", entity="user", entity_id=u.id, ip=actor.ip)
-    for f in ("full_name", "email", "position", "salary", "is_active"):
+    for f in ("full_name", "email", "position", "salary", "pay_scheme", "is_active"):
         v = getattr(body, f)
         if v is not None:
             setattr(u, f, v)
@@ -333,9 +343,13 @@ async def update_staff(user_id: int, body: StaffPatch, db: DB, actor: Actor = re
         if "owner" in before["roles"]:
             await _ensure_not_last_owner(db, u.id)
         await revoke_all(db, u.id, "deactivated")
-    after = snapshot(u, ["full_name", "email", "position", "salary", "is_active"])
+    after = snapshot(u, ["full_name", "email", "position", "salary", "pay_scheme", "is_active"])
     after["roles"] = body.role_ids
     b, a = diff(before, after)
+    if {"salary", "pay_scheme", "is_active"} & set(a):
+        from app.services.clock import period_of, today
+        from app.services.payroll import accrue_salary
+        await accrue_salary(db, u, period_of(today()))
     await write_audit(db, actor_id=actor.id, action="staff.update", entity="user", entity_id=u.id, ip=actor.ip, before=b, after=a)
     await db.commit()
     u = await db.scalar(select(User).where(User.id == u.id).execution_options(populate_existing=True))

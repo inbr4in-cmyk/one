@@ -76,9 +76,11 @@ async def sheet(db: DB, actor: Actor = require("payroll", "view"), period: str |
     for uid, kind, total, cnt in rows:
         u = users.get(uid)
         p = people.setdefault(uid, {"user_id": uid, "full_name": u.full_name if u else "?", "position": u.position if u else None,
-                                    "by_kind": {}, "total": 0})
+                                    "pay_scheme": u.pay_scheme if u else None, "by_kind": {}, "total": 0, "rates_total": 0,
+                                    "salary_total": 0})
         p["by_kind"][kind] = {"title": KIND_NAMES.get(kind, kind), "amount": int(total), "count": cnt}
         p["total"] += int(total)
+        p["salary_total" if kind == "salary" else "rates_total"] += int(total)
     branch_ids = {branch_id} if branch_id else ({a.branch_id for a in await db.scalars(
         select(Accrual).where(Accrual.period == period, *_scope_filter(actor, "view", None)))} - {None})
     done = {p.branch_id: p.status for p in await db.scalars(select(PayrollPeriod).where(
@@ -103,7 +105,9 @@ async def my_pay(db: DB, actor: Actor = require("payroll", "view"), period: str 
     period = period or period_of(today())
     items = [_out(a) for a in await db.scalars(select(Accrual).where(Accrual.user_id == actor.id, Accrual.period == period)
                                                  .order_by(Accrual.id))]
-    return {"period": period, "total": sum(i.amount for i in items), "items": items}
+    salary = sum(i.amount for i in items if i.kind == "salary")
+    return {"period": period, "total": sum(i.amount for i in items), "salary_total": salary,
+            "rates_total": sum(i.amount for i in items) - salary, "items": items}
 
 
 class AdjustIn(In):

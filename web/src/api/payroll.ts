@@ -6,8 +6,11 @@ export interface PayrollPerson {
   user_id: number
   full_name: string
   position: string | null
+  pay_scheme: 'rates' | 'salary' | 'both' | null
   by_kind: Record<string, { title: string; amount: number; count: number }>
   total: number
+  rates_total: number
+  salary_total: number
 }
 
 export interface PayrollSheet {
@@ -44,7 +47,7 @@ export interface AdjustIn {
 export const payrollApi = {
   sheet: (p: { period: string; branch_id?: number | null }) => http.get<PayrollSheet>(`/payroll${qs(p)}`),
   accruals: (p: { period: string; user_id?: number; branch_id?: number | null }) => http.get<Accrual[]>(`/payroll/accruals${qs(p)}`),
-  my: (period: string) => http.get<{ period: string; total: number; items: Accrual[] }>(`/payroll/my${qs({ period })}`),
+  my: (period: string) => http.get<{ period: string; total: number; rates_total: number; salary_total: number; items: Accrual[] }>(`/payroll/my${qs({ period })}`),
   adjust: (body: AdjustIn) => http.post<Accrual>('/payroll/adjust', body, { silent: true }),
   approve: (period: string, branch_id: number) => http.post<{ status: PeriodStatus; total: number }>('/payroll/periods/approve', { period, branch_id }, { silent: true }),
   paid: (period: string, branch_id: number) => http.post<{ status: PeriodStatus }>('/payroll/periods/paid', { period, branch_id }, { silent: true }),

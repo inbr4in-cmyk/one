@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { UiButton, UiDrawer, UiField, UiInput, UiPhoneInput } from '@/components/ui'
-import { adminApi, type AssignableRole, type Staff } from '@/api/admin'
+import { UiButton, UiDrawer, UiField, UiInput, UiPhoneInput, UiSegmented } from '@/components/ui'
+import { adminApi, type AssignableRole, type PayScheme, type Staff } from '@/api/admin'
 import { useBranchStore } from '@/stores/branch'
 import { useToastStore } from '@/stores/toast'
 import { apiErr } from '@/utils/err'
@@ -15,18 +15,19 @@ const emit = defineEmits<{ saved: [Staff] }>()
 const { t, te } = useI18n()
 const branch = useBranchStore()
 const toast = useToastStore()
-const form = reactive({ full_name: '', phone: '', position: '', salary: '', password: '', role_ids: [] as number[], branch_ids: [] as number[] })
+const form = reactive({ full_name: '', phone: '', position: '', salary: '', pay_scheme: 'rates' as PayScheme, password: '', role_ids: [] as number[], branch_ids: [] as number[] })
 const error = ref<string | null>(null)
 const busy = ref(false)
 
 const branches = computed(() => branch.options.filter((o) => o.id !== null) as { id: number; name: string }[])
 const roleChoices = computed(() => props.roles)
+const schemeOptions = computed(() => (['rates', 'salary', 'both'] as const).map((v) => ({ value: v, label: t(`staff.scheme.${v}`) })))
 
 watch(open, (v) => {
   if (!v) return
   const s = props.staff
   Object.assign(form, {
-    full_name: s?.full_name ?? '', phone: '', position: s?.position ?? '', salary: s?.salary != null ? String(s.salary) : '', password: '',
+    full_name: s?.full_name ?? '', phone: '', position: s?.position ?? '', salary: s?.salary != null ? String(s.salary) : '', pay_scheme: s?.pay_scheme ?? 'rates', password: '',
     role_ids: s?.roles.map((r) => r.id) ?? [], branch_ids: s?.branch_ids ?? (branch.filterId !== null ? [branch.filterId] : []),
   })
   error.value = null
@@ -45,11 +46,11 @@ async function submit() {
     const salary = form.salary === '' ? undefined : Math.max(0, Math.round(Number(form.salary)))
     const out = props.staff
       ? await adminApi.updateStaff(props.staff.id, {
-        ...common, ...(salary !== undefined ? { salary } : {}),
+        ...common, ...(salary !== undefined ? { salary } : {}), ...(props.staff.pay_scheme !== null ? { pay_scheme: form.pay_scheme } : {}),
         // Imported from the old CRM without a phone: the phone is set here once (then the owner sets a password)
         ...(props.staff.phone === null && form.phone ? { phone: form.phone } : {}),
       })
-      : await adminApi.createStaff({ ...common, role_ids: form.role_ids, phone: form.phone, salary: salary ?? 0, password: form.password || null })
+      : await adminApi.createStaff({ ...common, role_ids: form.role_ids, phone: form.phone, salary: salary ?? 0, pay_scheme: form.pay_scheme, password: form.password || null })
     toast.ok(props.staff ? t('common.saved') : t('staff.created'))
     emit('saved', out)
     open.value = false
@@ -71,6 +72,9 @@ async function submit() {
         <UiInput v-model="form.position" :label="t('staff.position')" :placeholder="t('staff.positionPh')" :maxlength="255" />
         <UiInput v-if="!staff || staff.salary !== null" v-model="form.salary" type="number" :min="0" :label="t('staff.salary')" inputmode="numeric" />
       </div>
+      <UiField v-if="!staff || staff.salary !== null" :label="t('staff.payScheme')" :hint="t(`staff.schemeHint.${form.pay_scheme}`)">
+        <UiSegmented v-model="form.pay_scheme" :options="schemeOptions" :label="t('staff.payScheme')" size="sm" />
+      </UiField>
       <UiInput v-if="!staff" v-model="form.password" type="password" :label="t('staff.password')" :hint="t('staff.passwordHint')" autocomplete="new-password" />
       <UiField :label="t('staff.branches')">
         <div class="picker-list short">

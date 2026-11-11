@@ -29,6 +29,8 @@ class User(IdMixin, TimestampMixin, ArchiveMixin, Base):
     avatar_url: Mapped[StrN]
     position: Mapped[StrN]
     salary: Mapped[Money]  # monthly base salary for staff, tenge
+    # rates — paid by rates only (lessons, sales…); salary — fixed monthly salary only; both — salary + rates
+    pay_scheme: Mapped[str] = mapped_column(String(8), default="rates", server_default="rates")
     last_login_at: Mapped[DTN]
     failed_logins: Mapped[Int]
     locked_until: Mapped[DTN]

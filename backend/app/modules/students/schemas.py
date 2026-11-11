@@ -39,6 +39,8 @@ class StudentPatch(In):
     photo_url: str | None = Field(default=None, max_length=255)
     contract_no: str | None = Field(default=None, max_length=64)
     contract_date: date | None = None
+    # manual status: studying / finished the course / left (freezes have their own flow)
+    status: str | None = Field(default=None, pattern="^(active|finished|left)$")
 
 
 class GuardianOut(BaseModel):

@@ -1,6 +1,7 @@
-from datetime import date
+from datetime import date, datetime, time
 
 from fastapi import APIRouter, Query
+from pydantic import BaseModel
 from sqlalchemy import func, select
 
 from app.core.audit import diff, snapshot, write_audit
@@ -216,9 +217,11 @@ async def get_student(student_id: int, db: DB, actor: Actor = require("students"
 @router.patch("/{student_id}", response_model=StudentOut)
 async def update_student(student_id: int, body: StudentPatch, db: DB, actor: Actor = require("students", "edit")) -> StudentOut:
     s = await get_student_scoped(db, actor, student_id, "students", "edit")
-    fields = ["full_name", "birth_date", "phone", "level_id", "source", "notes", "photo_url", "contract_no", "contract_date"]
+    fields = ["full_name", "birth_date", "phone", "level_id", "source", "notes", "photo_url", "contract_no", "contract_date", "status"]
     before = snapshot(s, fields)
     data = body.model_dump(exclude_unset=True)
+    if "status" in data and (data["status"] is None or s.status == "frozen"):
+        data.pop("status")  # a freeze is ended through «Снять заморозку»
     if "contract_no" in data:
         data["contract_no"] = (data["contract_no"] or "").strip() or None
         await _contract_free(db, data["contract_no"], s.id)
@@ -279,6 +282,90 @@ async def ledger(student_id: int, db: DB, actor: Actor = require("students", "vi
     s = await get_student_scoped(db, actor, student_id)
     rows = await db.scalars(select(BalanceEntry).where(BalanceEntry.student_id == s.id).order_by(BalanceEntry.id.desc()).limit(300))
     return [LedgerOut.model_validate(r) for r in rows]
+
+
+# ---------- history ----------
+STATUS_RU = {"lead": "Лид", "trial": "Пробный", "active": "Учится", "frozen": "Заморозка", "finished": "Закончил обучение",
+             "left": "Ушёл"}
+FIELD_RU = {"full_name": "ФИО", "phone": "Телефон", "birth_date": "Дата рождения", "source": "Откуда узнал",
+            "contract_no": "Договор", "contract_date": "Дата договора", "notes": "Заметки"}
+SIMPLE_EVENTS = {
+    "student.create": ("created", "Добавлен в систему"),
+    "student.import": ("created", "Перенесён из старой CRM"),
+    "student.left": ("status", "Отмечен как ушедший (нет занятий)"),
+    "student.blocked": ("status", "Доступ закрыт: нет оплаты"),
+    "student.freeze": ("freeze", "Заморозка"),
+    "student.freeze_started": ("freeze", "Заморозка началась"),
+    "student.unfreeze": ("freeze", "Заморозка снята"),
+    "student.freeze_ended": ("freeze", "Заморозка закончилась"),
+    "student.archive": ("status", "Удалён (в архиве)"),
+    "student.guardian_add": ("other", "Добавлен родитель"),
+    "student.import_balance": ("other", "Перенесён остаток уроков"),
+}
+
+
+class HistoryItem(BaseModel):
+    at: datetime
+    kind: str  # created | group | transfer | status | level | branch | freeze | other
+    text: str
+    actor: str | None = None
+
+
+@router.get("/{student_id}/history", response_model=list[HistoryItem])
+async def history(student_id: int, db: DB, actor: Actor = require("students", "view")) -> list[HistoryItem]:
+    """Timeline of the student: groups joined/left, transfers, status, level and branch changes, freezes. Built from
+    the group memberships and the audit log, so it also covers the time before this page existed."""
+    from app.models import AuditLog, Branch
+    from app.services.clock import at_local
+    s = await get_student_scoped(db, actor, student_id)
+    levels = {x.id: x.name for x in await db.scalars(select(Level))}
+    branches = {x.id: x.name for x in await db.scalars(select(Branch))}
+    out: list[HistoryItem] = []
+    for m, g in (await db.execute(select(GroupMember, Group).join(Group, Group.id == GroupMember.group_id)
+                                  .where(GroupMember.student_id == s.id))).all():
+        lvl = f" ({levels[g.level_id]})" if g.level_id in levels else ""
+        out.append(HistoryItem(at=at_local(m.joined_on, time(0)), kind="group", text=f"Начал заниматься в группе «{g.name}»{lvl}"))
+        if m.left_on:
+            out.append(HistoryItem(at=at_local(m.left_on, time(0)), kind="group", text=f"Вышел из группы «{g.name}»{lvl}"))
+        elif g.status == "finished":
+            out.append(HistoryItem(at=at_local(g.updated_at.date() if g.updated_at else m.joined_on, time(0)), kind="group",
+                                   text=f"Группа «{g.name}» закончила курс{lvl}"))
+    logs = (await db.scalars(select(AuditLog).where(AuditLog.entity == "student", AuditLog.entity_id == s.id)
+                             .order_by(AuditLog.id).limit(500))).all()
+    names = {u.id: u.full_name for u in await db.scalars(
+        select(User).where(User.id.in_({x.actor_id for x in logs if x.actor_id} or {0})))}
+    for a in logs:
+        who = names.get(a.actor_id) if a.actor_id else "Система"
+        b, af = a.before or {}, a.after or {}
+        if a.action == "student.transfer":
+            out.append(HistoryItem(at=a.at, kind="transfer", actor=who,
+                                   text=f"Переведён из «{b.get('group') or '—'}» в «{af.get('group')}»"))
+        elif a.action == "student.update":
+            for k, v in af.items():
+                if k == "status":
+                    out.append(HistoryItem(at=a.at, kind="status", actor=who,
+                                           text=f"Статус: {STATUS_RU.get(b.get(k), b.get(k) or '—')} → {STATUS_RU.get(v, v)}"))
+                elif k == "level_id":
+                    out.append(HistoryItem(at=a.at, kind="level", actor=who,
+                                           text=f"Уровень: {levels.get(b.get(k), '—')} → {levels.get(v, '—')}"))
+                elif k == "branch_id":
+                    out.append(HistoryItem(at=a.at, kind="branch", actor=who,
+                                           text=f"Филиал: {branches.get(b.get(k), '—')} → {branches.get(v, '—')}"))
+                elif k in FIELD_RU:
+                    out.append(HistoryItem(at=a.at, kind="other", actor=who, text=f"Изменено: {FIELD_RU[k]}"))
+        elif a.action in SIMPLE_EVENTS:
+            kind, text = SIMPLE_EVENTS[a.action]
+            if a.action == "student.freeze" and af.get("from"):
+                text = f"Заморозка {date.fromisoformat(af['from']):%d.%m.%Y} – {date.fromisoformat(af['to']):%d.%m.%Y}"
+            if a.note:
+                text = f"{text}. {a.note}"
+            out.append(HistoryItem(at=a.at, kind=kind, actor=who, text=text))
+    for e in await db.scalars(select(BalanceEntry).where(BalanceEntry.student_id == s.id, BalanceEntry.kind == "manual",
+                                                         BalanceEntry.note.is_not(None))):
+        if "старой CRM" in (e.note or ""):
+            out.append(HistoryItem(at=e.at, kind="other", text=f"{e.note}: {e.money_delta:+,} ₸".replace(",", " ")))
+    out.sort(key=lambda x: x.at, reverse=True)
+    return out
 
 
 # ---------- transfers (ТЗ 5.3) ----------

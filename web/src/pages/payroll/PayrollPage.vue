@@ -33,7 +33,7 @@ const tabs = computed(() => [
 ])
 const period = ref(periodOf())
 const sheet = ref<PayrollSheet | null>(null)
-const my = ref<{ total: number; items: Accrual[] } | null>(null)
+const my = ref<{ total: number; rates_total?: number; salary_total?: number; items: Accrual[] } | null>(null)
 const detail = ref<PayrollPerson | null>(null)
 const accruals = ref<Accrual[] | null>(null)
 const adjustOpen = ref(false)
@@ -135,7 +135,7 @@ const signed = (n: number) => (n > 0 ? `+${money(n, loc.value)}` : n < 0 ? `−$
           <UiAvatar :name="p.full_name" />
           <div class="grow">
             <b>{{ p.full_name }}</b>
-            <span>{{ p.position ?? '—' }}<template v-for="[k, v] in topKinds(p)" :key="k"> · {{ kindLabel(String(k)) }} {{ money(v.amount, loc) }}</template></span>
+            <span>{{ p.position ?? '—' }}<template v-if="p.salary_total"> · {{ t('payroll.bySalary') }} {{ money(p.salary_total, loc) }} · {{ t('payroll.byRates') }} {{ money(p.rates_total, loc) }}</template><template v-else><template v-for="[k, v] in topKinds(p)" :key="k"> · {{ kindLabel(String(k)) }} {{ money(v.amount, loc) }}</template></template></span>
           </div>
           <b class="num">{{ money(p.total, loc) }}</b>
         </button>
@@ -149,6 +149,7 @@ const signed = (n: number) => (n > 0 ? `+${money(n, loc.value)}` : n < 0 ? `−$
       <div class="card kpi">
         <div class="k">{{ t('payroll.myTotal', { period: periodLabel(period, loc) }) }}</div>
         <div v-if="my" class="v num">{{ money(my.total, loc) }}</div><UiSkeleton v-else :lines="1" />
+        <span v-if="my && my.salary_total" class="muted" style="font-size: 12px">{{ t('payroll.bySalary') }} {{ money(my.salary_total, loc) }} · {{ t('payroll.byRates') }} {{ money(my.rates_total ?? 0, loc) }}</span>
         <span class="muted" style="font-size: 12px">{{ t('payroll.myNote') }}</span>
       </div>
     </div>
@@ -170,6 +171,10 @@ const signed = (n: number) => (n > 0 ? `+${money(n, loc.value)}` : n < 0 ? `−$
         <div class="muted">{{ detail.position ?? '' }} · {{ periodLabel(period, loc) }}</div>
         <div class="kv-grid">
           <template v-for="(v, k) in detail.by_kind" :key="k"><span>{{ kindLabel(String(k)) }} <span class="muted">× {{ v.count }}</span></span><b class="num">{{ money(v.amount, loc) }}</b></template>
+          <template v-if="detail.salary_total">
+            <span class="muted">{{ t('payroll.bySalary') }}</span><b class="num">{{ money(detail.salary_total, loc) }}</b>
+            <span class="muted">{{ t('payroll.byRates') }}</span><b class="num">{{ money(detail.rates_total, loc) }}</b>
+          </template>
           <span><b>{{ t('fin.total') }}</b></span><b class="num">{{ money(detail.total, loc) }}</b>
         </div>
         <h4 class="m0">{{ t('payroll.lines') }}</h4>

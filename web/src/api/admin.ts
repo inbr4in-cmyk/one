@@ -24,12 +24,15 @@ export interface RoleIn {
   permissions: { module: string; action: string; scope: Scope }[]
 }
 
+export type PayScheme = 'rates' | 'salary' | 'both'
+
 export interface Staff {
   id: number
   full_name: string
   phone: string | null
   position: string | null
   salary: number | null
+  pay_scheme: PayScheme | null
   is_active: boolean
   totp_enabled: boolean
   last_login_at: string | null
@@ -44,6 +47,7 @@ export interface StaffIn {
   email?: string | null
   position?: string | null
   salary?: number
+  pay_scheme?: PayScheme
   password?: string | null
   role_ids: number[]
   branch_ids: number[]

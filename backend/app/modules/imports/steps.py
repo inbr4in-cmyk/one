@@ -583,6 +583,43 @@ async def step_group(ctx: Ctx, r: dict) -> RowResult:
 
 
 # ---------- step: students ----------
+IMPORT_MONEY_NOTES = ("Остаток на личном счёте в старой CRM", "Изменение остатка в старой CRM (повторный импорт)")
+ANNUL_NOTE = "Аннулирован остаток из старой CRM"
+
+
+async def annul_import_money(db, actor_id: int, *, include_debts: bool, commit: bool) -> dict:
+    """Owner's decision (11.11): money balances brought over from the old CRM are cancelled. Only what is still left
+    of the imported amount is taken off (money already used in payments stays as is); lessons are not touched.
+    Every change is a balance entry, so the student's history shows it."""
+    from app.models import Student
+    rows = (await db.execute(
+        select(BalanceEntry.student_id, func.sum(BalanceEntry.money_delta))
+        .where(BalanceEntry.note.in_(IMPORT_MONEY_NOTES + (ANNUL_NOTE,)))
+        .group_by(BalanceEntry.student_id))).all()
+    pos = {"students": 0, "sum": 0}
+    debt = {"students": 0, "sum": 0}
+    for sid, left in rows:
+        left = int(left or 0)
+        if not left:
+            continue
+        s = await db.get(Student, sid, with_for_update=commit)
+        if left > 0 and s.money_balance > 0:
+            amount = min(left, s.money_balance)
+            box = pos
+        elif left < 0 and s.money_balance < 0:
+            amount = max(left, s.money_balance)
+            box = debt
+            if not include_debts:
+                box["students"] += 1
+                box["sum"] += amount
+                continue
+        else:
+            continue
+        box["students"] += 1
+        box["sum"] += amount
+        if commit:
+            await bal.apply(db, s, "manual", money=-amount, actor_id=actor_id, note=ANNUL_NOTE)
+    return {"positive": pos, "debts": debt, "include_debts": include_debts}
 def _opening_money(ctx: Ctx, r: dict) -> int:
     """Personal account in the old CRM = «Приход» − «Расход». Book purchases are credited to «Приход» there but never
     written off to «Расход», so the paid «Учебные материалы» of the same client are taken out: what is left is the
@@ -631,6 +668,9 @@ async def step_student(ctx: Ctx, r: dict) -> RowResult:
         if r["phone"] and not s.phone:
             s.phone = r["phone"]
         prev = (ref.meta or {}).get("money") if ref else None
+        if await db.scalar(select(BalanceEntry.id).where(BalanceEntry.student_id == s.id,
+                                                         BalanceEntry.note == ANNUL_NOTE).limit(1)):
+            prev = money_left  # the owner annulled imported money: a re-import does not bring it back
         if prev is not None and prev != money_left:
             await bal.apply(db, s, "manual", money=money_left - prev, actor_id=ctx.actor.id,
                             note="Изменение остатка в старой CRM (повторный импорт)")

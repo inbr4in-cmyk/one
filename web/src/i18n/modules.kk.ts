@@ -81,8 +81,10 @@ const modules: typeof ru = {
       a: 'Келмеді',
       e: 'Себепті',
     },
+    history: { empty: 'Әзірге оқиға жоқ' },
     tab: {
       overview: 'Шолу',
+      history: 'Тарих',
       ledger: 'Баланс қозғалысы',
       payments: 'Төлемдер',
       tests: 'Тесттер',

@@ -2,7 +2,7 @@
 
 from datetime import date
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,11 +18,52 @@ async def period_locked(db: AsyncSession, period: str, branch_id: int | None) ->
     return p is not None and p.status != "draft"
 
 
+async def on_rates(db: AsyncSession, user_id: int) -> bool:
+    """Staff on «оклад only» get no per-fact accruals (lessons, sales, trials…)."""
+    from app.models import User
+    return (await db.scalar(select(User.pay_scheme).where(User.id == user_id))) != "salary"
+
+
+async def accrue_salary(db: AsyncSession, user, period: str) -> int:
+    """The month's fixed salary as one accrual per person and month. The amount follows the staff card while the
+    month's sheet is not approved; nothing is added for an inactive person or without a salary."""
+    from app.models import UserBranch
+    ref_id = int(period.replace("-", ""))
+    existing = await db.scalar(select(Accrual).where(Accrual.user_id == user.id, Accrual.kind == "salary",
+                                                     Accrual.ref_type == "salary", Accrual.ref_id == ref_id))
+    want = user.salary if user.pay_scheme in ("salary", "both") and user.is_active and user.archived_at is None else 0
+    if existing is not None:
+        if existing.amount != want and not await period_locked(db, existing.period, existing.branch_id):
+            existing.amount = want
+            return 1
+        return 0
+    if not want:
+        return 0
+    branch_id = await db.scalar(select(func.min(UserBranch.branch_id)).where(UserBranch.user_id == user.id))
+    y, m = period.split("-")
+    db.add(Accrual(user_id=user.id, kind="salary", amount=want, ref_type="salary", ref_id=ref_id, period=period,
+                   branch_id=branch_id, description=f"Оклад за {m}.{y}"))
+    return 1
+
+
+async def accrue_salaries(db: AsyncSession, period: str | None = None) -> int:
+    from app.models import User
+    from app.models.identity import UserKind
+    from app.services.clock import today
+    period = period or period_of(today())
+    n = 0
+    for u in await db.scalars(select(User).where(User.kind == UserKind.STAFF)):
+        n += await accrue_salary(db, u, period)
+    return n
+
+
 async def accrue_once(
     db: AsyncSession, *, user_id: int, kind: str, amount: int, ref: tuple[str, int], on: date,
     branch_id: int | None, description: str, created_by: int | None = None,
 ) -> bool:
     """Insert the accrual unless this fact already produced it. Returns True if a new accrual was created."""
+    if not await on_rates(db, user_id):
+        return False
     stmt = (
         insert(Accrual)
         .values(user_id=user_id, kind=kind, amount=amount, ref_type=ref[0], ref_id=ref[1], period=period_of(on),
@@ -50,6 +91,8 @@ async def accrue_lesson(db: AsyncSession, *, teacher_id: int, lesson_id: int, n:
         extra = await rate(db, "teacher_extra_per_student", on)
         threshold = await rate(db, "teacher_extra_threshold", on)
         amount = teacher_lesson_pay(n, base, extra, threshold)
+    if not await on_rates(db, teacher_id):
+        amount = 0  # оклад only: the lesson is recorded, the pay is in the salary
     desc = f"Урок {group_name} {on.strftime('%d.%m')}: {n} уч."
     existing = await db.scalar(select(Accrual).where(Accrual.kind == "lesson", Accrual.ref_type == "lesson",
                                                      Accrual.ref_id == lesson_id))

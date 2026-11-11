@@ -80,8 +80,10 @@ const modules = {
       a: 'Пропуск',
       e: 'Уважительная',
     },
+    history: { empty: 'Событий пока нет' },
     tab: {
       overview: 'Обзор',
+      history: 'История',
       ledger: 'Движение баланса',
       payments: 'Оплаты',
       tests: 'Тесты',

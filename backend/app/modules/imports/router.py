@@ -23,7 +23,7 @@ from app.core.errors import bad_request, forbidden
 from app.core.permissions import NETWORK
 from app.models import Branch
 from app.modules.imports.parse import KINDS, parse_file
-from app.modules.imports.steps import Ctx, RowResult, build_hints, run_rows, step_refs
+from app.modules.imports.steps import annul_import_money, Ctx, RowResult, build_hints, run_rows, step_refs
 from app.services.clock import today
 
 router = APIRouter(tags=["import"])
@@ -38,6 +38,19 @@ def _totals(rows: list[RowResult]) -> dict:
 
 def _rows(rows: list[RowResult]) -> list[dict]:
     return [{"row": r.row, "status": r.status, "label": r.label, "reason": r.reason} for r in rows]
+
+
+@router.post("/import/old-crm/annul-money")
+async def annul_money(db: DB, actor: Actor = require("import", "run"), include_debts: bool = Query(False),
+                      commit: bool = Query(False)) -> dict:
+    """Preview (commit=false) or cancel the money balances that came from the old CRM. Network-wide owner action."""
+    if actor.scope("import", "run") != NETWORK:
+        raise forbidden("Только для владельца или администратора сети")
+    res = await annul_import_money(db, actor.id, include_debts=include_debts, commit=commit)
+    if commit:
+        await write_audit(db, actor_id=actor.id, action="import.annul_money", entity="students", ip=actor.ip, after=res)
+        await db.commit()
+    return res
 
 
 @router.get("/import/old-crm/kinds")

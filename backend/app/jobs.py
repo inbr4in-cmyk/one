@@ -274,6 +274,8 @@ async def nightly(db: AsyncSession) -> dict:
     out["blocked"] = await block_nonpayers(db)
     out["expenses"] = await recurring_expenses(db)
     out["coins"] = await auto_coins(db)
+    from app.services.payroll import accrue_salaries
+    out["salaries"] = await accrue_salaries(db)
     await db.commit()
     return out
 

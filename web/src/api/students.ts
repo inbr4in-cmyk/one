@@ -148,8 +148,9 @@ export const studentsApi = {
   list: (f: StudentFilters) => http.get<Page<StudentListItem>>(`/students${qs({ ...f })}`),
   get: (id: number) => http.get<Student>(`/students/${id}`),
   create: (body: StudentIn) => http.post<Student>('/students', body),
-  update: (id: number, body: Partial<StudentIn>) => http.patch<Student>(`/students/${id}`, body),
+  update: (id: number, body: Partial<StudentIn> & { status?: 'active' | 'finished' | 'left' }) => http.patch<Student>(`/students/${id}`, body),
   addGuardian: (id: number, g: GuardianIn) => http.post<Student>(`/students/${id}/guardians`, g),
+  history: (id: number) => http.get<HistoryItem[]>(`/students/${id}/history`),
   ledger: (id: number) => http.get<LedgerEntry[]>(`/students/${id}/ledger`),
   transferPreview: (id: number, to_group_id: number) =>
     http.post<TransferPreview>(`/students/${id}/transfer/preview`, { to_group_id }),
@@ -162,3 +163,5 @@ export const studentsApi = {
   tests: (id: number) => http.get<Attempt[]>(`/students/${id}/tests`, { silent: true }),
   attendance: (id: number) => http.get<AttendanceMark[]>(`/students/${id}/attendance`, { silent: true }),
 }
+
+export interface HistoryItem { at: string; kind: 'created' | 'group' | 'transfer' | 'status' | 'level' | 'branch' | 'freeze' | 'other'; text: string; actor: string | null }

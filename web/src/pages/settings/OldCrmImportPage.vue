@@ -3,6 +3,7 @@ import { computed, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { UiButton, UiCard, UiChip, UiEmptyState, UiIcon, UiSegmented, UiSelect } from '@/components/ui'
 import { oldCrmApi, type ImportFileResult, type ImportResult, type ImportRow, type ImportStatus, type ImportTotals } from '@/api/oldCrm'
+import OldCrmAnnulCard from '@/components/settings/OldCrmAnnulCard.vue'
 import { useRefsStore } from '@/stores/refs'
 import { money } from '@/utils/dates'
 import { apiErr } from '@/utils/err'
@@ -268,4 +269,6 @@ const LINKS = [
       </div>
     </UiCard>
   </template>
+
+  <OldCrmAnnulCard />
 </template>

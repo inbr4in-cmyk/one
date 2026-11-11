@@ -43,7 +43,11 @@ export interface ImportKind {
   order: number
 }
 
+export interface AnnulMoney { positive: { students: number; sum: number }; debts: { students: number; sum: number }; include_debts: boolean }
+
 export const oldCrmApi = {
+  annulMoney: (includeDebts: boolean, commit: boolean) =>
+    http.post<AnnulMoney>(`/import/old-crm/annul-money${qs({ include_debts: includeDebts || undefined, commit: commit || undefined })}`, undefined, { silent: true }),
   kinds: () => http.get<ImportKind[]>('/import/old-crm/kinds'),
   run: (files: File[], kinds: string[], defaultBranchId: number | null, commit: boolean) => {
     const fd = new FormData()

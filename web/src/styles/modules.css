@@ -524,3 +524,12 @@ button.pinned{width:100%;border:0;border-bottom:1px solid var(--line);text-align
 /* Schedule blocks: teacher and group names end with an ellipsis */
 .blk b,.blk span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .blk .trial{display:inline-flex}
+
+.hist{list-style:none;margin:0;padding:0;display:grid;gap:2px}
+.hist li{display:flex;gap:12px;align-items:flex-start;padding:10px 4px;border-bottom:1px solid var(--line)}
+.hist li:last-child{border-bottom:0}
+.hist li div{display:grid;gap:2px;min-width:0}
+.hist li .muted{font-size:12px}
+.hist .hi{flex:none;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:var(--navy-50);color:var(--navy)}
+.hist li.transfer .hi,.hist li.status .hi{background:var(--red-100);color:var(--red-600)}
+.hist li.freeze .hi{background:var(--warn-bg);color:var(--warn)}

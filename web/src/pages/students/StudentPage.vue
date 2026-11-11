@@ -15,7 +15,7 @@ import StudentEditModal from '@/components/students/StudentEditModal.vue'
 import AttendanceCard from '@/components/students/AttendanceCard.vue'
 import StudentCoinsTab from '@/components/store/StudentCoinsTab.vue'
 import StudentBooksTab from '@/components/store/StudentBooksTab.vue'
-import { studentsApi, type Attempt, type AttendanceMark, type LedgerEntry, type Student } from '@/api/students'
+import { studentsApi, type Attempt, type AttendanceMark, type HistoryItem, type LedgerEntry, type Student } from '@/api/students'
 import { paymentsApi, type Payment } from '@/api/payments'
 import { chatsApi } from '@/api/chats'
 import { ApiError } from '@/api/http'
@@ -27,7 +27,7 @@ import { shortDate } from '@/utils/format'
 import { formatPhone } from '@/utils/phone'
 import type { Locale } from '@/i18n'
 
-type Tab = 'overview' | 'ledger' | 'payments' | 'tests' | 'coins' | 'books'
+type Tab = 'overview' | 'history' | 'ledger' | 'payments' | 'tests' | 'coins' | 'books'
 
 const { t, locale } = useI18n()
 const srcLabel = useSourceLabel()
@@ -42,6 +42,8 @@ const s = ref<Student | null>(null)
 const notFound = ref(false)
 const tab = ref<Tab>('overview')
 const ledger = ref<LedgerEntry[] | null>(null)
+const hist = ref<HistoryItem[] | null>(null)
+const HIST_ICON: Record<HistoryItem['kind'], string> = { created: 'add', group: 'groups', transfer: 'transfer', status: 'flag', level: 'level', branch: 'branches', freeze: 'clock', other: 'edit' }
 const payments = ref<Payment[] | null>(null)
 const attempts = ref<Attempt[] | null>(null)
 const marks = ref<AttendanceMark[] | null>(null)
@@ -60,6 +62,7 @@ const ringDash = computed(() => {
 
 const tabs = computed(() => {
   const items: { value: Tab; label: string }[] = [{ value: 'overview', label: t('students.tab.overview') }]
+  items.push({ value: 'history', label: t('students.tab.history') })
   items.push({ value: 'ledger', label: t('students.tab.ledger') })
   if (auth.can('payments.view')) items.push({ value: 'payments', label: t('students.tab.payments') })
   items.push({ value: 'tests', label: t('students.tab.tests') })
@@ -76,7 +79,7 @@ async function load() {
     if (e instanceof ApiError && (e.status === 404 || e.status === 403)) notFound.value = true
     return
   }
-  ledger.value = payments.value = attempts.value = marks.value = null
+  ledger.value = payments.value = attempts.value = marks.value = hist.value = null
   if (auth.can('payments.view')) loadPayments()
   studentsApi.attendance(id.value).then((m) => (marks.value = m), () => (marks.value = []))
   if (tab.value !== 'overview') loadTab(tab.value)
@@ -87,6 +90,7 @@ async function loadPayments() {
 }
 
 async function loadTab(v: Tab) {
+  if (v === 'history' && !hist.value) hist.value = await studentsApi.history(id.value).catch(() => [])
   if (v === 'ledger' && !ledger.value) ledger.value = await studentsApi.ledger(id.value).catch(() => [])
   if (v === 'tests' && !attempts.value) {
     attempts.value = await studentsApi.tests(id.value).catch(() => [])
@@ -98,8 +102,8 @@ watch(tab, loadTab)
 
 function updated(next: Student) {
   s.value = next
-  ledger.value = null
-  if (tab.value === 'ledger') loadTab('ledger')
+  ledger.value = hist.value = null
+  if (tab.value === 'ledger' || tab.value === 'history') loadTab(tab.value)
 }
 
 async function afterPayment() {
@@ -286,6 +290,17 @@ const canRefund = (p: Payment) => auth.can('payments.refund') && p.refunded < p.
           <UiButton size="sm" variant="ghost" danger icon="archive" @click="modal = 'archive'">{{ t('students.archive') }}</UiButton>
         </div>
       </div>
+
+      <UiCard v-else-if="tab === 'history'" key="h">
+        <UiSkeleton v-if="!hist" :lines="5" />
+        <UiEmptyState v-else-if="!hist.length" icon="history" :title="t('students.history.empty')" />
+        <ol v-else class="hist">
+          <li v-for="(h, i) in hist" :key="i" :class="h.kind">
+            <span class="hi"><UiIcon :name="HIST_ICON[h.kind] ?? 'edit'" :size="14" /></span>
+            <div><b>{{ h.text }}</b><span class="muted">{{ dmy(h.at, loc) }}<template v-if="h.actor"> · {{ h.actor }}</template></span></div>
+          </li>
+        </ol>
+      </UiCard>
 
       <UiCard v-else-if="tab === 'ledger'" key="l" flush>
         <UiTable :columns="ledgerCols" :rows="ledger ?? []" :loading="!ledger">
