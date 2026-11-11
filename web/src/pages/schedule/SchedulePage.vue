@@ -5,6 +5,7 @@ import { useRoute } from 'vue-router'
 import { UiButton, UiIcon, UiSegmented, UiSkeleton } from '@/components/ui'
 import LessonModal from '@/components/schedule/LessonModal.vue'
 import LessonCreateModal from '@/components/schedule/LessonCreateModal.vue'
+import BackfillModal from '@/components/schedule/BackfillModal.vue'
 import { academicsApi, COURSE_KINDS, KIND_ICON, type CourseKind, type Group, type Lesson } from '@/api/academics'
 import type { Room } from '@/api/org'
 import { useAuthStore } from '@/stores/auth'
@@ -22,6 +23,7 @@ const PX = 56
 const { t, locale } = useI18n()
 const route = useRoute()
 const auth = useAuthStore()
+const backfilling = ref(false)
 const branch = useBranchStore()
 const refs = useRefsStore()
 const loc = computed(() => locale.value as Locale)
@@ -239,6 +241,7 @@ const nConflicts = computed(() => shown.value.filter((l) => conflicts.value.has(
     <div><h1>{{ t('schedule.title') }}</h1><p>{{ branch.current.id ? branch.current.name : t('branch.all') }} · {{ range }}</p></div>
     <span class="sp" />
     <UiSegmented v-model="view" :options="viewOptions" :label="t('schedule.view')" size="sm" />
+    <UiButton v-if="auth.can('students.archive')" @click="backfilling = true">{{ t('schedule.backfill.button') }}</UiButton>
     <UiButton v-if="auth.can('schedule.create')" variant="primary" icon="plus" @click="creating = true">{{ t('schedule.lesson') }}</UiButton>
   </div>
 
@@ -361,6 +364,7 @@ const nConflicts = computed(() => shown.value.filter((l) => conflicts.value.has(
 
   <LessonModal :lesson="selected" :teachers="teachers" :conflicts="selected ? conflicts.get(selected.id) ?? [] : []" @close="selected = null" @changed="load" />
   <LessonCreateModal v-model:open="creating" :groups="groups" :teachers="teachers" :room-id="view === 'rooms' ? pick || null : null" @created="load" />
+  <BackfillModal v-if="backfilling" v-model:open="backfilling" :branch-id="branch.filterId ?? null" @done="load()" />
 </template>
 
 <style scoped>

@@ -173,6 +173,8 @@ export const academicsApi = {
   createLesson: (body: { group_id?: number | null; student_id?: number | null; teacher_id: number; room_id: number; starts_at: string; ends_at: string; topic?: string | null }) =>
     http.post<Lesson>('/lessons', body, { silent: true }),
   cancel: (id: number, reason: string) => http.post<Lesson>(`/lessons/${id}/cancel`, { reason }),
+  backfill: (body: { date_from: string; date_to: string; branch_id?: number | null; members_from_start: boolean }) =>
+    http.post<{ created: number; groups: number; members: number; conflicts: string[] }>('/schedule/backfill', body, { silent: true }),
   deleteLesson: (id: number) => http.delete<void>(`/lessons/${id}`, { silent: true }),
   move: (id: number, body: { starts_at: string; ends_at: string; room_id?: number | null; reason: string }) =>
     http.post<Lesson>(`/lessons/${id}/move`, body, { silent: true }),

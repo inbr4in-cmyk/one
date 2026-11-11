@@ -263,3 +263,38 @@ async def test_partial_payment_any_amount(db, client, owner_h):
     assert st.lessons_left == 2 and st.money_balance == 0
     r = await client.post("/api/payments/quote", headers=owner_h, json={"student_id": s["id"], "method": "cash", "amount": 100, "discount": 50})
     assert r.status_code == 400
+
+
+async def test_backfill_past_lessons_from_schedule(db, client, owner_h):
+    """Schedules entered late: an admin creates the past lessons for a period; members show on their rosters."""
+    from app.models import GroupMember
+    bid, teacher, room, g = await _setup(db, client, owner_h)
+    r = await client.post(f"/api/groups/{g['id']}/schedule", headers=owner_h, json={
+        "weekdays": [0, 1, 2, 3, 4, 5, 6], "start_time": "10:00", "end_time": "11:00", "room_id": room.id,
+        "valid_from": today().isoformat()})
+    assert r.status_code == 201, r.text
+    s = await _student(db, client, owner_h, bid)
+    assert (await client.post(f"/api/groups/{g['id']}/members", headers=owner_h, json={"student_id": s["id"]})).status_code == 201
+    frm, to = today() - timedelta(days=10), today() - timedelta(days=1)
+    # existing past lesson of the group is kept, not duplicated
+    db.add(Lesson(branch_id=bid, group_id=g["id"], level_id=g["level_id"], teacher_id=teacher.id, room_id=room.id,
+                  starts_at=at_local(frm, time(10)), ends_at=at_local(frm, time(11))))
+    await db.commit()
+    th = await login(client, teacher.phone)
+    body = {"date_from": frm.isoformat(), "date_to": to.isoformat()}
+    assert (await client.post("/api/schedule/backfill", headers=th, json=body)).status_code == 403
+    assert (await client.post("/api/schedule/backfill", headers=owner_h,
+                              json={"date_from": frm.isoformat(), "date_to": today().isoformat()})).status_code == 400
+    r = await client.post("/api/schedule/backfill", headers=owner_h, json=body)
+    assert r.status_code == 200, r.text
+    assert r.json()["created"] == 9 and r.json()["members"] == 1
+    past = (await db.scalars(select(Lesson).where(Lesson.group_id == g["id"], Lesson.starts_at < at_local(today(), time(0))))).all()
+    assert len(past) == 10
+    m = await db.scalar(select(GroupMember).where(GroupMember.group_id == g["id"]))
+    await db.refresh(m)
+    assert m.joined_on == frm
+    lesson = next(x for x in past if x.rule_id)
+    roster = await client.get(f"/api/lessons/{lesson.id}/attendance", headers=owner_h)
+    assert [x["student_id"] for x in roster.json()["rows"]] == [s["id"]]
+    again = await client.post("/api/schedule/backfill", headers=owner_h, json=body)
+    assert again.json()["created"] == 0

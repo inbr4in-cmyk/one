@@ -293,6 +293,48 @@ async def add_rule(group_id: int, body: RuleIn, db: DB, actor: Actor = require("
     return {"rule_id": rule.id, "created": created, "conflicts": problems}
 
 
+class BackfillIn(In):
+    date_from: date
+    date_to: date
+    branch_id: int | None = None
+    members_from_start: bool = True
+
+
+@router.post("/schedule/backfill")
+async def backfill_lessons(body: BackfillIn, db: DB, actor: Actor = require("students", "archive")) -> dict:
+    """Admin only: create the past lessons of active schedules for a date range (schedules entered later than the
+    lessons really started), so attendance can be marked for them. Nothing existing is changed or deleted."""
+    if body.date_from > body.date_to:
+        raise bad_request("Дата «с» позже даты «по»")
+    if body.date_to >= today():
+        raise bad_request("Можно создать только прошедшие уроки — до вчерашнего дня")
+    if body.date_from < today() - timedelta(days=62):
+        raise bad_request("Не раньше чем за 2 месяца")
+    q = (select(ScheduleRule, Group).join(Group, Group.id == ScheduleRule.group_id)
+         .where(ScheduleRule.archived_at.is_(None), Group.archived_at.is_(None))
+         .order_by(Group.name, ScheduleRule.id))
+    if body.branch_id:
+        actor.ensure_branch("students", "archive", body.branch_id)
+        q = q.where(Group.branch_id == body.branch_id)
+    elif actor.scope("students", "archive") != NETWORK:
+        q = q.where(Group.branch_id.in_(actor.branch_ids))
+    created, members, problems, groups = 0, 0, [], set()
+    for rule, g in (await db.execute(q)).all():
+        n, p = await sched.backfill(db, rule, g, body.date_from, body.date_to)
+        created += n
+        problems += p
+        if n:
+            groups.add(g.id)
+            if body.members_from_start:
+                members += await sched.members_from(db, g, body.date_from)
+    await write_audit(db, actor_id=actor.id, action="schedule.backfill", entity="schedule", entity_id=None,
+                      branch_id=body.branch_id, ip=actor.ip,
+                      after={"from": str(body.date_from), "to": str(body.date_to), "lessons": created,
+                             "groups": len(groups), "members_moved": members})
+    await db.commit()
+    return {"created": created, "groups": len(groups), "members": members, "conflicts": problems}
+
+
 @router.delete("/schedule-rules/{rule_id}", status_code=204)
 async def end_rule(rule_id: int, db: DB, actor: Actor = require("schedule", "edit")) -> None:
     rule = await db.get(ScheduleRule, rule_id)
