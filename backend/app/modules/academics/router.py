@@ -47,14 +47,22 @@ router = APIRouter(tags=["academics"])
 class GroupIn(In):
     name: str = Field(min_length=1, max_length=120)
     branch_id: int
-    level_id: int
+    level_id: int | None = None
     teacher_id: int
     room_id: int | None = None
     capacity: int = Field(default=12, ge=1, le=100)
     starts_on: date | None = None
     status: str = Field(default="active", pattern="^(recruiting|active|finished)$")
-    # group | duo (2 students) | individual (1 student)
-    kind: str = Field(default="group", pattern="^(group|duo|individual)$")
+    # group | duo (2 students) | individual (1 student) | club (open lesson: a teacher on a schedule, no students)
+    kind: str = Field(default="group", pattern="^(group|duo|individual|club)$")
+
+    @model_validator(mode="after")
+    def _level(self):
+        if self.kind == "club":
+            self.level_id = None
+        elif not self.level_id:
+            raise ValueError("Укажите уровень")
+        return self
 
 
 KIND_CAPACITY = {"individual": 1, "duo": 2}
@@ -64,7 +72,7 @@ class GroupOut(ORM):
     id: int
     name: str
     branch_id: int
-    level_id: int
+    level_id: int | None
     teacher_id: int
     room_id: int | None
     capacity: int
@@ -117,7 +125,7 @@ async def _check_teacher(db: DB, teacher_id: int, branch_id: int) -> User:
 @router.get("/groups", response_model=list[GroupOut])
 async def list_groups(db: DB, actor: Actor = require("schedule", "view"), branch_id: int | None = None,
                       level_id: int | None = None, teacher_id: int | None = None, archived: bool = False,
-                      kind: str | None = Query(default=None, pattern="^(group|duo|individual)$")) -> list[GroupOut]:
+                      kind: str | None = Query(default=None, pattern="^(group|duo|individual|club)$")) -> list[GroupOut]:
     q = select(Group).where(group_filter(actor))
     if kind:
         q = q.where(Group.kind == kind)
@@ -134,7 +142,7 @@ async def list_groups(db: DB, actor: Actor = require("schedule", "view"), branch
 @router.post("/groups", response_model=GroupOut, status_code=201)
 async def create_group(body: GroupIn, db: DB, actor: Actor = require("schedule", "create")) -> GroupOut:
     actor.ensure_branch("schedule", "create", body.branch_id)
-    if await db.get(Level, body.level_id) is None:
+    if body.level_id and await db.get(Level, body.level_id) is None:
         raise bad_request("Уровень не найден")
     await _check_teacher(db, body.teacher_id, body.branch_id)
     g = Group(**body.model_dump())
@@ -215,6 +223,8 @@ async def members(group_id: int, db: DB, actor: Actor = require("schedule", "vie
 async def add_member(group_id: int, body: MemberIn, db: DB, actor: Actor = require("students", "edit")) -> dict:
     """Enrol a student without a balance recalculation (first group, or same-price move handled via transfer)."""
     g = await _get_group(db, actor, group_id, "edit")
+    if g.kind == "club":
+        raise bad_request("В открытый урок учеников не записывают: приходит, кто хочет")
     s = await get_student_scoped(db, actor, body.student_id, "students", "edit")
     active = await db.scalar(select(GroupMember).where(GroupMember.student_id == s.id, GroupMember.left_on.is_(None)))
     if active is not None:
@@ -275,7 +285,7 @@ async def add_rule(group_id: int, body: RuleIn, db: DB, actor: Actor = require("
         raise bad_request("Кабинет не найден в филиале группы")
     if room.status != "active":
         raise bad_request("Кабинет на ремонте")
-    if room.capacity < g.capacity:
+    if room.capacity < g.capacity and g.kind != "club":
         raise bad_request(f"Вместимость кабинета {room.capacity} меньше размера группы {g.capacity}")
     rule = ScheduleRule(group_id=g.id, weekdays=sorted(set(body.weekdays)), start_time=body.start_time, end_time=body.end_time,
                         room_id=room.id, teacher_id=g.teacher_id, valid_from=body.valid_from, valid_to=body.valid_to)
@@ -412,7 +422,7 @@ async def _lesson_outs(db: DB, lessons: list[Lesson]) -> list[LessonOut]:
 async def list_lessons(
     db: DB, actor: Actor = require_staff(), date_from: date = Query(alias="from"), date_to: date = Query(alias="to"),
     branch_id: int | None = None, room_id: int | None = None, teacher_id: int | None = None, group_id: int | None = None,
-    include_cancelled: bool = False, kind: str | None = Query(default=None, pattern="^(group|duo|individual|support)$"),
+    include_cancelled: bool = False, kind: str | None = Query(default=None, pattern="^(group|duo|individual|support|club)$"),
 ) -> list[LessonOut]:
     if not (actor.can("schedule", "view") or actor.can("attendance", "view")):
         raise forbidden()

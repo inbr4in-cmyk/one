@@ -200,7 +200,7 @@ const slotRows = computed(() => weekRows.value.map((row) => {
   const title = row.map((c) => dayLabel(c.d, loc.value, { weekday: 'short' })).join(' · ')
   return { title, days, slots: [...slots.values()].sort((x, y) => x.key.localeCompare(y.key)) }
 }))
-const membersOf = (l: Lesson) => (l.group_id ? groups.value.find((g) => g.id === l.group_id)?.members : l.student_id ? 1 : undefined)
+const membersOf = (l: Lesson) => (l.kind === 'club' || l.kind === 'support' ? undefined : l.group_id ? groups.value.find((g) => g.id === l.group_id)?.members : l.student_id ? 1 : undefined)
 
 const levelColor = (l: Lesson) => tone(refs.level(l.level_id)?.color)
 const range = computed(() => {

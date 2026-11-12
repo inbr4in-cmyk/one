@@ -126,7 +126,7 @@ async function save() {
   const marks = rows.value.filter((r) => r.status).map((r) => ({
     student_id: r.student_id, lead_id: r.lead_id, status: r.status as AttendanceStatus, grade: r.grade, comment: r.comment?.trim() || null, stars: r.stars,
   }))
-  if (!marks.length && lesson.value?.kind !== 'support') {
+  if (!marks.length && lesson.value?.kind !== 'support' && lesson.value?.kind !== 'club') {
     error.value = t('attendance.nothing')
     return
   }
@@ -217,7 +217,7 @@ onBeforeRouteLeave(() => (dirty.value && editable.value ? window.confirm(t('atte
           <input v-model="r.comment" class="inp mini" :placeholder="t('attendance.comment')" :aria-label="t('attendance.comment')" :disabled="!editable" maxlength="500" @input="dirty = true" />
         </div>
       </div>
-      <p v-if="!rows.length" class="muted" style="padding: 18px; margin: 0">{{ lesson?.kind === 'support' ? t('attendance.supportNote') : t('groups.noMembers') }}</p>
+      <p v-if="!rows.length" class="muted" style="padding: 18px; margin: 0">{{ lesson?.kind === 'support' || lesson?.kind === 'club' ? t('attendance.supportNote') : t('groups.noMembers') }}</p>
 
       <div v-if="lessonHw.length || (!editable && lesson.group_id && auth.can('homework.manage'))" class="att-hw">
         <div class="att-hw-h"><b>{{ t('hw.lessonHw') }}</b><span v-if="!lessonHw.length" class="muted">· {{ t('groups.hw.empty') }}</span><span class="sp" /><RouterLink :to="`/groups/${lesson.group_id}`" class="rowlink" style="font-size: 13px">{{ t('hw.openGroup') }}</RouterLink></div>
@@ -248,7 +248,7 @@ onBeforeRouteLeave(() => (dirty.value && editable.value ? window.confirm(t('atte
           <b>{{ t('attendance.present', { n: counted, total: rows.length }) }}</b>
           <div v-if="unmarked" class="muted">{{ t('attendance.unmarked', { n: unmarked }) }}</div>
         </div>
-        <UiButton v-if="editable" variant="primary" icon="ok" :loading="busy" @click="save">{{ lesson?.kind === 'support' && !rows.length ? t('attendance.supportDone') : t('common.save') }}</UiButton>
+        <UiButton v-if="editable" variant="primary" icon="ok" :loading="busy" @click="save">{{ (lesson?.kind === 'support' || lesson?.kind === 'club') && !rows.length ? t('attendance.supportDone') : t('common.save') }}</UiButton>
       </div>
       <p v-if="error" class="form-err" role="alert" style="padding: 0 18px 14px; margin: 0">{{ error }}</p>
     </div>

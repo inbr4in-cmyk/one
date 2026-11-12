@@ -317,3 +317,29 @@ async def test_support_lesson_without_students_pays_teacher_rate(db, client, own
     assert acc is not None and acc.amount == 1000 and acc.user_id == teacher.id
     lst = await client.get(f"/api/lessons?from={today().isoformat()}&to={today().isoformat()}&kind=support", headers=owner_h)
     assert [x["id"] for x in lst.json()] == [lesson["id"]]
+
+
+async def test_open_lesson_club_on_schedule_pays_8000(db, client, owner_h):
+    bid, teacher, room, g = await _setup(db, client, owner_h)
+    r = await client.post("/api/groups", headers=owner_h, json={
+        "name": "Speaking club", "branch_id": bid, "teacher_id": teacher.id, "room_id": room.id, "kind": "club"})
+    assert r.status_code == 201, r.text
+    club = r.json()
+    assert club["level_id"] is None and club["kind"] == "club"
+    s = await _student(db, client, owner_h, bid)
+    assert (await client.post(f"/api/groups/{club['id']}/members", headers=owner_h, json={"student_id": s["id"]})).status_code == 400
+    r = await client.post(f"/api/groups/{club['id']}/schedule", headers=owner_h, json={
+        "weekdays": [0, 1, 2, 3, 4, 5, 6], "start_time": "07:00", "end_time": "07:50", "room_id": room.id,
+        "valid_from": today().isoformat()})
+    assert r.status_code == 201, r.text
+    lesson = await db.scalar(select(Lesson).where(Lesson.group_id == club["id"]).order_by(Lesson.starts_at))
+    lesson.starts_at, lesson.ends_at = now() - timedelta(minutes=5), now() + timedelta(minutes=45)
+    await db.commit()
+    th = await login(client, teacher.phone)
+    r = await client.put(f"/api/lessons/{lesson.id}/attendance", headers=th, json={"marks": []})
+    assert r.status_code == 200, r.text
+    acc = await db.scalar(select(Accrual).where(Accrual.ref_type == "lesson", Accrual.ref_id == lesson.id))
+    assert acc.amount == 8000
+    # a normal group still needs a level
+    r = await client.post("/api/groups", headers=owner_h, json={"name": "X", "branch_id": bid, "teacher_id": teacher.id})
+    assert r.status_code == 422

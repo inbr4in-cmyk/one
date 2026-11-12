@@ -4,7 +4,7 @@ Revision ID: 0007
 Revises: 0006
 Create Date: 2026-11-12 14:00:00
 
-Safe on the live database: one new table, one boolean column on lessons (false for all existing), one new rate.
+Safe on the live database: one new table, one boolean column on lessons (false for all existing), two new rates, groups.level_id may be empty (open lessons).
 """
 from typing import Sequence, Union
 
@@ -32,14 +32,17 @@ def upgrade() -> None:
     )
     op.create_index("ix_staff_days_branch_day", "staff_days", ["branch_id", "day"])
     op.add_column("lessons", sa.Column("is_support", sa.Boolean(), nullable=False, server_default=sa.false()))
-    op.execute(
-        "INSERT INTO rate_settings (key, value, effective_from) SELECT 'teacher_support_lesson', 1000, DATE '2026-11-01' "
-        "WHERE NOT EXISTS (SELECT 1 FROM rate_settings WHERE key = 'teacher_support_lesson')"
-    )
+    for key, value in (("teacher_support_lesson", 1000), ("teacher_club_lesson", 8000)):
+        op.execute(
+            f"INSERT INTO rate_settings (key, value, effective_from) SELECT '{key}', {value}, DATE '2026-11-01' "
+            f"WHERE NOT EXISTS (SELECT 1 FROM rate_settings WHERE key = '{key}')"
+        )
+    # Open lessons (kind «club») have no level
+    op.alter_column("groups", "level_id", existing_type=sa.BigInteger(), nullable=True)
 
 
 def downgrade() -> None:
-    op.execute("DELETE FROM rate_settings WHERE key = 'teacher_support_lesson'")
+    op.execute("DELETE FROM rate_settings WHERE key IN ('teacher_support_lesson', 'teacher_club_lesson')")
     op.drop_column("lessons", "is_support")
     op.drop_index("ix_staff_days_branch_day", table_name="staff_days")
     op.drop_table("staff_days")

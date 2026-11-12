@@ -90,7 +90,7 @@ class Group(IdMixin, TimestampMixin, ArchiveMixin, Base):
 
     name: Mapped[str] = mapped_column(String(120))
     branch_id: Mapped[int] = fk("branches.id")
-    level_id: Mapped[int] = fk("levels.id")
+    level_id: Mapped[int | None] = fk("levels.id", nullable=True)  # empty for an open lesson (kind «club»)
     teacher_id: Mapped[int] = fk("users.id")
     room_id: Mapped[int | None] = fk("rooms.id", nullable=True)
     capacity: Mapped[int] = mapped_column(default=12)

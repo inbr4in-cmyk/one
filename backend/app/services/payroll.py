@@ -119,8 +119,8 @@ async def accrue_lesson(db: AsyncSession, *, teacher_id: int, lesson_id: int, n:
                         group_name: str, actor_id: int | None, kind: str = "group") -> None:
     """Upsert the pay for one held lesson. If the attendance is corrected later the amount follows; once the
     period is approved, the difference goes into the next open period as a correction."""
-    if kind == "support":
-        amount = await rate(db, "teacher_support_lesson", on)
+    if kind in ("support", "club"):
+        amount = await rate(db, f"teacher_{kind}_lesson", on)
     elif kind in ("individual", "duo"):
         # Individual and duo lessons: a flat rate per held lesson, no per-student extra.
         amount = await rate(db, f"teacher_{kind}_lesson", on)

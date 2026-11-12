@@ -41,7 +41,7 @@ watch(open, (v) => {
   const g = props.group
   Object.keys(errors).forEach((k) => (errors[k] = null))
   Object.assign(form, g
-    ? { kind: g.kind ?? 'group', name: g.name, branch_id: g.branch_id, level_id: g.level_id, teacher_id: g.teacher_id, room_id: g.room_id ?? 0, capacity: String(g.capacity), starts_on: g.starts_on ?? '', status: g.status }
+    ? { kind: g.kind ?? 'group', name: g.name, branch_id: g.branch_id, level_id: g.level_id ?? 0, teacher_id: g.teacher_id, room_id: g.room_id ?? 0, capacity: String(g.capacity), starts_on: g.starts_on ?? '', status: g.status }
     : { kind: 'group', name: '', branch_id: branch.filterId ?? branchOptions.value[0]?.value ?? 0, level_id: 0, teacher_id: 0, room_id: 0, capacity: '12', starts_on: '', status: 'recruiting' })
 })
 watch(() => form.branch_id, async (id) => {
@@ -52,12 +52,12 @@ watch(() => form.branch_id, async (id) => {
 async function submit() {
   Object.keys(errors).forEach((k) => (errors[k] = null))
   if (form.name.trim().length < 2) errors.name = t('students.form.nameRequired')
-  if (!form.level_id) errors.level = t('groups.levelRequired')
+  if (!form.level_id && form.kind !== 'club') errors.level = t('groups.levelRequired')
   if (!form.teacher_id) errors.teacher = t('groups.teacherRequired')
   if (Object.values(errors).some(Boolean)) return
   busy.value = true
   const body = {
-    name: form.name.trim(), branch_id: form.branch_id, level_id: form.level_id, teacher_id: form.teacher_id,
+    name: form.name.trim(), branch_id: form.branch_id, level_id: form.kind === 'club' ? null : form.level_id, teacher_id: form.teacher_id,
     room_id: form.room_id || null, capacity: Math.max(1, Number(form.capacity) || 1), starts_on: form.starts_on || null, status: form.status,
     kind: form.kind,
   }
@@ -82,13 +82,14 @@ async function submit() {
       </UiField>
       <UiInput v-model="form.name" :label="t('groups.name')" :placeholder="t('groups.namePh')" :error="errors.name" autofocus />
       <UiField v-if="!group" :label="t('branch.label')"><UiSelect v-model="form.branch_id" :options="branchOptions" :label="t('branch.label')" block /></UiField>
+      <p v-if="form.kind === 'club'" class="form-note">{{ t('kind.clubHint') }}</p>
       <div class="form-2">
-        <UiField :label="t('students.form.level')" :error="errors.level"><UiSelect v-model="form.level_id" :options="levelOptions" :label="t('students.form.level')" block /></UiField>
+        <UiField v-if="form.kind !== 'club'" :label="t('students.form.level')" :error="errors.level"><UiSelect v-model="form.level_id" :options="levelOptions" :label="t('students.form.level')" block /></UiField>
         <UiField :label="t('groups.teacher')" :error="errors.teacher"><UiSelect v-model="form.teacher_id" :options="teacherOptions" :label="t('groups.teacher')" block /></UiField>
       </div>
       <div class="form-2">
         <UiField :label="t('groups.room')"><UiSelect v-model="form.room_id" :options="roomOptions" :label="t('groups.room')" block /></UiField>
-        <UiInput v-model="form.capacity" type="number" :min="1" :max="40" :label="t('groups.capacity')" :disabled="form.kind !== 'group'" />
+        <UiInput v-model="form.capacity" type="number" :min="1" :max="40" :label="t('groups.capacity')" :disabled="form.kind !== 'group'" v-if="form.kind !== 'club'" />
       </div>
       <div class="form-2">
         <UiInput v-model="form.starts_on" type="date" :label="t('groups.startsOn')" />

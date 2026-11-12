@@ -662,6 +662,7 @@ const ops: typeof ru = {
       teacher_extra_per_student: 'Мұғалім: шектен тыс әр оқушыға қосымша ақы',
       teacher_individual_lesson: 'Мұғалім: жеке сабақ',
       teacher_support_lesson: 'Мұғалім: support-сабақ',
+      teacher_club_lesson: 'Мұғалім: ашық сабақ',
       teacher_duo_lesson: 'Мұғалім: дуэт сабағы',
       teacher_extra_threshold: 'Мұғалім: қосымша ақы үшін оқушы шегі',
       teacher_trial_retention: 'Мұғалім: сынақтан кейін қалған оқушы үшін бонус',

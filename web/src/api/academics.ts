@@ -12,7 +12,8 @@ export interface Group {
   id: number
   name: string
   branch_id: number
-  level_id: number
+  /** empty for an open lesson (kind «club») */
+  level_id: number | null
   teacher_id: number
   room_id: number | null
   capacity: number
@@ -26,16 +27,16 @@ export interface Group {
   schedule: ScheduleRuleRef[]
 }
 
-export type CourseKind = 'group' | 'duo' | 'individual'
-export const COURSE_KINDS: CourseKind[] = ['group', 'duo', 'individual']
+export type CourseKind = 'group' | 'duo' | 'individual' | 'club'
+export const COURSE_KINDS: CourseKind[] = ['group', 'duo', 'individual', 'club']
 /** Sprite icon per format: one person, two people, a group */
 export type LessonKind = CourseKind | 'support'
-export const KIND_ICON: Record<LessonKind, string> = { individual: 'user', duo: 'users', group: 'groups', support: 'idea' }
+export const KIND_ICON: Record<LessonKind, string> = { individual: 'user', duo: 'users', group: 'groups', club: 'speaking', support: 'idea' }
 
 export interface GroupIn {
   name: string
   branch_id: number
-  level_id: number
+  level_id: number | null
   teacher_id: number
   room_id: number | null
   capacity: number

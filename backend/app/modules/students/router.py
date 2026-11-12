@@ -434,6 +434,8 @@ async def _transfer_ctx(db: DB, s: Student, to_group_id: int):
     to_group = await db.get(Group, to_group_id)
     if to_group is None or to_group.archived_at is not None:
         raise not_found("Группа")
+    if to_group.kind == "club":
+        raise bad_request("В открытый урок учеников не переводят")
     current = (await db.execute(
         select(GroupMember, Group).join(Group, Group.id == GroupMember.group_id)
         .where(GroupMember.student_id == s.id, GroupMember.left_on.is_(None)).order_by(GroupMember.id.desc())

@@ -226,7 +226,7 @@ const lessonState = (l: Lesson) => (l.status === 'cancelled' ? 'red' : l.attenda
     <div class="grid grp-grid stagger">
       <UiCard :title="t('groups.members')" icon="users">
         <template v-if="auth.can('students.edit')" #actions>
-          <UiButton size="sm" variant="ghost" icon="plus" :disabled="g.members >= g.capacity" @click="modal = 'member'">{{ t('common.add') }}</UiButton>
+          <UiButton v-if="g.kind !== 'club'" size="sm" variant="ghost" icon="plus" :disabled="g.members >= g.capacity" @click="modal = 'member'">{{ t('common.add') }}</UiButton>
         </template>
         <UiSkeleton v-if="!members" :lines="4" />
         <template v-else>
