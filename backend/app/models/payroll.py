@@ -43,3 +43,17 @@ class PayrollPeriod(IdMixin, TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(16), default="draft")  # draft | approved | paid
     approved_by: Mapped[IntN]
     approved_at: Mapped[DTN]
+
+
+class StaffDay(IdMixin, TimestampMixin, Base):
+    """Табель: a staff member's day, marked by the branch admin. Salaried staff are paid for the days worked."""
+
+    __tablename__ = "staff_days"
+    __table_args__ = (UniqueConstraint("user_id", "day"),)
+
+    user_id: Mapped[int] = fk("users.id")
+    branch_id: Mapped[int] = fk("branches.id")
+    day: Mapped[D]
+    # work | off | sick | vacation | absent
+    status: Mapped[str] = mapped_column(String(10))
+    created_by: Mapped[IntN]

@@ -31,7 +31,7 @@ from app.models.learning import (
     Transfer,
 )
 from app.models.org import Branch, Level, Room
-from app.models.payroll import Accrual, PayrollPeriod, RateSetting
+from app.models.payroll import Accrual, PayrollPeriod, RateSetting, StaffDay
 from app.models.store import Book, BookMovement, BookStock, CoinEntry, ShopItem, ShopOrder
 from app.models.work import DailyReport, StaffCheckin, Task, TaskAssignee, TaskComment
 

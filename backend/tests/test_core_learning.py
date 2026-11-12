@@ -298,3 +298,22 @@ async def test_backfill_past_lessons_from_schedule(db, client, owner_h):
     assert [x["student_id"] for x in roster.json()["rows"]] == [s["id"]]
     again = await client.post("/api/schedule/backfill", headers=owner_h, json=body)
     assert again.json()["created"] == 0
+
+
+async def test_support_lesson_without_students_pays_teacher_rate(db, client, owner_h):
+    bid, teacher, room, g = await _setup(db, client, owner_h)
+    s = (now() - timedelta(minutes=5)).replace(microsecond=0)
+    body = {"teacher_id": teacher.id, "room_id": room.id, "starts_at": s.isoformat(),
+            "ends_at": (s + timedelta(minutes=50)).isoformat(), "support": True}
+    assert (await client.post("/api/lessons", headers=owner_h, json=body)).status_code == 400  # topic required
+    r = await client.post("/api/lessons", headers=owner_h, json={**body, "topic": "Speaking club"})
+    assert r.status_code == 201, r.text
+    lesson = r.json()
+    assert lesson["kind"] == "support" and lesson["group_id"] is None
+    th = await login(client, teacher.phone)
+    r = await client.put(f"/api/lessons/{lesson['id']}/attendance", headers=th, json={"marks": []})
+    assert r.status_code == 200, r.text
+    acc = await db.scalar(select(Accrual).where(Accrual.ref_type == "lesson", Accrual.ref_id == lesson["id"]))
+    assert acc is not None and acc.amount == 1000 and acc.user_id == teacher.id
+    lst = await client.get(f"/api/lessons?from={today().isoformat()}&to={today().isoformat()}&kind=support", headers=owner_h)
+    assert [x["id"] for x in lst.json()] == [lesson["id"]]

@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import { UiAvatar, UiButton, UiCard, UiChip, UiDrawer, UiEmptyState, UiPeriod, UiPrompt, UiSkeleton, UiTabs } from '@/components/ui'
 import AdjustModal from '@/components/ops/AdjustModal.vue'
+import TimesheetGrid from '@/components/ops/TimesheetGrid.vue'
 import { payrollApi, type Accrual, type PayrollPerson, type PayrollSheet, type PeriodStatus } from '@/api/payroll'
 import { ApiError } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
@@ -25,10 +26,10 @@ const loc = computed(() => locale.value as Locale)
 
 /** Own-scope payroll.view is "my pay" only; branch or network scope also sees the sheet. */
 const canSheet = computed(() => auth.can('payroll.view', 'branch'))
-type Tab = 'sheet' | 'my'
-const tab = ref<Tab>(canSheet.value && route.query.tab !== 'my' ? 'sheet' : 'my')
+type Tab = 'sheet' | 'timesheet' | 'my'
+const tab = ref<Tab>(route.query.tab === 'timesheet' && canSheet.value ? 'timesheet' : canSheet.value && route.query.tab !== 'my' ? 'sheet' : 'my')
 const tabs = computed(() => [
-  ...(canSheet.value ? [{ value: 'sheet' as const, label: t('payroll.tab.sheet') }] : []),
+  ...(canSheet.value ? [{ value: 'sheet' as const, label: t('payroll.tab.sheet') }, { value: 'timesheet' as const, label: t('payroll.tab.timesheet') }] : []),
   { value: 'my' as const, label: t('nav.myPay') },
 ])
 const period = ref(periodOf())
@@ -55,7 +56,7 @@ async function loadMy() {
   my.value = null
   my.value = await payrollApi.my(period.value).catch(() => ({ period: period.value, total: 0, items: [] }))
 }
-const load = () => (tab.value === 'sheet' ? loadSheet() : loadMy())
+const load = () => (tab.value === 'sheet' ? loadSheet() : tab.value === 'my' ? loadMy() : undefined)
 onMounted(load)
 watch(() => [period.value, branch.filterId, tab.value], load)
 
@@ -106,7 +107,9 @@ const signed = (n: number) => (n > 0 ? `+${money(n, loc.value)}` : n < 0 ? `−$
     <UiTabs v-if="tabs.length > 1" v-model="tab" :items="tabs" :label="t('nav.payroll')" />
   </div>
 
-  <template v-if="tab === 'sheet'">
+  <TimesheetGrid v-if="tab === 'timesheet'" :period="period" :branch-id="branch.filterId" />
+
+  <template v-else-if="tab === 'sheet'">
     <div v-if="branch.filterId === null" class="alert info">
       <div class="grow">
         <span>{{ t('payroll.pickBranch') }}</span>

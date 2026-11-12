@@ -151,6 +151,8 @@ class Lesson(IdMixin, TimestampMixin, Base):
     moved_from_id: Mapped[int | None] = fk("lessons.id", nullable=True)
     attendance_marked_at: Mapped[DTN]
     topic: Mapped[StrN]
+    # Support lesson: a one-off lesson of a teacher without students (manager sets time, room, teacher, topic)
+    is_support: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
 
 class AttendanceStatus:

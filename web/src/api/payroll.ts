@@ -44,7 +44,23 @@ export interface AdjustIn {
   period?: string
 }
 
+export type DayStatus = 'work' | 'off' | 'sick' | 'vacation' | 'absent'
+export interface TimesheetPerson {
+  user_id: number
+  full_name: string
+  position: string | null
+  pay_scheme: 'rates' | 'salary' | 'both' | null
+  salary: number | null
+  days: Record<string, DayStatus>
+  worked: number
+  amount: number | null
+}
+export interface Timesheet { period: string; branch_id: number; norm: number; workdays: number[]; locked: boolean; can_edit: boolean; people: TimesheetPerson[] }
+
 export const payrollApi = {
+  timesheet: (period: string, branch_id: number) => http.get<Timesheet>(`/payroll/timesheet${qs({ period, branch_id })}`),
+  setDays: (body: { user_id: number; branch_id: number; days: string[]; status: DayStatus | null }) =>
+    http.put<{ ok: boolean }>('/payroll/timesheet', body, { silent: true }),
   sheet: (p: { period: string; branch_id?: number | null }) => http.get<PayrollSheet>(`/payroll${qs(p)}`),
   accruals: (p: { period: string; user_id?: number; branch_id?: number | null }) => http.get<Accrual[]>(`/payroll/accruals${qs(p)}`),
   my: (period: string) => http.get<{ period: string; total: number; rates_total: number; salary_total: number; items: Accrual[] }>(`/payroll/my${qs({ period })}`),

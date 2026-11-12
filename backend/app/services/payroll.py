@@ -24,6 +24,33 @@ async def on_rates(db: AsyncSession, user_id: int) -> bool:
     return (await db.scalar(select(User.pay_scheme).where(User.id == user_id))) != "salary"
 
 
+TIMESHEET_FROM = "2026-11"
+WORK_WEEKDAYS = (0, 1, 2, 3, 4, 5)  # Mon–Sat; Sunday is a day off
+
+
+def month_days(period: str) -> list[date]:
+    from datetime import timedelta
+    y, m = (int(x) for x in period.split("-"))
+    d, out = date(y, m, 1), []
+    while d.month == m:
+        out.append(d)
+        d += timedelta(days=1)
+    return out
+
+
+def norm_days(period: str) -> int:
+    """Working days in the month (Mon–Sat): the salary is divided by this."""
+    return sum(1 for d in month_days(period) if d.weekday() in WORK_WEEKDAYS)
+
+
+async def worked_days(db: AsyncSession, user_id: int, period: str) -> tuple[int, int]:
+    from app.models import StaffDay
+    days = month_days(period)
+    n = await db.scalar(select(func.count()).select_from(StaffDay).where(
+        StaffDay.user_id == user_id, StaffDay.status == "work", StaffDay.day >= days[0], StaffDay.day <= days[-1]))
+    return int(n or 0), norm_days(period)
+
+
 async def accrue_salary(db: AsyncSession, user, period: str) -> int:
     """The month's fixed salary as one accrual per person and month. The amount follows the staff card while the
     month's sheet is not approved; nothing is added for an inactive person or without a salary."""
@@ -31,18 +58,27 @@ async def accrue_salary(db: AsyncSession, user, period: str) -> int:
     ref_id = int(period.replace("-", ""))
     existing = await db.scalar(select(Accrual).where(Accrual.user_id == user.id, Accrual.kind == "salary",
                                                      Accrual.ref_type == "salary", Accrual.ref_id == ref_id))
+    if existing is None and not (user.salary and user.pay_scheme in ("salary", "both")):
+        return 0
     want = user.salary if user.pay_scheme in ("salary", "both") and user.is_active and user.archived_at is None else 0
+    days_note = ""
+    if want and period >= TIMESHEET_FROM:
+        # From November 2026 the salary is paid for the days marked «work» in the timesheet (табель).
+        worked, norm = await worked_days(db, user.id, period)
+        want = round(want * worked / norm) if norm else 0
+        days_note = f": {worked} из {norm} дн."
+    y, m = period.split("-")
+    desc = f"Оклад за {m}.{y}{days_note}"
     if existing is not None:
-        if existing.amount != want and not await period_locked(db, existing.period, existing.branch_id):
-            existing.amount = want
+        if (existing.amount != want or existing.description != desc) and not await period_locked(db, existing.period, existing.branch_id):
+            existing.amount, existing.description = want, desc
             return 1
         return 0
     if not want:
         return 0
     branch_id = await db.scalar(select(func.min(UserBranch.branch_id)).where(UserBranch.user_id == user.id))
-    y, m = period.split("-")
     db.add(Accrual(user_id=user.id, kind="salary", amount=want, ref_type="salary", ref_id=ref_id, period=period,
-                   branch_id=branch_id, description=f"Оклад за {m}.{y}"))
+                   branch_id=branch_id, description=desc))
     return 1
 
 
@@ -83,7 +119,9 @@ async def accrue_lesson(db: AsyncSession, *, teacher_id: int, lesson_id: int, n:
                         group_name: str, actor_id: int | None, kind: str = "group") -> None:
     """Upsert the pay for one held lesson. If the attendance is corrected later the amount follows; once the
     period is approved, the difference goes into the next open period as a correction."""
-    if kind in ("individual", "duo"):
+    if kind == "support":
+        amount = await rate(db, "teacher_support_lesson", on)
+    elif kind in ("individual", "duo"):
         # Individual and duo lessons: a flat rate per held lesson, no per-student extra.
         amount = await rate(db, f"teacher_{kind}_lesson", on)
     else:

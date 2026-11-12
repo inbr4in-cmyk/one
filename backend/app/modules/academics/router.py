@@ -400,7 +400,7 @@ async def _lesson_outs(db: DB, lessons: list[Lesson]) -> list[LessonOut]:
     for x in lessons:
         o = LessonOut.model_validate(x)
         o.group_name = gn.get(x.group_id) if x.group_id else "Индивидуально"
-        o.kind = gk.get(x.group_id, "group") if x.group_id else "individual"
+        o.kind = "support" if x.is_support else gk.get(x.group_id, "group") if x.group_id else "individual"
         o.teacher_name = un.get(x.actual_teacher_id or x.teacher_id)
         o.room_name = rn.get(x.room_id)
         o.trials = trials.get(x.id, 0)
@@ -412,7 +412,7 @@ async def _lesson_outs(db: DB, lessons: list[Lesson]) -> list[LessonOut]:
 async def list_lessons(
     db: DB, actor: Actor = require_staff(), date_from: date = Query(alias="from"), date_to: date = Query(alias="to"),
     branch_id: int | None = None, room_id: int | None = None, teacher_id: int | None = None, group_id: int | None = None,
-    include_cancelled: bool = False, kind: str | None = Query(default=None, pattern="^(group|duo|individual)$"),
+    include_cancelled: bool = False, kind: str | None = Query(default=None, pattern="^(group|duo|individual|support)$"),
 ) -> list[LessonOut]:
     if not (actor.can("schedule", "view") or actor.can("attendance", "view")):
         raise forbidden()
@@ -432,8 +432,10 @@ async def list_lessons(
         q = q.where(or_(Lesson.teacher_id == teacher_id, Lesson.actual_teacher_id == teacher_id))
     if group_id:
         q = q.where(Lesson.group_id == group_id)
-    if kind == "individual":
-        q = q.where(or_(Lesson.group_id.is_(None), Lesson.group_id.in_(select(Group.id).where(Group.kind == "individual"))))
+    if kind == "support":
+        q = q.where(Lesson.is_support.is_(True))
+    elif kind == "individual":
+        q = q.where(Lesson.is_support.is_(False), or_(Lesson.group_id.is_(None), Lesson.group_id.in_(select(Group.id).where(Group.kind == "individual"))))
     elif kind:
         q = q.where(Lesson.group_id.in_(select(Group.id).where(Group.kind == kind)))
     return await _lesson_outs(db, list(await db.scalars(q.order_by(Lesson.starts_at).limit(3000))))
@@ -447,6 +449,8 @@ class LessonIn(In):
     starts_at: datetime
     ends_at: datetime
     topic: str | None = Field(default=None, max_length=255)
+    # Support lesson: no group and no student, just a teacher, a room and a topic
+    support: bool = False
 
 
 @router.post("/lessons", response_model=LessonOut, status_code=201)
@@ -465,12 +469,16 @@ async def create_lesson(body: LessonIn, db: DB, actor: Actor = require("schedule
     elif body.student_id:
         s = await get_student_scoped(db, actor, body.student_id)
         level_id = s.level_id
+    elif body.support:
+        if not (body.topic or "").strip():
+            raise bad_request("Напишите тему support-урока")
     else:
         raise bad_request("Укажите группу или ученика")
     if c := await sched.conflicts(db, room_id=room.id, teacher_id=body.teacher_id, starts_at=body.starts_at, ends_at=body.ends_at):
         raise conflict(c[0])
     lesson = Lesson(branch_id=room.branch_id, group_id=body.group_id, student_id=body.student_id, level_id=level_id,
-                    teacher_id=body.teacher_id, room_id=room.id, starts_at=body.starts_at, ends_at=body.ends_at, topic=body.topic)
+                    teacher_id=body.teacher_id, room_id=room.id, starts_at=body.starts_at, ends_at=body.ends_at, topic=body.topic,
+                    is_support=body.support and not body.group_id and not body.student_id)
     db.add(lesson)
     try:
         await db.flush()
@@ -784,8 +792,9 @@ async def mark(lesson_id: int, body: MarksIn, db: DB, actor: Actor = require("at
     if body.topic:
         lesson.topic = body.topic
     await accrue_lesson(db, teacher_id=lesson.actual_teacher_id or lesson.teacher_id, lesson_id=lesson.id, n=n,
-                        on=loc.date(), branch_id=lesson.branch_id, group_name=group.name if group else "индивидуально",
-                        actor_id=actor.id, kind=group.kind if group else "individual")
+                        on=loc.date(), branch_id=lesson.branch_id,
+                        group_name=group.name if group else f"Support «{lesson.topic}»" if lesson.is_support else "индивидуально",
+                        actor_id=actor.id, kind="support" if lesson.is_support else group.kind if group else "individual")
     await write_audit(db, actor_id=actor.id, action="attendance.mark" if first_mark and not needs_reason else "attendance.fix",
                       entity="lesson", entity_id=lesson.id, branch_id=lesson.branch_id, ip=actor.ip,
                       after={"changes": changes, "n": n}, note=body.reason)

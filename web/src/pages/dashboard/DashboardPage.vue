@@ -185,7 +185,7 @@ async function exportExcel() {
         <template v-else-if="upcoming.length">
           <RouterLink v-for="l in upcoming" :key="l.id" :to="auth.can('attendance.view') ? `/attendance/${l.id}` : '/schedule'" class="list-row">
             <span class="t num">{{ hm(l.starts_at, loc) }}</span>
-            <div class="grow"><b>{{ l.group_name ?? t('schedule.individual') }}<template v-if="refs.level(l.level_id)"> · {{ refs.level(l.level_id)?.name }}</template></b><span>{{ l.teacher_name }} · {{ l.room_name }}<template v-if="l.trials"> · {{ t('schedule.trials', { n: l.trials }) }}</template></span></div>
+            <div class="grow"><b>{{ l.group_name ?? (l.kind === 'support' ? 'Support · ' + (l.topic ?? '') : t('schedule.individual')) }}<template v-if="refs.level(l.level_id)"> · {{ refs.level(l.level_id)?.name }}</template></b><span>{{ l.teacher_name }} · {{ l.room_name }}<template v-if="l.trials"> · {{ t('schedule.trials', { n: l.trials }) }}</template></span></div>
             <span v-if="refs.level(l.level_id)" class="lv" :style="{ '--c': tone(refs.level(l.level_id)?.color) }">{{ refs.level(l.level_id)?.code }}</span>
           </RouterLink>
         </template>

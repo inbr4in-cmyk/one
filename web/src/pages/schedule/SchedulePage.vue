@@ -6,7 +6,7 @@ import { UiButton, UiIcon, UiSegmented, UiSkeleton } from '@/components/ui'
 import LessonModal from '@/components/schedule/LessonModal.vue'
 import LessonCreateModal from '@/components/schedule/LessonCreateModal.vue'
 import BackfillModal from '@/components/schedule/BackfillModal.vue'
-import { academicsApi, COURSE_KINDS, KIND_ICON, type CourseKind, type Group, type Lesson } from '@/api/academics'
+import { academicsApi, COURSE_KINDS, KIND_ICON, type Group, type Lesson, type LessonKind } from '@/api/academics'
 import type { Room } from '@/api/org'
 import { useAuthStore } from '@/stores/auth'
 import { useBranchStore } from '@/stores/branch'
@@ -39,6 +39,11 @@ const rooms = ref<Room[]>([])
 const loading = ref(true)
 const selected = ref<Lesson | null>(null)
 const creating = ref(false)
+const slotPick = ref<{ date: string; start: string; end: string; roomId: number | null } | null>(null)
+function newAt(d: Date, sl: { from: string; to: string }, roomId: number | null) {
+  slotPick.value = { date: isoDate(d), start: sl.from, end: sl.to, roomId }
+  creating.value = true
+}
 const dayIdx = ref((new Date().getDay() + 6) % 7)
 const now = ref(new Date())
 const timer = setInterval(() => (now.value = new Date()), 60_000)
@@ -46,11 +51,12 @@ onBeforeUnmount(() => clearInterval(timer))
 const teachers = useTeachers()
 
 /** Course format filter: all, group, duo, individual */
-const kind = ref<CourseKind | ''>('')
-const kindOf = (l: Lesson): CourseKind => l.kind ?? (l.group_id ? 'group' : 'individual')
+const kind = ref<LessonKind | ''>('')
+const titleOf = (l: Lesson) => l.group_name ?? (l.kind === 'support' ? `Support · ${l.topic ?? ''}` : t('schedule.individual'))
+const kindOf = (l: Lesson): LessonKind => l.kind ?? (l.group_id ? 'group' : 'individual')
 const kindOptions = computed(() => [
   { value: '' as const, label: t('kind.all') },
-  ...COURSE_KINDS.map((k) => ({ value: k, label: t(`kind.${k}`), icon: KIND_ICON[k] })),
+  ...[...COURSE_KINDS, 'support' as const].map((k) => ({ value: k, label: t(`kind.${k}`), icon: KIND_ICON[k] })),
 ])
 const viewOptions = computed(() => [
   { value: 'rooms' as const, label: t('schedule.byRooms') },
@@ -281,7 +287,7 @@ const nConflicts = computed(() => shown.value.filter((l) => conflicts.value.has(
       <TransitionGroup v-else name="fade" tag="div">
         <button v-for="l in dayLessons" :key="l.id" type="button" class="agenda" :class="{ conflict: conflicts.has(l.id), 'has-trial': l.trials }" :style="{ '--c': levelColor(l) }" @click="selected = l">
           <span class="tm num">{{ hm(l.starts_at, loc) }}<small>{{ hm(l.ends_at, loc) }}</small></span>
-          <span class="grow"><b><UiIcon :name="KIND_ICON[kindOf(l)]" :size="14" class="kind-ico" :label="t(`kind.${kindOf(l)}`)" />{{ l.group_name ?? t('schedule.individual') }}<span v-if="membersOf(l) !== undefined" class="mem" :title="t('schedule.members', { n: membersOf(l) })"><UiIcon name="users" :size="14" />{{ membersOf(l) }}</span></b><small>{{ l.room_name }} · {{ l.teacher_name }}<template v-if="l.actual_teacher_id"> · {{ t('schedule.sub') }}</template></small></span>
+          <span class="grow"><b><UiIcon :name="KIND_ICON[kindOf(l)]" :size="14" class="kind-ico" :label="t(`kind.${kindOf(l)}`)" />{{ titleOf(l) }}<span v-if="membersOf(l) !== undefined" class="mem" :title="t('schedule.members', { n: membersOf(l) })"><UiIcon name="users" :size="14" />{{ membersOf(l) }}</span></b><small>{{ l.room_name }} · {{ l.teacher_name }}<template v-if="l.actual_teacher_id"> · {{ t('schedule.sub') }}</template></small></span>
           <span v-if="conflicts.has(l.id)" class="chip red xs">{{ t('schedule.conflictShort') }}</span>
           <span v-else-if="l.trials" class="chip red xs">{{ t('schedule.trial') }}</span>
         </button>
@@ -311,10 +317,11 @@ const nConflicts = computed(() => shown.value.filter((l) => conflicts.value.has(
                   :class="{ 'has-trial': l.trials, conflict: conflicts.has(l.id), cancelled: l.status === 'cancelled', marked: l.attendance_marked_at }"
                   :style="{ '--c': levelColor(l) }" @click="selected = l"
                 >
-                  <b><UiIcon :name="KIND_ICON[kindOf(l)]" :size="14" class="kind-ico" :label="t(`kind.${kindOf(l)}`)" />{{ l.group_name ?? t('schedule.individual') }}</b>
+                  <b><UiIcon :name="KIND_ICON[kindOf(l)]" :size="14" class="kind-ico" :label="t(`kind.${kindOf(l)}`)" />{{ titleOf(l) }}</b>
                   <span v-if="membersOf(l) !== undefined" class="wl-n">{{ membersOf(l) }}<template v-if="capacityOf(l)">/{{ capacityOf(l) }}</template></span>
                   <small>{{ l.teacher_name }}<template v-if="l.actual_teacher_id"> · {{ t('schedule.sub') }}</template></small>
                 </button>
+                <button v-if="auth.can('schedule.create') && columns[dayIdx]" type="button" class="wl-add" :aria-label="t('schedule.addHere')" :title="t('schedule.addHere')" @click="newAt(columns[dayIdx]!.d, sl, r.id)">+</button>
               </td>
             </tr>
             <tr v-if="!dayRooms.slots.length"><td class="muted" style="padding: 16px">{{ t('schedule.noLessonsDay') }}</td></tr>
@@ -347,12 +354,13 @@ const nConflicts = computed(() => shown.value.filter((l) => conflicts.value.has(
                   :class="{ 'has-trial': l.trials, conflict: conflicts.has(l.id), cancelled: l.status === 'cancelled', marked: l.attendance_marked_at }"
                   :style="{ '--c': levelColor(l) }" :title="conflicts.get(l.id)?.join('\n')" @click="selected = l"
                 >
-                  <b><UiIcon :name="KIND_ICON[kindOf(l)]" :size="14" class="kind-ico" :label="t(`kind.${kindOf(l)}`)" />{{ l.group_name ?? t('schedule.individual') }}</b>
+                  <b><UiIcon :name="KIND_ICON[kindOf(l)]" :size="14" class="kind-ico" :label="t(`kind.${kindOf(l)}`)" />{{ titleOf(l) }}</b>
                   <span v-if="membersOf(l) !== undefined" class="wl-n" :title="t('schedule.members', { n: membersOf(l) })">{{ membersOf(l) }}<template v-if="capacityOf(l)">/{{ capacityOf(l) }}</template></span>
                   <small>{{ l.room_name }} · {{ l.teacher_name }}<template v-if="l.actual_teacher_id"> · {{ t('schedule.sub') }}</template></small>
                   <span v-if="conflicts.has(l.id)" class="chip red xs">{{ t('schedule.conflictShort') }}</span>
                   <span v-else-if="l.trials" class="chip red xs">{{ t('schedule.trial') }}</span>
                 </button>
+                <button v-if="auth.can('schedule.create')" type="button" class="wl-add" :aria-label="t('schedule.addHere')" :title="t('schedule.addHere')" @click="newAt(c.d, sl, null)">+</button>
               </td>
             </tr>
             <tr v-if="!r.slots.length"><td :colspan="r.days.length + 1" class="muted" style="padding: 16px">{{ t('schedule.noLessonsDay') }}</td></tr>
@@ -363,7 +371,7 @@ const nConflicts = computed(() => shown.value.filter((l) => conflicts.value.has(
   </template>
 
   <LessonModal :lesson="selected" :teachers="teachers" :conflicts="selected ? conflicts.get(selected.id) ?? [] : []" @close="selected = null" @changed="load" />
-  <LessonCreateModal v-model:open="creating" :groups="groups" :teachers="teachers" :room-id="view === 'rooms' ? pick || null : null" @created="load" />
+  <LessonCreateModal v-model:open="creating" :groups="groups" :teachers="teachers" :room-id="slotPick?.roomId ?? (view === 'rooms' ? pick || null : null)" :date="slotPick?.date" :start="slotPick?.start" :end="slotPick?.end" :branch-id="branch.filterId ?? null" @created="load" @update:open="(v: boolean) => !v && (slotPick = null)" />
   <BackfillModal v-if="backfilling" v-model:open="backfilling" :branch-id="branch.filterId ?? null" @done="load()" />
 </template>
 
@@ -390,4 +398,8 @@ const nConflicts = computed(() => shown.value.filter((l) => conflicts.value.has(
 .wl.cancelled { opacity: 0.55; text-decoration: line-through }
 .wl.marked::after { content: ""; position: absolute; right: 9px; bottom: 8px; width: 7px; height: 7px; border-radius: 50%; background: var(--ok) }
 .mem { display: inline-flex; align-items: center; gap: 2px; margin-left: 6px; font-weight: 600; opacity: 0.8; white-space: nowrap }
+.wk-t td { position: relative }
+.wl-add { display: block; width: 100%; min-height: 22px; margin-top: 4px; border: 1px dashed var(--line); border-radius: var(--r-sm); background: none; color: var(--muted); cursor: pointer; opacity: 0; transition: opacity var(--t-fast) }
+.wk-t td:hover .wl-add, .wl-add:focus-visible { opacity: 1 }
+.wl-add:hover { border-color: var(--navy); color: var(--navy) }
 </style>

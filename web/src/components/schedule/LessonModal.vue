@@ -111,7 +111,7 @@ async function submit() {
 </script>
 
 <template>
-  <UiModal v-model:open="open" :title="l ? (l.group_name ?? t('schedule.individual')) : ''">
+  <UiModal v-model:open="open" :title="l ? (l.group_name ?? (l.kind === 'support' ? 'Support · ' + (l.topic ?? '') : t('schedule.individual'))) : ''">
     <template v-if="l">
       <div class="stack">
         <div class="lsn-meta">

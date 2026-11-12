@@ -62,7 +62,7 @@ const isToday = computed(() => date.value === isoDate(new Date()))
     <button v-for="l in lessons" :key="l.id" type="button" class="card lesson-card" :class="{ live: live(l) }" @click="router.push(`/attendance/${l.id}`)">
       <span class="gav" :style="{ '--c': tone(refs.level(l.level_id)?.color) }">{{ (l.group_name ?? '·').slice(0, 2) }}</span>
       <span class="grow">
-        <b>{{ l.group_name ?? t('schedule.individual') }}</b>
+        <b>{{ l.group_name ?? (l.kind === 'support' ? 'Support · ' + (l.topic ?? '') : t('schedule.individual')) }}</b>
         <small class="num">{{ hm(l.starts_at, loc) }}–{{ hm(l.ends_at, loc) }} · {{ l.room_name }} · {{ l.teacher_name }}</small>
       </span>
       <UiChip v-if="l.trials" tone="red" small icon="flag">{{ l.trials }}</UiChip>

@@ -29,7 +29,8 @@ export interface Group {
 export type CourseKind = 'group' | 'duo' | 'individual'
 export const COURSE_KINDS: CourseKind[] = ['group', 'duo', 'individual']
 /** Sprite icon per format: one person, two people, a group */
-export const KIND_ICON: Record<CourseKind, string> = { individual: 'user', duo: 'users', group: 'groups' }
+export type LessonKind = CourseKind | 'support'
+export const KIND_ICON: Record<LessonKind, string> = { individual: 'user', duo: 'users', group: 'groups', support: 'idea' }
 
 export interface GroupIn {
   name: string
@@ -76,7 +77,7 @@ export interface Lesson {
   attendance_marked_at: string | null
   topic: string | null
   group_name: string | null
-  kind?: CourseKind
+  kind?: LessonKind
   teacher_name: string | null
   room_name: string | null
   trials: number
@@ -170,7 +171,7 @@ export const academicsApi = {
     http.post<{ rule_id: number; created: number; conflicts: string[] }>(`/groups/${id}/schedule`, body, { silent: true }),
   endRule: (ruleId: number) => http.delete(`/schedule-rules/${ruleId}`),
   lessons: (q: LessonQuery) => http.get<Lesson[]>(`/lessons${qs({ ...q })}`),
-  createLesson: (body: { group_id?: number | null; student_id?: number | null; teacher_id: number; room_id: number; starts_at: string; ends_at: string; topic?: string | null }) =>
+  createLesson: (body: { group_id?: number | null; student_id?: number | null; teacher_id: number; room_id: number; starts_at: string; ends_at: string; topic?: string | null; support?: boolean }) =>
     http.post<Lesson>('/lessons', body, { silent: true }),
   cancel: (id: number, reason: string) => http.post<Lesson>(`/lessons/${id}/cancel`, { reason }),
   backfill: (body: { date_from: string; date_to: string; branch_id?: number | null; members_from_start: boolean }) =>

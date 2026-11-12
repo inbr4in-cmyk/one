@@ -77,6 +77,7 @@ export default {
     group: 'Топ',
     duo: 'Дуэт',
     individual: 'Жеке',
+    support: 'Support-сабақ',
     hint: 'Дуэт — 2 оқушы, жеке — 1. Сабақ бағасын анықтамалықтағы деңгей белгілейді.',
   },
   contract: {
