@@ -203,7 +203,6 @@ const hours = (r: CheckinRow) => {
     <form id="pw-form" class="stack" @submit.prevent="setPassword">
       <UiInput v-if="pwFor && pwFor.id === auth.user?.id" v-model="oldPw" type="password" :label="t('staff.currentPassword')" autocomplete="current-password" :maxlength="256" autofocus />
       <UiInput v-model="pw" type="password" :label="t('staff.newPassword')" :hint="t('staff.passwordHint')" autocomplete="new-password" :maxlength="256" :autofocus="!(pwFor && pwFor.id === auth.user?.id)" />
-      <p class="form-note">{{ t('staff.passwordNote') }}</p>
       <p v-if="pwErr" class="form-err" role="alert">{{ pwErr }}</p>
     </form>
     <template #footer="{ close }">

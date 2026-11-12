@@ -153,7 +153,6 @@ const signed = (n: number) => (n > 0 ? `+${money(n, loc.value)}` : n < 0 ? `−$
         <div class="k">{{ t('payroll.myTotal', { period: periodLabel(period, loc) }) }}</div>
         <div v-if="my" class="v num">{{ money(my.total, loc) }}</div><UiSkeleton v-else :lines="1" />
         <span v-if="my && my.salary_total" class="muted" style="font-size: 12px">{{ t('payroll.bySalary') }} {{ money(my.salary_total, loc) }} · {{ t('payroll.byRates') }} {{ money(my.rates_total ?? 0, loc) }}</span>
-        <span class="muted" style="font-size: 12px">{{ t('payroll.myNote') }}</span>
       </div>
     </div>
     <UiCard :title="t('payroll.lines')" flush>

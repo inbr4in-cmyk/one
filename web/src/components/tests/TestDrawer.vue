@@ -180,7 +180,7 @@ async function archiveQuestion(q: Question) {
         <UiField :label="t('tests.level')"><UiSelect v-model="form.level_id" :options="levelOpts" :label="t('tests.level')" block :disabled="!canEdit" /></UiField>
         <UiInput v-model="form.pass_score" type="number" inputmode="numeric" :min="0" :label="t('tests.passScore')" :disabled="!canEdit" />
       </div>
-      <UiField v-else :label="t('tests.scale')" :hint="t('tests.scaleHint')">
+      <UiField v-else :label="t('tests.scale')">
         <div class="tst-scale">
           <div v-for="(r, i) in scale" :key="i" class="tst-scale-row">
             <input v-model="r.min" class="inp mini" type="number" min="0" inputmode="numeric" :aria-label="t('tests.scaleFrom')" :placeholder="t('tests.scaleFrom')" :disabled="!canEdit" />

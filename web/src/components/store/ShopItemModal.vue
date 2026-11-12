@@ -69,7 +69,7 @@ async function submit() {
         <UiInput v-model="form.stock" type="number" :min="0" :label="t('shop.stock')" inputmode="numeric" />
       </div>
       <div class="form-2">
-        <UiInput v-model="form.cost" type="number" :min="0" :label="t('shop.cost')" :hint="t('shop.costHint')" inputmode="numeric" />
+        <UiInput v-model="form.cost" type="number" :min="0" :label="t('shop.cost')" inputmode="numeric" />
         <UiField :label="t('branch.label')"><UiSelect v-model="form.branch_id" :options="branches" :label="t('branch.label')" block /></UiField>
       </div>
       <p v-if="error" class="form-err" role="alert">{{ error }}</p>

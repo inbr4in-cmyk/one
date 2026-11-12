@@ -104,7 +104,7 @@ async function submit() {
         <UiInput v-model="form.spent_on" type="date" :label="t('fin.spentOn')" :error="errors.spent_on" />
       </div>
       <UiInput v-model="form.note" :label="t('fin.note')" :placeholder="t('fin.notePh')" :maxlength="255" />
-      <UiCheck v-model="form.recurring" :label="t('fin.recurring')" :hint="t('fin.recurringHint')" />
+      <UiCheck v-model="form.recurring" :label="t('fin.recurring')" />
       <UiInput v-if="form.recurring" v-model="form.recurring_day" type="number" :min="1" :max="28" :label="t('fin.recurringDay')" :error="errors.day" />
       <p v-if="errors.form" class="form-err" role="alert">{{ errors.form }}</p>
     </form>

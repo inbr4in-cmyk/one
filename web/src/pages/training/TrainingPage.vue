@@ -125,7 +125,7 @@ async function create() {
     <form id="course-form" class="stack" @submit.prevent="create">
       <UiInput v-model="form.title" :label="t('training.title')" :placeholder="t('training.titlePh')" :maxlength="255" />
       <UiTextarea v-model="form.description" :label="t('training.description')" :rows="3" :maxlength="8000" />
-      <UiField v-if="roles.length" :label="t('training.forRoles')" :hint="t('training.forRolesHint')">
+      <UiField v-if="roles.length" :label="t('training.forRoles')">
         <div class="chips-row">
           <button v-for="r in roles" :key="r.id" type="button" class="tgl" :aria-pressed="form.role_codes.includes(r.code)" @click="toggle(r.code)">{{ r.name }}</button>
         </div>

@@ -155,7 +155,6 @@ function openItem(i: ShopItem | null) {
         <b class="num coin-v"><UiIcon name="coin" :size="14" /> {{ num(r.coins, loc) }}</b>
       </li>
     </ol>
-    <p class="muted m0" style="font-size: 12.5px; margin-top: 12px">{{ topRange === 'month' ? t('coins.topNoteMonth') : t('coins.topNote') }}</p>
   </UiCard>
 
   <template v-else>

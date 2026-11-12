@@ -85,7 +85,6 @@ async function submit() {
   <UiModal v-model:open="open" :title="t('schedule.newLesson')">
     <form id="lc-form" class="stack" @submit.prevent="submit">
       <UiSegmented v-model="mode" :options="modeOptions" :label="t('schedule.newLesson')" size="sm" />
-      <p v-if="mode === 'support'" class="muted m0" style="font-size: 13px">{{ t('schedule.support.hint') }}</p>
       <UiField v-if="mode === 'group'" :label="t('schedule.group')"><UiSelect v-model="form.group_id" :options="groupOptions" :label="t('schedule.group')" block /></UiField>
       <UiField v-else-if="branchOptions.length > 1" :label="t('schedule.support.branch')"><UiSelect v-model="supportBranch" :options="branchOptions" :label="t('schedule.support.branch')" block /></UiField>
       <div class="form-3">

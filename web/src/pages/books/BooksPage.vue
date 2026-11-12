@@ -159,7 +159,6 @@ const reportRows = computed(() => report.value?.books ?? [])
         </table>
       </div>
     </UiCard>
-    <p class="muted" style="font-size: 12.5px; margin-top: 10px">{{ t('books.sellHint') }}</p>
   </template>
 
   <div v-else-if="tab === 'transfers'" class="grid fin-a">

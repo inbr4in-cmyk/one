@@ -35,7 +35,6 @@ const status = computed(() => {
     </div>
     <div class="grid stagger">
       <UiCard id="appearance" :title="t('theme.title')" icon="sun">
-        <p class="card-note" style="margin: 0 0 12px">{{ t('theme.hint') }}</p>
         <ThemePicker />
       </UiCard>
       <PasswordCard v-if="auth.isStaff" @changed="sessionsCard?.reload()" />

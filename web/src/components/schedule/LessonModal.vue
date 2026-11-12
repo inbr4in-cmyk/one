@@ -142,7 +142,6 @@ async function submit() {
             </UiField>
             <p v-if="mode === 'delete'" class="m0">{{ t('schedule.deleteText') }}</p>
             <UiTextarea v-if="mode === 'cancel' || mode === 'move'" v-model="form.reason" :label="t('common.reason')" :rows="2" />
-            <p v-if="mode === 'cancel' || mode === 'move'" class="form-note">{{ t('schedule.notifyNote') }}</p>
           </form>
         </Transition>
         <div v-if="error" class="alert red" role="alert"><UiIcon name="alert" /><div class="grow"><b>{{ error }}</b></div></div>

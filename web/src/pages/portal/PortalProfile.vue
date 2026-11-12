@@ -47,7 +47,7 @@ const links = computed(() => [
     </div>
   </UiCard>
   <UiCard style="margin-top: 14px" :title="t('portal.appearance')">
-    <div class="set-row wrap"><div class="grow"><b>{{ t('user.theme') }}</b><span>{{ t('theme.hint') }}</span></div></div>
+    <div class="set-row wrap"><div class="grow"><b>{{ t('user.theme') }}</b></div></div>
     <ThemePicker style="padding: 4px 0 12px" />
     <div class="set-row"><div class="grow"><b>{{ t('user.language') }}</b></div><UiSegmented v-model="ui.locale" :options="langs" :label="t('user.language')" size="sm" /></div>
   </UiCard>

@@ -300,7 +300,7 @@ const lessonState = (l: Lesson) => (l.status === 'cancelled' ? 'red' : l.attenda
         <UiField :label="t('groups.room')"><UiSelect v-model="rule.room_id" :options="roomOptions" :label="t('groups.room')" block /></UiField>
         <div class="form-2">
           <UiInput v-model="rule.from" type="date" :label="t('groups.rule.from')" />
-          <UiInput v-model="rule.to" type="date" :min="rule.from" :label="t('groups.rule.to')" :hint="t('groups.rule.toHint')" />
+          <UiInput v-model="rule.to" type="date" :min="rule.from" :label="t('groups.rule.to')" />
         </div>
         <p v-if="ruleError" class="form-err m0" role="alert">{{ ruleError }}</p>
       </form>

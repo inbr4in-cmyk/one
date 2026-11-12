@@ -65,8 +65,8 @@ const wdShort = (wd: number) => new Intl.DateTimeFormat(loc.value === 'kk' ? 'kk
 <template>
   <div v-if="branchId === null" class="alert info"><span>{{ t('payroll.ts.pickBranch') }}</span></div>
   <template v-else>
-    <div class="alert" :class="ts?.locked ? 'info' : ''">
-      <span>{{ ts?.locked ? t('payroll.ts.locked') : ts && !ts.can_edit ? t('payroll.ts.readonly') : t('payroll.ts.note') }}</span>
+    <div v-if="ts?.locked || (ts && !ts.can_edit)" class="alert info">
+      <span>{{ ts?.locked ? t('payroll.ts.locked') : t('payroll.ts.readonly') }}</span>
     </div>
     <div v-if="editable" class="toolbar ts-tools">
       <span class="muted">{{ t('payroll.ts.brush') }}:</span>

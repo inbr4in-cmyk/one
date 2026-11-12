@@ -133,11 +133,10 @@ async function archive() {
         <div v-if="lockReason" class="alert info m0"><span>{{ lockReason }}</span></div>
         <div class="form-2">
           <UiInput v-model="form.name" :label="t('rolesPage.name')" :maxlength="120" :disabled="readOnly" />
-          <UiInput v-model="form.coin_limit" type="number" :min="0" :label="t('rolesPage.coinLimit')" :hint="t('rolesPage.coinHint')" :disabled="readOnly" inputmode="numeric" />
+          <UiInput v-model="form.coin_limit" type="number" :min="0" :label="t('rolesPage.coinLimit')" :disabled="readOnly" inputmode="numeric" />
         </div>
         <UiInput v-model="form.description" :label="t('rolesPage.description')" :maxlength="255" :disabled="readOnly" />
         <div class="perm-head"><b>{{ t('rolesPage.matrix') }}</b><span class="muted">{{ t('rolesPage.granted', { n: granted }) }}</span></div>
-        <p class="form-note">{{ t('rolesPage.scopeNote') }}</p>
         <div class="perm-mods">
           <section v-for="(m, mk) in catalog" :key="mk" class="perm-mod">
             <header>

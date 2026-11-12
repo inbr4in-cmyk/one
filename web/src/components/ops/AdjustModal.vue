@@ -67,7 +67,6 @@ async function submit() {
       <UiField :label="t('payroll.person')"><UiSelect v-model="form.user_id" :options="people" :label="t('payroll.person')" block /></UiField>
       <UiInput v-model="form.amount" type="number" :min="1" :label="t('fin.amount')" inputmode="numeric" />
       <UiInput v-model="form.description" :label="t('payroll.desc')" :placeholder="t('payroll.descPh')" :maxlength="255" />
-      <p class="form-note">{{ t('payroll.adjustNote') }}</p>
       <p v-if="error" class="form-err" role="alert">{{ error }}</p>
     </form>
     <template #footer="{ close }">

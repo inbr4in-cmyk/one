@@ -77,12 +77,11 @@ async function submit() {
 <template>
   <UiDrawer v-model:open="open" :title="group ? t('groups.edit') : t('groups.new')">
     <form id="grp-form" class="stack" novalidate @submit.prevent="submit">
-      <UiField :label="t('kind.label')" :hint="t('kind.hint')">
+      <UiField :label="t('kind.label')">
         <UiSegmented v-model="form.kind" :options="kindOptions" :label="t('kind.label')" size="sm" />
       </UiField>
       <UiInput v-model="form.name" :label="t('groups.name')" :placeholder="t('groups.namePh')" :error="errors.name" autofocus />
       <UiField v-if="!group" :label="t('branch.label')"><UiSelect v-model="form.branch_id" :options="branchOptions" :label="t('branch.label')" block /></UiField>
-      <p v-if="form.kind === 'club'" class="form-note">{{ t('kind.clubHint') }}</p>
       <div class="form-2">
         <UiField v-if="form.kind !== 'club'" :label="t('students.form.level')" :error="errors.level"><UiSelect v-model="form.level_id" :options="levelOptions" :label="t('students.form.level')" block /></UiField>
         <UiField :label="t('groups.teacher')" :error="errors.teacher"><UiSelect v-model="form.teacher_id" :options="teacherOptions" :label="t('groups.teacher')" block /></UiField>

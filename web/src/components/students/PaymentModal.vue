@@ -149,7 +149,7 @@ async function submit() {
       </UiField>
       <UiSegmented v-model="form.by" :options="byOptions" :label="t('payments.byLabel')" size="sm" />
       <UiInput v-if="byAmount" v-model="form.amount" type="number" inputmode="numeric" :min="1" :label="t('payments.amount')"
-        :hint="t('payments.amountHint')" autofocus />
+        autofocus />
       <div v-else-if="byPackage" class="pkg-list" role="radiogroup" :aria-label="t('payments.byPackage')">
         <button v-for="p in packages ?? []" :key="p.id" type="button" role="radio" class="pkg" :aria-checked="pkgId === p.id" @click="pkgId = p.id">
           <b>{{ p.name }}</b><span class="num">{{ money(p.price, loc) }}</span><small>{{ t('payments.pkgInfo', { m: p.months, n: p.lessons }) }}</small>
@@ -169,8 +169,7 @@ async function submit() {
         <UiInput v-if="auth.can('payments.discount') && !byAmount" v-model="form.discount" type="number" inputmode="numeric" :min="0" :label="t('payments.discount')" />
         <UiInput v-model="form.promo" :label="t('payments.promo')" autocomplete="off" />
       </div>
-      <UiInput v-if="canBackdate" v-model="form.paid_on" type="date" :max="todayIso()" :label="t('payments.paidOn')"
-        :hint="backdated ? t('payments.paidOnHint') : undefined" />
+      <UiInput v-if="canBackdate" v-model="form.paid_on" type="date" :max="todayIso()" :label="t('payments.paidOn')" />
       <UiTextarea v-model="form.note" :label="t('payments.note')" :rows="2" />
 
       <div class="quote" aria-live="polite">

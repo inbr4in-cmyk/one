@@ -82,8 +82,6 @@ async function submit() {
       </div>
       <UiInput v-if="mode === 'receive'" v-model="form.supplier" :label="t('books.supplier')" :maxlength="255" />
       <UiInput v-if="mode === 'writeoff'" v-model="form.reason" :label="t('common.reason')" :placeholder="t('books.writeoffPh')" :maxlength="255" />
-      <p v-if="mode === 'transfer'" class="form-note">{{ t('books.transferNote') }}</p>
-      <p v-if="mode === 'receive'" class="form-note">{{ t('books.receiveNote') }}</p>
       <p v-if="error" class="form-err" role="alert">{{ error }}</p>
     </form>
     <template #footer="{ close }">

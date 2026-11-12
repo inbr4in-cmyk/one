@@ -167,7 +167,7 @@ async function addRate() {
         <div class="set-list">
           <template v-for="k in g.keys" :key="k">
             <form v-if="k === WIN" class="set-row wrap" @submit.prevent="saveWin">
-              <div class="grow"><b>{{ label(k) }}</b><span>{{ t('settingsPage.win.hint') }}</span></div>
+              <div class="grow"><b>{{ label(k) }}</b></div>
               <UiSegmented v-if="canEdit" v-model="win.mode" :options="winOptions" :label="label(k)" size="sm" />
               <b v-else class="num">{{ win.mode === 'same_day' ? t('settingsPage.win.sameDay') : `${win.hours} ${t('time.h')}` }}</b>
               <input v-if="canEdit && win.mode === 'hours'" v-model="win.hours" class="inp set-inp" type="number" min="1" max="720" :disabled="!canEdit" :aria-label="t('settingsPage.win.hoursLabel')" :title="t('settingsPage.win.hoursLabel')" />
@@ -195,7 +195,6 @@ async function addRate() {
     </div>
 
     <UiCard :title="t('settingsPage.rates')">
-      <p class="form-note" style="margin-top: 0">{{ t('settingsPage.ratesNote') }}</p>
       <UiSkeleton v-if="!rates" :lines="6" />
       <div v-else class="set-list">
         <div v-for="g in rateGroups" :key="g.key" class="set-row rate-row">

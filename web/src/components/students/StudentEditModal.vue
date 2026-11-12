@@ -80,7 +80,7 @@ async function submit() {
       <UiInput v-model="form.full_name" :label="t('students.form.name')" :error="errors.full_name" autocomplete="off" autofocus />
       <div class="form-2">
         <UiInput v-model="form.birth_date" type="date" :label="t('students.form.birth')" :hint="age !== null ? t('students.age', { n: age }) : undefined" />
-        <UiPhoneInput v-model="form.phone" :label="t('students.form.phone')" :error="errors.phone" :hint="t('students.edit.phoneHint')" />
+        <UiPhoneInput v-model="form.phone" :label="t('students.form.phone')" :error="errors.phone" />
       </div>
       <div class="form-2">
         <UiField :label="t('students.form.level')">

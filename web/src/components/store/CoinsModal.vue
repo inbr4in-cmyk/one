@@ -82,7 +82,6 @@ async function submit() {
         <div class="lm-h"><span>{{ t('coins.limitLeft') }}</span><b class="num">{{ t('coins.limitOf', { left: limit.left, limit: limit.limit }) }}</b></div>
         <div class="bar-track" role="progressbar" :aria-valuenow="limit.used" :aria-valuemax="limit.limit" :aria-label="t('coins.limitLeft')"><i :style="{ width: `${limit.limit ? Math.min(100, (limit.used / limit.limit) * 100) : 100}%` }" /></div>
       </div>
-      <p v-if="kind === 'award'" class="form-note">{{ t('coins.limitNote') }}</p>
       <p v-if="error" class="form-err" role="alert">{{ error }}</p>
     </form>
     <template #footer="{ close }">

@@ -191,7 +191,6 @@ const LINKS = [
       <div v-if="picked.length" class="oc-opts">
         <div class="oc-opt">
           <b>{{ t('oldCrm.defaultBranch') }}</b>
-          <span class="muted">{{ t('oldCrm.defaultBranchHint') }}</span>
         </div>
         <UiSelect v-model="branchId" :options="branchOptions" :label="t('oldCrm.defaultBranch')" />
       </div>
@@ -218,14 +217,11 @@ const LINKS = [
         <span class="sp" />
         <UiChip v-for="s in STATUSES" :key="s" :tone="TONE[s]">{{ statusText(s) }}: <b class="num">{{ view.totals[s] }}</b></UiChip>
       </div>
-      <p class="muted">{{ result ? t('oldCrm.doneNote') : t('oldCrm.previewNote') }}</p>
       <div v-if="stats.length" class="oc-stats">
         <div v-for="s in stats" :key="s.k" class="oc-stat"><span class="num">{{ statValue(s.k, s.v) }}</span><small>{{ statLabel(s.k) }}</small></div>
       </div>
       <div v-if="!result && view.totals.error" class="alert red" style="margin: 12px 0 0"><UiIcon name="alert" /><span>{{ t('oldCrm.errorsWarn', { n: view.totals.error }) }}</span></div>
       <template v-if="result">
-        <p class="muted oc-note">{{ t('oldCrm.moneyNote') }}</p>
-        <p v-if="result.stats.staff_created" class="muted oc-note">{{ t('oldCrm.staffNote') }}</p>
         <div class="oc-links">
           <UiButton v-for="[k, to] in LINKS" :key="k" size="sm" :to="to" icon-end="arrow">{{ t(`oldCrm.links.${k}`) }}</UiButton>
           <span class="sp" />

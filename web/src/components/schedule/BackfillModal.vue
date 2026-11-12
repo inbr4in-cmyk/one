@@ -35,7 +35,6 @@ async function run() {
 
 <template>
   <UiModal v-model:open="open" :title="t('schedule.backfill.title')">
-    <p class="muted">{{ t('schedule.backfill.text') }}</p>
     <div class="row2">
       <UiInput v-model="f.from" type="date" :max="f.to" :label="t('schedule.backfill.from')" />
       <UiInput v-model="f.to" type="date" :min="f.from" :max="yesterday" :label="t('schedule.backfill.to')" />
@@ -49,7 +48,6 @@ async function run() {
         <summary>{{ t('schedule.backfill.conflicts', { n: result.conflicts.length }) }}</summary>
         <ul><li v-for="c in result.conflicts" :key="c">{{ c }}</li></ul>
       </details>
-      <span class="muted">{{ t('schedule.backfill.hint') }}</span>
     </div>
     <template #footer="{ close }">
       <UiButton @click="close">{{ t('common.close') }}</UiButton>
@@ -59,7 +57,6 @@ async function run() {
 </template>
 
 <style scoped>
-.muted { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
 .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
 .err { color: var(--red-600); margin: 12px 0 0; }
 .res { display: grid; gap: 6px; margin-top: 14px; padding: 12px; border-radius: var(--r-sm); background: var(--navy-50); }

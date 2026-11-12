@@ -106,7 +106,6 @@ async function publish() {
           <div class="grow"><b>{{ s.full_name }}</b><span>{{ refs.branchName(s.branch_id) }}</span></div>
         </RouterLink>
       </div>
-      <p class="muted" style="font-size: 12.5px; margin: 12px 0 0">{{ t('docs.missingNote') }}</p>
     </UiCard>
   </div>
 
@@ -124,8 +123,7 @@ async function publish() {
         </UiField>
       </div>
       <UiInput v-model="form.title" :label="t('docs.title')" :maxlength="255" />
-      <UiTextarea v-model="form.body" :label="t('docs.body')" :hint="t('docs.bodyHint')" :rows="12" :maxlength="100000" />
-      <p class="form-note">{{ t('docs.publishNote') }}</p>
+      <UiTextarea v-model="form.body" :label="t('docs.body')" :rows="12" :maxlength="100000" />
       <p v-if="error" class="form-err" role="alert">{{ error }}</p>
     </form>
     <template #footer="{ close }">

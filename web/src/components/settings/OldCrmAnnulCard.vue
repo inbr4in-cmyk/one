@@ -35,7 +35,6 @@ async function run() {
 
 <template>
   <UiCard :title="t('oldCrm.annul.title')" class="oc-annul">
-    <p class="muted">{{ t('oldCrm.annul.text') }}</p>
     <div v-if="info" class="oc-annul-r">
       <span>{{ t('oldCrm.annul.positive', { n: info.positive.students, sum: money(info.positive.sum, loc) }) }}</span>
       <span v-if="info.debts.students">{{ t('oldCrm.annul.debts', { n: info.debts.students, sum: money(info.debts.sum, loc) }) }}</span>

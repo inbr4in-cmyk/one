@@ -56,7 +56,6 @@ async function submit() {
       </UiField>
       <UiInput v-if="canDate" v-model="form.paid_on" type="date" :max="today" :label="t('payments.paidOn')" />
       <UiTextarea v-model="form.note" :label="t('payments.note')" :rows="2" :maxlength="255" />
-      <p class="form-note">{{ t('payEdit.note') }}</p>
     </form>
     <template #footer="{ close }">
       <UiButton @click="close">{{ t('common.cancel') }}</UiButton>

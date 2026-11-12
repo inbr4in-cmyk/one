@@ -374,7 +374,6 @@ watch(tab, loadTab)
         <UiButton v-if="!x.system" size="sm" variant="ghost" icon="archive" :aria-label="`${t('dict.archive')}: ${x.name}`" @click="confirm = { kind: 'sources', id: 0, code: x.code, name: x.name }" />
       </template>
     </div>
-    <p class="muted m0" style="font-size: 13px; margin-top: 10px">{{ t('dict.sourceNote') }}</p>
   </UiCard>
 
   <!-- levels and prices -->
@@ -399,7 +398,6 @@ watch(tab, loadTab)
         </tbody>
       </table>
     </div>
-    <p class="muted card-pad m0" style="font-size: 13px">{{ t('dict.priceNote') }}</p>
   </UiCard>
 
   <!-- branches and rooms -->
@@ -458,7 +456,6 @@ watch(tab, loadTab)
         </tbody>
       </table>
     </div>
-    <p class="muted card-pad m0" style="font-size: 13px">{{ t('dict.pkgNote') }}</p>
   </UiCard>
 
   <!-- lead funnel columns -->
@@ -523,7 +520,6 @@ watch(tab, loadTab)
       </div>
       <UiInput v-model="pf.lessons" type="number" inputmode="numeric" :min="1" :label="t('dict.pkgLessons')"
         :hint="t('dict.pkgLessonsHint', { price: pkgPerLesson })" @input="pf.lessonsTouched = true" />
-      <p class="form-note">{{ t('dict.pkgNote') }}</p>
     </form>
     <template #footer="{ close }">
       <UiButton @click="close">{{ t('common.cancel') }}</UiButton>
@@ -543,7 +539,6 @@ watch(tab, loadTab)
         <UiField :label="t('dict.next')"><UiSelect v-model="lf.next_level_id" :options="nextOptions" :label="t('dict.next')" block /></UiField>
       </div>
       <label class="color-row"><input v-model="lf.color" type="color" /> {{ t('dict.color') }}</label>
-      <p class="form-note">{{ t('dict.priceNote') }}</p>
     </form>
     <template #footer="{ close }">
       <UiButton @click="close">{{ t('common.cancel') }}</UiButton>
@@ -554,7 +549,7 @@ watch(tab, loadTab)
   <UiModal v-model:open="stageModal" :title="stageId ? t('dict.editStage') : t('dict.addStage')">
     <form id="stg-form" class="stack" @submit.prevent="saveStage">
       <UiInput v-model="sf.name" :label="t('dict.stageName')" :maxlength="120" autofocus />
-      <UiInput v-model="sf.stale" type="number" inputmode="numeric" :min="1" :label="t('dict.stale')" :hint="t('dict.staleHint')" />
+      <UiInput v-model="sf.stale" type="number" inputmode="numeric" :min="1" :label="t('dict.stale')" />
       <label class="color-row"><input v-model="sf.color" type="color" /> {{ t('dict.color') }}</label>
     </form>
     <template #footer="{ close }">

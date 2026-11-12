@@ -104,8 +104,7 @@ async function appeal() {
       <form class="stack" @submit.prevent="submit">
         <UiInput v-model="form.subject" :label="t('feedback.subject')" :placeholder="t('feedback.subjectPh')" :maxlength="255" />
         <UiTextarea v-model="form.body" :label="t('feedback.body')" :placeholder="t('feedback.bodyPh')" :rows="5" :maxlength="8000" />
-        <UiField v-if="people.length" :label="t('feedback.against')" :hint="t('feedback.againstHint')"><UiSelect v-model="form.against" :options="againstOptions" :label="t('feedback.against')" block /></UiField>
-        <p class="form-note">{{ t('feedback.note') }}</p>
+        <UiField v-if="people.length" :label="t('feedback.against')"><UiSelect v-model="form.against" :options="againstOptions" :label="t('feedback.against')" block /></UiField>
         <p v-if="error" class="form-err" role="alert">{{ error }}</p>
         <div><UiButton type="submit" variant="primary" icon="send" :loading="busy">{{ t('feedback.send') }}</UiButton></div>
       </form>

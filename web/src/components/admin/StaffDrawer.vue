@@ -67,12 +67,12 @@ async function submit() {
     <form id="staff-form" class="stack" @submit.prevent="submit">
       <UiInput v-model="form.full_name" :label="t('staff.name')" :maxlength="255" autocomplete="off" />
       <UiPhoneInput v-if="!staff" v-model="form.phone" :label="t('staff.phone')" />
-      <UiPhoneInput v-else-if="staff.phone === null" v-model="form.phone" :label="t('staff.phone')" :hint="t('oldCrm.staffPhoneHint')" />
+      <UiPhoneInput v-else-if="staff.phone === null" v-model="form.phone" :label="t('staff.phone')" />
       <div class="form-2">
         <UiInput v-model="form.position" :label="t('staff.position')" :placeholder="t('staff.positionPh')" :maxlength="255" />
         <UiInput v-if="!staff || staff.salary !== null" v-model="form.salary" type="number" :min="0" :label="t('staff.salary')" inputmode="numeric" />
       </div>
-      <UiField v-if="!staff || staff.salary !== null" :label="t('staff.payScheme')" :hint="t(`staff.schemeHint.${form.pay_scheme}`)">
+      <UiField v-if="!staff || staff.salary !== null" :label="t('staff.payScheme')">
         <UiSegmented v-model="form.pay_scheme" :options="schemeOptions" :label="t('staff.payScheme')" size="sm" />
       </UiField>
       <UiInput v-if="!staff" v-model="form.password" type="password" :label="t('staff.password')" :hint="t('staff.passwordHint')" autocomplete="new-password" />
@@ -83,7 +83,7 @@ async function submit() {
           </button>
         </div>
       </UiField>
-      <UiField v-if="roles.length" :label="t('staff.roles')" :hint="t('staff.rolesHint')">
+      <UiField v-if="roles.length" :label="t('staff.roles')">
         <div class="picker-list short">
           <button v-for="r in roleChoices" :key="r.id" type="button" class="list-row pick" role="checkbox" :aria-checked="form.role_ids.includes(r.id)" @click="toggle(form.role_ids, r.id)">
             <span class="cbox" :class="{ on: form.role_ids.includes(r.id) }" /><span class="grow"><b>{{ te(`roles.${r.code}`) ? t(`roles.${r.code}`) : r.name }}</b><span v-if="r.description">{{ r.description }}</span></span>

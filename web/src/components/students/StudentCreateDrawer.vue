@@ -142,7 +142,7 @@ async function submit() {
         </fieldset>
       </TransitionGroup>
 
-      <UiCheck v-model="form.create_account" :label="t('students.form.account')" :hint="t('students.form.accountHint')" />
+      <UiCheck v-model="form.create_account" :label="t('students.form.account')" />
       <UiTextarea v-model="form.notes" :label="t('students.form.notes')" :rows="2" />
     </form>
     <template #footer="{ close }">

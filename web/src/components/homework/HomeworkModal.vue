@@ -66,12 +66,11 @@ async function save() {
   <UiModal v-model:open="open" :title="homework ? t('hw.editTitle') : t('groups.hw.new')">
     <form id="hw-form" class="stack" @submit.prevent="save">
       <UiInput v-model="title" :label="t('groups.hw.name')" :placeholder="t('attendance.hwPh')" :maxlength="255" autofocus />
-      <UiTextarea v-model="body" :label="t('groups.hw.body')" :hint="t('hw.bodyHint')" :rows="4" :maxlength="8000" />
+      <UiTextarea v-model="body" :label="t('groups.hw.body')" :rows="4" :maxlength="8000" />
       <div class="form-2">
         <UiField :label="t('groups.hw.dueLabel')"><input v-model="due" type="date" class="inp" :aria-label="t('groups.hw.dueLabel')" /></UiField>
         <UiField :label="t('hw.time')"><input v-model="time" type="time" class="inp" :disabled="!due" :aria-label="t('hw.time')" /></UiField>
       </div>
-      <p class="form-note">{{ t('hw.note') }}</p>
       <p v-if="error" class="form-err" role="alert">{{ error }}</p>
     </form>
     <template #footer="{ close }">

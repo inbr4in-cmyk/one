@@ -185,7 +185,6 @@ async function exportFile(kind: 'payments' | 'pnl') {
               </tr>
             </tbody>
           </table>
-          <p class="muted card-pad m0" style="font-size: 12.5px">{{ t('fin.sharedNote') }}</p>
         </div>
       </UiCard>
       <div class="grid" style="align-content: start; grid-template-columns: minmax(0, 1fr)">
