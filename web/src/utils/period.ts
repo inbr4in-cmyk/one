@@ -1,7 +1,8 @@
 import { intlLocale, type Locale } from '@/i18n'
+import { schoolNow } from './dates'
 
 /** Payroll / finance periods are months written "YYYY-MM". */
-export function periodOf(d: Date = new Date()): string {
+export function periodOf(d: Date = schoolNow()): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 

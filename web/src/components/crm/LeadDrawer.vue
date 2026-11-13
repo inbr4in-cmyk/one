@@ -10,7 +10,7 @@ import { academicsApi, type Lesson } from '@/api/academics'
 import { useAuthStore } from '@/stores/auth'
 import { useRefsStore } from '@/stores/refs'
 import { useToastStore } from '@/stores/toast'
-import { addDays, dayLabel, hm, isoDate } from '@/utils/dates'
+import { addDays, dayLabel, hm, isoDate, schoolNow } from '@/utils/dates'
 import { relativeTime } from '@/utils/format'
 import { formatPhone } from '@/utils/phone'
 import type { Locale } from '@/i18n'
@@ -111,7 +111,8 @@ async function openTrial() {
   if (!trialOpen.value || !lead.value) return
   lessons.value = null
   const now = new Date()
-  const list = await academicsApi.lessons({ from: isoDate(now), to: isoDate(addDays(now, 14)), branch_id: lead.value.branch_id }).catch(() => [])
+  const day = schoolNow()
+  const list = await academicsApi.lessons({ from: isoDate(day), to: isoDate(addDays(day, 14)), branch_id: lead.value.branch_id }).catch(() => [])
   const lv = lead.value.level_id
   lessons.value = list
     .filter((l) => new Date(l.starts_at) > now && l.group_id)

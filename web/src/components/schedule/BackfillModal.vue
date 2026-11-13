@@ -4,15 +4,15 @@ import { useI18n } from 'vue-i18n'
 import { UiButton, UiCheck, UiInput, UiModal } from '@/components/ui'
 import { academicsApi } from '@/api/academics'
 import { ApiError } from '@/api/http'
-import { addDays, isoDate } from '@/utils/dates'
+import { addDays, isoDate, schoolNow } from '@/utils/dates'
 
 const props = defineProps<{ branchId: number | null }>()
 const open = defineModel<boolean>('open', { required: true })
 const emit = defineEmits<{ done: [] }>()
 const { t } = useI18n()
 
-const yesterday = isoDate(addDays(new Date(), -1))
-const monthStart = (() => { const d = new Date(); d.setDate(1); return isoDate(d) })()
+const yesterday = isoDate(addDays(schoolNow(), -1))
+const monthStart = (() => { const d = schoolNow(); d.setDate(1); return isoDate(d) })()
 const f = reactive({ from: monthStart < yesterday ? monthStart : yesterday, to: yesterday, members: true })
 const busy = ref(false)
 const error = ref('')

@@ -10,7 +10,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useRefsStore } from '@/stores/refs'
 import { useToastStore } from '@/stores/toast'
 import type { TeacherOption } from '@/composables/useTeachers'
-import { dayLabel, hm, isoDate } from '@/utils/dates'
+import { dayLabel, hm, isoDate, toSchool, schoolIso } from '@/utils/dates'
 import type { Locale } from '@/i18n'
 
 /** Lesson details with cancel / move / substitute. Server conflicts (409) are shown in place. */
@@ -38,7 +38,7 @@ const past = computed(() => (l.value ? new Date(l.value.ends_at) < new Date() : 
 const roomOptions = computed(() => rooms.value.filter((r) => r.status === 'active').map((r) => ({ value: r.id, label: r.name })))
 const teacherOptions = computed(() => props.teachers.filter((x) => !l.value || !x.branchIds?.length || x.branchIds.includes(l.value.branch_id)).map((x) => ({ value: x.id, label: x.name })))
 const hhmm = (iso: string) => {
-  const d = new Date(iso)
+  const d = toSchool(iso)
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
@@ -54,7 +54,7 @@ function start(m: Mode) {
   if (!x) return
   error.value = null
   Object.assign(form, {
-    reason: '', date: isoDate(new Date(x.starts_at)), start: hhmm(x.starts_at), end: hhmm(x.ends_at), room_id: x.room_id,
+    reason: '', date: isoDate(toSchool(x.starts_at)), start: hhmm(x.starts_at), end: hhmm(x.ends_at), room_id: x.room_id,
     teacher_id: x.actual_teacher_id ?? x.teacher_id,
   })
   mode.value = m
@@ -90,8 +90,8 @@ async function submit() {
     } else if (mode.value === 'move') {
       if (form.end <= form.start) throw new ApiError(400, t('groups.rule.badTime'))
       await academicsApi.move(x.id, {
-        starts_at: new Date(`${form.date}T${form.start}`).toISOString(),
-        ends_at: new Date(`${form.date}T${form.end}`).toISOString(),
+        starts_at: schoolIso(form.date, form.start),
+        ends_at: schoolIso(form.date, form.end),
         room_id: form.room_id || null,
         reason: form.reason.trim(),
       })

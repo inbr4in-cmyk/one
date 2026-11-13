@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { UiButton, UiField, UiInput, UiModal, UiTextarea } from '@/components/ui'
 import { academicsApi, type Homework } from '@/api/academics'
 import { useToastStore } from '@/stores/toast'
-import { addDays, isoDate } from '@/utils/dates'
+import { addDays, isoDate, schoolNow, toSchool, schoolIso } from '@/utils/dates'
 import { apiErr } from '@/utils/err'
 
 /** Create or edit a group's homework. Due date is optional; it is stored as the end of that day, local time. */
@@ -28,11 +28,11 @@ watch(open, (v) => {
   title.value = h?.title ?? props.defaultTitle ?? ''
   body.value = h?.body ?? ''
   if (h?.due_at) {
-    const d = new Date(h.due_at)
+    const d = toSchool(h.due_at)
     due.value = isoDate(d)
     time.value = `${pad(d.getHours())}:${pad(d.getMinutes())}`
   } else {
-    due.value = h ? '' : isoDate(addDays(new Date(), 2))
+    due.value = h ? '' : isoDate(addDays(schoolNow(), 2))
     time.value = '23:59'
   }
   error.value = null
@@ -45,7 +45,7 @@ async function save() {
   const payload = {
     title: title.value.trim(),
     body: body.value.trim() || null,
-    due_at: due.value ? new Date(`${due.value}T${time.value || '23:59'}:00`).toISOString() : null,
+    due_at: due.value ? schoolIso(due.value, time.value || '23:59') : null,
   }
   try {
     const h = props.homework

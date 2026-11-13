@@ -8,7 +8,7 @@ import type { Student } from '@/api/students'
 import { ApiError } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
 import { useToastStore } from '@/stores/toast'
-import { money } from '@/utils/dates'
+import { isoDate, money, schoolNow } from '@/utils/dates'
 import type { Locale } from '@/i18n'
 
 type By = 'amount' | 'lessons' | 'package'
@@ -26,7 +26,7 @@ const levelPick = ref(0)
 const levelOptions = computed(() => [{ value: 0, label: t('payments.pickLevel') }, ...refs.levels.map((l) => ({ value: l.id, label: l.lesson_price ? `${l.name} · ${money(l.lesson_price, loc.value)}` : l.name }))])
 
 const PACKS = [8, 12, 24]
-const todayIso = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10) }
+const todayIso = () => isoDate(schoolNow())
 const form = reactive({ by: (props.mode ?? 'amount') as By, lessons: '12', amount: '', method: 'kaspi' as PaymentMethod, discount: '', promo: '', note: '', paid_on: todayIso() })
 const byOptions = computed(() => [
   { value: 'amount' as By, label: t('payments.byAmount') },

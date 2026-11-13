@@ -7,7 +7,7 @@ import { ApiError } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
 import { useBranchStore } from '@/stores/branch'
 import { useToastStore } from '@/stores/toast'
-import { isoDate } from '@/utils/dates'
+import { isoDate, schoolNow } from '@/utils/dates'
 
 /** Create or edit an expense. Network-wide (shared) expenses are only for network-scope finance editors. */
 const props = defineProps<{ expense?: Expense | null; categories: ExpenseCategory[] }>()
@@ -38,7 +38,7 @@ watch(open, (v) => {
   const e = props.expense
   Object.assign(form, e
     ? { branch_id: e.branch_id ?? NETWORK, category_id: e.category_id, amount: String(e.amount), spent_on: e.spent_on, note: e.note ?? '', recurring: e.recurring, recurring_day: String(e.recurring_day ?? 1) }
-    : { branch_id: branch.filterId ?? branchOptions.value[0]?.value ?? 0, category_id: 0, amount: '', spent_on: isoDate(new Date()), note: '', recurring: false, recurring_day: '1' })
+    : { branch_id: branch.filterId ?? branchOptions.value[0]?.value ?? 0, category_id: 0, amount: '', spent_on: isoDate(schoolNow()), note: '', recurring: false, recurring_day: '1' })
 })
 
 async function addCategory() {

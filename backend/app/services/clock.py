@@ -1,7 +1,8 @@
-from datetime import UTC, date, datetime, time, timedelta
-from zoneinfo import ZoneInfo
+from datetime import UTC, date, datetime, time, timedelta, timezone
 
-SCHOOL_TZ = ZoneInfo("Asia/Almaty")  # Shymkent, UTC+5
+# Shymkent: UTC+5 all year, no DST. A fixed offset, so an old tz database on the server
+# (Asia/Almaty was UTC+6 before 2024) can never shift school time.
+SCHOOL_TZ = timezone(timedelta(hours=5), "UTC+05")
 
 
 def now() -> datetime:

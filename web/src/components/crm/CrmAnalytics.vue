@@ -6,12 +6,12 @@ import { UiCard, UiEmptyState, UiInput, UiSkeleton } from '@/components/ui'
 import { crmApi, type Analytics, type Funnel } from '@/api/crm'
 import { useBranchStore } from '@/stores/branch'
 import { useRefsStore } from '@/stores/refs'
-import { isoDate } from '@/utils/dates'
+import { isoDate, schoolNow } from '@/utils/dates'
 
 const { t } = useI18n()
 const branch = useBranchStore()
 const refs = useRefsStore()
-const now = new Date()
+const now = schoolNow()
 const f = reactive({ from: isoDate(new Date(now.getFullYear(), now.getMonth(), 1)), to: isoDate(now) })
 const data = ref<Analytics | null>(null)
 const loading = ref(true)

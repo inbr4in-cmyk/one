@@ -8,7 +8,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useBranchStore } from '@/stores/branch'
 import { useRefsStore } from '@/stores/refs'
 import { useToastStore } from '@/stores/toast'
-import { addDays, dmy, isoDate } from '@/utils/dates'
+import { addDays, dmy, isoDate, schoolNow, schoolIso } from '@/utils/dates'
 import { apiErr } from '@/utils/err'
 import type { Locale } from '@/i18n'
 
@@ -29,7 +29,7 @@ const error = ref<string | null>(null)
 const busy = ref(false)
 const kinds = computed(() => KINDS.map((k) => ({ value: k, label: t(`rules.tab.${k}`) })))
 /** New rules apply no sooner than in 7 days once a version exists */
-const minDate = computed(() => isoDate(addDays(new Date(), form.kind === 'rules' && docs.value.rules ? 7 : 0)))
+const minDate = computed(() => isoDate(addDays(schoolNow(), form.kind === 'rules' && docs.value.rules ? 7 : 0)))
 
 async function loadDocs() {
   const [r, c] = await Promise.all(KINDS.map((k) => docsApi.get(k).catch(() => null)))
@@ -64,8 +64,8 @@ async function publish() {
   if (error.value) return
   busy.value = true
   try {
-    const today = isoDate(new Date())
-    const at = form.effective_from === today ? new Date().toISOString() : new Date(`${form.effective_from}T00:00:00`).toISOString()
+    const today = isoDate(schoolNow())
+    const at = form.effective_from === today ? new Date().toISOString() : schoolIso(form.effective_from)
     await docsApi.publish({ kind: form.kind, version: form.version.trim(), title: form.title.trim(), body: form.body.trim(), effective_from: at })
     toast.ok(t('docs.published'))
     publishing.value = false

@@ -6,7 +6,7 @@ import { UiButton, UiChip, UiEmptyState, UiIcon, UiInput, UiSkeleton } from '@/c
 import { academicsApi, type Lesson } from '@/api/academics'
 import { useBranchStore } from '@/stores/branch'
 import { useRefsStore } from '@/stores/refs'
-import { addDays, dayLabel, hm, isoDate, parseDate } from '@/utils/dates'
+import { addDays, dayLabel, hm, isoDate, parseDate, schoolNow } from '@/utils/dates'
 import { tone } from '@/utils/levels'
 import type { Locale } from '@/i18n'
 
@@ -16,7 +16,7 @@ const router = useRouter()
 const branch = useBranchStore()
 const refs = useRefsStore()
 const loc = computed(() => locale.value as Locale)
-const date = ref(isoDate(new Date()))
+const date = ref(isoDate(schoolNow()))
 const lessons = ref<Lesson[]>([])
 const loading = ref(true)
 
@@ -42,7 +42,7 @@ const state = (l: Lesson) => {
   return { tone: undefined, text: t('attendance.upcoming') }
 }
 const shift = (n: number) => (date.value = isoDate(addDays(parseDate(date.value), n)))
-const isToday = computed(() => date.value === isoDate(new Date()))
+const isToday = computed(() => date.value === isoDate(schoolNow()))
 </script>
 
 <template>
@@ -53,7 +53,7 @@ const isToday = computed(() => date.value === isoDate(new Date()))
     <UiButton size="sm" icon="arrow" class="flip" :aria-label="t('attendance.prevDay')" @click="shift(-1)" />
     <UiInput v-model="date" type="date" class="tb-date" :aria-label="t('schedule.date')" />
     <UiButton size="sm" icon="arrow" :aria-label="t('attendance.nextDay')" @click="shift(1)" />
-    <UiButton v-if="!isToday" size="sm" variant="ghost" @click="date = isoDate(new Date())">{{ t('schedule.today') }}</UiButton>
+    <UiButton v-if="!isToday" size="sm" variant="ghost" @click="date = isoDate(schoolNow())">{{ t('schedule.today') }}</UiButton>
     <span class="muted">{{ dayLabel(parseDate(date), loc, { weekday: 'long', day: 'numeric', month: 'long' }) }}</span>
   </div>
 

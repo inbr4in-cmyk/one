@@ -5,7 +5,7 @@ import { UiButton, UiInput, UiModal, UiTextarea } from '@/components/ui'
 import { studentsApi, type Student } from '@/api/students'
 import { ApiError } from '@/api/http'
 import { useToastStore } from '@/stores/toast'
-import { addDays, isoDate, parseDate } from '@/utils/dates'
+import { addDays, isoDate, parseDate, schoolNow } from '@/utils/dates'
 
 const props = defineProps<{ student: Student }>()
 const open = defineModel<boolean>('open', { required: true })
@@ -23,7 +23,7 @@ const days = computed(() => {
 
 watch(open, (v) => {
   if (!v) return
-  const today = new Date()
+  const today = schoolNow()
   Object.assign(form, { from: isoDate(today), to: isoDate(addDays(today, 14)), reason: '' })
   error.value = null
 })

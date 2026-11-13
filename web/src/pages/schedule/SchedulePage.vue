@@ -13,7 +13,7 @@ import { useBranchStore } from '@/stores/branch'
 import { useRefsStore } from '@/stores/refs'
 import { useTeachers } from '@/composables/useTeachers'
 import { useMediaQuery } from '@/composables/useMediaQuery'
-import { addDays, dayLabel, hm, hoursOf, isoDate, sameDay, weekStart } from '@/utils/dates'
+import { addDays, dayLabel, hm, hoursOf, isoDate, sameDay, weekStart, schoolNow, toSchool } from '@/utils/dates'
 import { tone } from '@/utils/levels'
 import type { Locale } from '@/i18n'
 
@@ -29,7 +29,7 @@ const refs = useRefsStore()
 const loc = computed(() => locale.value as Locale)
 const narrow = useMediaQuery('(max-width:820px)')
 
-const start = ref(weekStart(new Date()))
+const start = ref(weekStart(schoolNow()))
 const view = ref<View>(route.query.group ? 'groups' : 'rooms')
 /** Selected room / teacher / group id; 0 = all */
 const pick = ref<number>(Number(route.query.group) || 0)
@@ -44,9 +44,9 @@ function newAt(d: Date, sl: { from: string; to: string }, roomId: number | null)
   slotPick.value = { date: isoDate(d), start: sl.from, end: sl.to, roomId }
   creating.value = true
 }
-const dayIdx = ref((new Date().getDay() + 6) % 7)
-const now = ref(new Date())
-const timer = setInterval(() => (now.value = new Date()), 60_000)
+const dayIdx = ref((schoolNow().getDay() + 6) % 7)
+const now = ref(schoolNow())
+const timer = setInterval(() => (now.value = schoolNow()), 60_000)
 onBeforeUnmount(() => clearInterval(timer))
 const teachers = useTeachers()
 
@@ -132,7 +132,7 @@ const conflicts = computed(() => {
 
 const days = computed(() => {
   const list = Array.from({ length: 7 }, (_, i) => addDays(start.value, i))
-  const hasSunday = shown.value.some((l) => new Date(l.starts_at).getDay() === 0)
+  const hasSunday = shown.value.some((l) => toSchool(l.starts_at).getDay() === 0)
   return hasSunday ? list : list.slice(0, 6)
 })
 const hours = computed(() => {
@@ -151,7 +151,7 @@ const hours = computed(() => {
 interface Placed { l: Lesson; top: number; height: number; lane: number; lanes: number }
 /** Lessons of one day, laid out in side-by-side lanes when they overlap. */
 function placed(d: Date): Placed[] {
-  const list = shown.value.filter((l) => sameDay(new Date(l.starts_at), d)).sort((a, b) => a.starts_at.localeCompare(b.starts_at))
+  const list = shown.value.filter((l) => sameDay(toSchool(l.starts_at), d)).sort((a, b) => a.starts_at.localeCompare(b.starts_at))
   const out: Placed[] = []
   let cluster: Placed[] = []
   let clusterEnd = 0
@@ -208,7 +208,7 @@ const range = computed(() => {
   const b = days.value[days.value.length - 1]!
   return `${a.toLocaleDateString(loc.value === 'kk' ? 'kk-KZ' : 'ru-RU', { day: 'numeric' })}–${dayLabel(b, loc.value, { day: 'numeric', month: 'long', year: 'numeric' })}`
 })
-const isThisWeek = computed(() => sameDay(start.value, weekStart(new Date())))
+const isThisWeek = computed(() => sameDay(start.value, weekStart(schoolNow())))
 const legend = computed(() => {
   const seen = new Map<number, string>()
   lessons.value.forEach((l) => l.level_id && seen.set(l.level_id, refs.level(l.level_id)?.code ?? ''))
@@ -254,7 +254,7 @@ const nConflicts = computed(() => shown.value.filter((l) => conflicts.value.has(
   <div class="toolbar" style="justify-content: space-between">
     <div class="week-nav">
       <UiButton size="sm" icon="arrow" class="flip" :aria-label="t('schedule.prevWeek')" @click="start = addDays(start, -7)" />
-      <UiButton size="sm" :disabled="isThisWeek" @click="start = weekStart(new Date())">{{ t('schedule.thisWeek') }}</UiButton>
+      <UiButton size="sm" :disabled="isThisWeek" @click="start = weekStart(schoolNow())">{{ t('schedule.thisWeek') }}</UiButton>
       <UiButton size="sm" icon="arrow" :aria-label="t('schedule.nextWeek')" @click="start = addDays(start, 7)" />
     </div>
     <UiSegmented v-if="!narrow" v-model="layout" :options="layoutOptions" :label="t('schedule.layout')" size="sm" />

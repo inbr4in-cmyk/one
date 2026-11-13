@@ -4,14 +4,14 @@ import { useI18n } from 'vue-i18n'
 import { UiCard, UiChip, UiEmptyState, UiSkeleton } from '@/components/ui'
 import { portalApi, type PortalLesson } from '@/api/portal'
 import { usePortalStore } from '@/stores/portal'
-import { addDays, dayLabel, hm, isoDate, weekStart } from '@/utils/dates'
+import { addDays, dayLabel, hm, isoDate, weekStart, schoolNow, toSchool } from '@/utils/dates'
 import type { Locale } from '@/i18n'
 
 const DAYS = 14
 const { t, locale } = useI18n()
 const portal = usePortalStore()
 const loc = computed(() => locale.value as Locale)
-const start = ref(weekStart(new Date()))
+const start = ref(weekStart(schoolNow()))
 const lessons = ref<PortalLesson[] | null>(null)
 
 watch([() => portal.child?.id, start], async ([id]) => {
@@ -23,12 +23,12 @@ watch([() => portal.child?.id, start], async ([id]) => {
 const days = computed(() => {
   const m = new Map<string, PortalLesson[]>()
   for (const l of lessons.value ?? []) {
-    const k = isoDate(new Date(l.starts_at))
+    const k = isoDate(toSchool(l.starts_at))
     m.set(k, [...(m.get(k) ?? []), l])
   }
   return [...m]
 })
-const today = isoDate(new Date())
+const today = isoDate(schoolNow())
 const range = computed(() => `${dayLabel(start.value, loc.value, { day: 'numeric', month: 'short' })} — ${dayLabel(addDays(start.value, DAYS - 1), loc.value, { day: 'numeric', month: 'short' })}`)
 const isPast = (l: PortalLesson) => new Date(l.ends_at) < new Date()
 </script>
@@ -38,7 +38,7 @@ const isPast = (l: PortalLesson) => new Date(l.ends_at) < new Date()
   <div class="toolbar">
     <div class="period">
       <button type="button" class="btn sm tgl" :aria-label="t('common.prev')" @click="start = addDays(start, -DAYS)"><svg class="ico flip-ico" aria-hidden="true"><use href="#i-arrow" /></svg></button>
-      <button type="button" class="btn sm tgl" @click="start = weekStart(new Date())">{{ t('portal.thisWeek') }}</button>
+      <button type="button" class="btn sm tgl" @click="start = weekStart(schoolNow())">{{ t('portal.thisWeek') }}</button>
       <button type="button" class="btn sm tgl" :aria-label="t('common.next')" @click="start = addDays(start, DAYS)"><svg class="ico" aria-hidden="true"><use href="#i-arrow" /></svg></button>
     </div>
   </div>

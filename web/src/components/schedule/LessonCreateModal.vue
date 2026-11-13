@@ -9,7 +9,7 @@ import { ApiError } from '@/api/http'
 import { useRefsStore } from '@/stores/refs'
 import { useToastStore } from '@/stores/toast'
 import type { TeacherOption } from '@/composables/useTeachers'
-import { isoDate } from '@/utils/dates'
+import { isoDate, schoolNow, schoolIso } from '@/utils/dates'
 
 /** One-off lesson for a group (make-up, extra), or a support lesson (teacher + topic, no students).
  * The server refuses room/teacher conflicts with 409. */
@@ -38,7 +38,7 @@ const roomOptions = computed(() => rooms.value.filter((r) => r.status === 'activ
 
 watch(open, (v) => {
   if (!v) return
-  Object.assign(form, { group_id: 0, teacher_id: 0, room_id: props.roomId ?? 0, date: props.date ?? isoDate(new Date()),
+  Object.assign(form, { group_id: 0, teacher_id: 0, room_id: props.roomId ?? 0, date: props.date ?? isoDate(schoolNow()),
     start: props.start ?? '16:00', end: props.end ?? '17:30', topic: '' })
   supportBranch.value = props.branchId ?? (branchOptions.value[0]?.value ?? 0)
   error.value = null
@@ -67,7 +67,7 @@ async function submit() {
   try {
     await academicsApi.createLesson({
       ...(support ? { support: true } : { group_id: form.group_id }), teacher_id: form.teacher_id, room_id: form.room_id,
-      starts_at: new Date(`${form.date}T${form.start}`).toISOString(), ends_at: new Date(`${form.date}T${form.end}`).toISOString(),
+      starts_at: schoolIso(form.date, form.start), ends_at: schoolIso(form.date, form.end),
       topic: form.topic.trim() || null,
     })
     toast.ok(t('schedule.createdToast'))

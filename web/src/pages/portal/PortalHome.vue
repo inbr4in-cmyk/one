@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { UiCard, UiChip, UiIcon, UiSkeleton } from '@/components/ui'
 import { portalApi, type PortalHomework, type PortalLesson } from '@/api/portal'
 import { usePortalStore } from '@/stores/portal'
-import { dayLabel, hm, isoDate } from '@/utils/dates'
+import { dayLabel, hm, isoDate, schoolNow } from '@/utils/dates'
 import { num } from '@/utils/period'
 import type { Locale } from '@/i18n'
 
@@ -22,7 +22,7 @@ watch(() => child.value?.id, async (id) => {
   rate.value = null
   if (!id) return
   const [l, h, a] = await Promise.allSettled([
-    portalApi.schedule(id, { start: isoDate(new Date()), days: 14 }),
+    portalApi.schedule(id, { start: isoDate(schoolNow()), days: 14 }),
     child.value?.blocked ? Promise.reject(new Error('blocked')) : portalApi.homework(id),
     child.value?.blocked ? Promise.reject(new Error('blocked')) : portalApi.attendance(id),
   ])
@@ -32,7 +32,7 @@ watch(() => child.value?.id, async (id) => {
 }, { immediate: true })
 
 const greeting = computed(() => {
-  const h = new Date().getHours()
+  const h = schoolNow().getHours()
   return t(h < 12 ? 'dash.morning' : h < 18 ? 'dash.day' : 'dash.evening', { name: (portal.me?.full_name ?? '').split(' ')[0] })
 })
 const tiles = computed(() => [

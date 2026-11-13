@@ -11,7 +11,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useBranchStore } from '@/stores/branch'
 import { useRefsStore } from '@/stores/refs'
 import { useSourceLabel } from '@/composables/useSourceLabel'
-import { hm, isoDate, money, waitLabel } from '@/utils/dates'
+import { hm, isoDate, money, waitLabel, schoolNow } from '@/utils/dates'
 import { compactMoney, num, periodLabel, periodOf } from '@/utils/period'
 import { tone } from '@/utils/levels'
 import type { Locale } from '@/i18n'
@@ -41,7 +41,7 @@ const SRC: Record<string, { cls: string; icon: string }> = {
 async function load() {
   failed.value = false
   const b = { branch_id: branch.filterId, period: period.value }
-  const today = isoDate(new Date())
+  const today = isoDate(schoolNow())
   const [d, r] = await Promise.allSettled([financeApi.dashboard(b), financeApi.ratings(b)])
   if (d.status === 'fulfilled') data.value = d.value
   else failed.value = true
@@ -60,12 +60,12 @@ onMounted(load)
 watch([() => branch.filterId, period], load)
 
 const hello = computed(() => {
-  const h = new Date().getHours()
+  const h = schoolNow().getHours()
   const first = auth.user?.full_name.split(' ')[0] ?? ''
   return t(h < 12 ? 'dash.morning' : h < 18 ? 'dash.day' : 'dash.evening', { name: first })
 })
 const todayLabel = computed(() => {
-  const s = new Date().toLocaleDateString(locale.value === 'kk' ? 'kk-KZ' : 'ru-RU', { weekday: 'long', day: 'numeric', month: 'long' })
+  const s = schoolNow().toLocaleDateString(locale.value === 'kk' ? 'kk-KZ' : 'ru-RU', { weekday: 'long', day: 'numeric', month: 'long' })
   return s.charAt(0).toUpperCase() + s.slice(1)
 })
 const scope = computed(() => (branch.filterId === null ? t('branch.all') : branch.current.name))

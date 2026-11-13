@@ -9,7 +9,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useBranchStore } from '@/stores/branch'
 import { useRefsStore } from '@/stores/refs'
 import { useToastStore } from '@/stores/toast'
-import { addDays, hm, isoDate } from '@/utils/dates'
+import { addDays, hm, isoDate, schoolNow } from '@/utils/dates'
 import { relativeTime } from '@/utils/format'
 import { apiErr } from '@/utils/err'
 import { formatPhone } from '@/utils/phone'
@@ -43,7 +43,7 @@ const oldPw = ref('')
 const pwErr = ref<string | null>(null)
 const confirmFor = ref<{ s: Staff; kind: 'archive' | 'reset2fa' } | null>(null)
 const busy = ref(false)
-const day = ref(isoDate(new Date()))
+const day = ref(isoDate(schoolNow()))
 const checkins = ref<CheckinRow[] | null>(null)
 const reports = ref<DailyReport[] | null>(null)
 
@@ -117,7 +117,7 @@ async function confirmAction() {
   }
 }
 const isOwner = computed(() => !!auth.user?.roles.includes('owner'))
-const dayLabelText = computed(() => (day.value === isoDate(new Date()) ? t('staff.today') : day.value))
+const dayLabelText = computed(() => (day.value === isoDate(schoolNow()) ? t('staff.today') : day.value))
 const hours = (r: CheckinRow) => {
   const end = r.out_at ? new Date(r.out_at) : new Date()
   const h = (end.getTime() - new Date(r.in_at).getTime()) / 3600000
@@ -139,8 +139,8 @@ const hours = (r: CheckinRow) => {
     </template>
     <div v-else class="period">
       <button type="button" class="btn sm tgl" :aria-label="t('common.prev')" @click="day = isoDate(addDays(new Date(`${day}T12:00:00`), -1))"><svg class="ico flip-ico" aria-hidden="true"><use href="#i-arrow" /></svg></button>
-      <input v-model="day" type="date" class="inp day-inp" :max="isoDate(new Date())" :aria-label="t('staff.day')" />
-      <button type="button" class="btn sm tgl" :aria-label="t('common.next')" :disabled="day >= isoDate(new Date())" @click="day = isoDate(addDays(new Date(`${day}T12:00:00`), 1))"><svg class="ico" aria-hidden="true"><use href="#i-arrow" /></svg></button>
+      <input v-model="day" type="date" class="inp day-inp" :max="isoDate(schoolNow())" :aria-label="t('staff.day')" />
+      <button type="button" class="btn sm tgl" :aria-label="t('common.next')" :disabled="day >= isoDate(schoolNow())" @click="day = isoDate(addDays(new Date(`${day}T12:00:00`), 1))"><svg class="ico" aria-hidden="true"><use href="#i-arrow" /></svg></button>
     </div>
   </div>
 

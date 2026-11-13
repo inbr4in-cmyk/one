@@ -11,7 +11,7 @@ import { paymentsApi, type Payment } from '@/api/payments'
 import { useAuthStore } from '@/stores/auth'
 import { useBranchStore } from '@/stores/branch'
 import { useRefsStore } from '@/stores/refs'
-import { addDays, dmy, hm, isoDate, money } from '@/utils/dates'
+import { addDays, dmy, hm, isoDate, money, schoolNow } from '@/utils/dates'
 import type { Locale } from '@/i18n'
 
 const LIMIT = 30
@@ -21,7 +21,7 @@ const branch = useBranchStore()
 const refs = useRefsStore()
 const loc = computed(() => locale.value as Locale)
 
-const today = new Date()
+const today = schoolNow()
 const f = reactive({ from: isoDate(new Date(today.getFullYear(), today.getMonth(), 1)), to: isoDate(today), offset: 0 })
 const rows = ref<Payment[]>([])
 const total = ref(0)
@@ -67,7 +67,7 @@ watch(() => f.offset, load)
 onMounted(load)
 
 function preset(days: number | 'month') {
-  const now = new Date()
+  const now = schoolNow()
   f.to = isoDate(now)
   f.from = days === 'month' ? isoDate(new Date(now.getFullYear(), now.getMonth(), 1)) : isoDate(addDays(now, -days + 1))
 }

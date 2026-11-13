@@ -5,7 +5,7 @@ import { UiButton, UiField, UiInput, UiModal, UiSegmented, UiTextarea } from '@/
 import { paymentsApi, PAYMENT_METHODS, type Payment, type PaymentMethod } from '@/api/payments'
 import { useAuthStore } from '@/stores/auth'
 import { useToastStore } from '@/stores/toast'
-import { isoDate, money } from '@/utils/dates'
+import { isoDate, money, schoolNow, toSchool } from '@/utils/dates'
 import type { Locale } from '@/i18n'
 
 /** Fix a payment: method, comment and (owner / branch admin) the date. Amount and lessons are not edited here. */
@@ -20,10 +20,10 @@ const busy = ref(false)
 const open = computed({ get: () => props.payment !== null, set: (v) => !v && emit('close') })
 const methodOptions = computed(() => PAYMENT_METHODS.map((m) => ({ value: m, label: t(`payments.method.${m}`) })))
 const canDate = computed(() => auth.can('finance.edit'))
-const today = isoDate(new Date())
+const today = isoDate(schoolNow())
 
 watch(() => props.payment, (p) => {
-  if (p) Object.assign(form, { method: p.method, note: p.note ?? '', paid_on: isoDate(new Date(p.paid_at)) })
+  if (p) Object.assign(form, { method: p.method, note: p.note ?? '', paid_on: isoDate(toSchool(p.paid_at)) })
 })
 
 async function submit() {

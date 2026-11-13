@@ -8,7 +8,7 @@ import { tasksApi, type Task, type TaskLink, type TaskPriority } from '@/api/tas
 import { ApiError } from '@/api/http'
 import { useBranchStore } from '@/stores/branch'
 import { useToastStore } from '@/stores/toast'
-import { localInput } from '@/utils/dates'
+import { localInput, toSchool, wallToIso } from '@/utils/dates'
 
 /** New task, or edit one you created (title, text, due, priority, assignees). */
 const props = defineProps<{ task?: Task | null; preset?: { type: TaskLink; id: number; title: string } | null }>()
@@ -33,7 +33,7 @@ watch(open, (v) => {
   Object.keys(errors).forEach((k) => (errors[k] = null))
   const x = props.task
   Object.assign(form, x
-    ? { title: x.title, description: x.description ?? '', due: x.due_at ? localInput(new Date(x.due_at)) : '', priority: x.priority, assignees: x.assignees.map((a) => a.id), recurrence: x.recurrence ?? '', branch_id: x.branch_id ?? 0, link: null }
+    ? { title: x.title, description: x.description ?? '', due: x.due_at ? localInput(toSchool(x.due_at)) : '', priority: x.priority, assignees: x.assignees.map((a) => a.id), recurrence: x.recurrence ?? '', branch_id: x.branch_id ?? 0, link: null }
     : { title: '', description: '', due: '', priority: 'normal', assignees: [], recurrence: '', branch_id: branch.filterId ?? 0, link: props.preset ?? null })
 })
 
@@ -43,7 +43,7 @@ async function submit() {
   if (!form.assignees.length) errors.assignees = t('tasks.assigneeRequired')
   if (Object.values(errors).some(Boolean)) return
   busy.value = true
-  const due_at = form.due ? new Date(form.due).toISOString() : null
+  const due_at = form.due ? wallToIso(form.due) : null
   try {
     const saved = props.task
       ? await tasksApi.patch(props.task.id, { title: form.title.trim(), description: form.description.trim() || null, priority: form.priority, due_at, assignee_ids: form.assignees })

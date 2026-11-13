@@ -7,7 +7,7 @@ import { workApi, type MyCheckin } from '@/api/staffwork'
 import { useAuthStore } from '@/stores/auth'
 import { useRefsStore } from '@/stores/refs'
 import { useToastStore } from '@/stores/toast'
-import { hm, isoDate } from '@/utils/dates'
+import { hm, isoDate, schoolNow } from '@/utils/dates'
 import { readPref, writePref } from '@/utils/storage'
 import { apiErr } from '@/utils/err'
 import type { Locale } from '@/i18n'
@@ -30,7 +30,7 @@ const reportErr = ref<string | null>(null)
 const saved = ref<{ text: string; at: string } | null>(null)
 useClickOutside([root], () => (open.value = false))
 
-const draftKey = () => `oe.report.${auth.user?.id}.${isoDate(new Date())}`
+const draftKey = () => `oe.report.${auth.user?.id}.${isoDate(schoolNow())}`
 const state = computed(() => (!me.value?.in_at ? 'none' : me.value.out_at ? 'out' : 'in'))
 const branches = computed(() => (auth.user?.branch_ids ?? []).map((id) => ({ value: id, label: refs.branchName(id) })))
 const label = computed(() => (state.value === 'in' ? t('checkin.since', { t: hm(me.value!.in_at!, locale.value as Locale) }) : state.value === 'out' ? t('checkin.done') : t('checkin.mark')))

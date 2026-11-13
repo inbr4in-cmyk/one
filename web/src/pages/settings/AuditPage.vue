@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { UiButton, UiCard, UiEmptyState, UiInput, UiPager, UiSelect, UiSkeleton } from '@/components/ui'
 import { adminApi, type AuditRow } from '@/api/admin'
 import { useRefsStore } from '@/stores/refs'
-import { dmy, hm } from '@/utils/dates'
+import { dmy, hm, schoolIso } from '@/utils/dates'
 import type { Locale } from '@/i18n'
 
 const LIMIT = 50
@@ -27,7 +27,7 @@ async function load() {
   page.value = null
   const r = await adminApi.audit({
     entity: f.entity || undefined, actor_id: f.actor_id || null, action: f.action.trim() || undefined,
-    since: f.since ? new Date(`${f.since}T00:00:00`).toISOString() : undefined, limit: LIMIT, offset: offset.value,
+    since: f.since ? schoolIso(f.since) : undefined, limit: LIMIT, offset: offset.value,
   }).catch(() => ({ items: [], total: 0 }))
   if (my === seq) page.value = r
 }

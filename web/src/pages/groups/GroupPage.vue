@@ -16,7 +16,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useRefsStore } from '@/stores/refs'
 import { useToastStore } from '@/stores/toast'
 import { useTeachers } from '@/composables/useTeachers'
-import { addDays, dayLabel, dmy, hm, isoDate, weekdayShort } from '@/utils/dates'
+import { addDays, dayLabel, dmy, hm, isoDate, weekdayShort, schoolNow } from '@/utils/dates'
 import { tone } from '@/utils/levels'
 import type { Locale } from '@/i18n'
 
@@ -56,7 +56,7 @@ async function load() {
     return
   }
   rooms.value = await refs.roomsOf(g.value.branch_id)
-  const now = new Date()
+  const now = schoolNow()
   const [m, l, h] = await Promise.all([
     academicsApi.members(id.value).catch(() => []),
     academicsApi.lessons({ from: isoDate(addDays(now, -7)), to: isoDate(addDays(now, 21)), group_id: id.value, include_cancelled: true }).catch(() => []),
@@ -98,10 +98,10 @@ async function removeMember() {
 }
 
 /* ---- schedule rules ---- */
-const rule = reactive({ weekdays: [] as number[], start: '16:00', end: '17:30', room_id: 0, from: isoDate(new Date()), to: '' })
+const rule = reactive({ weekdays: [] as number[], start: '16:00', end: '17:30', room_id: 0, from: isoDate(schoolNow()), to: '' })
 const roomOptions = computed(() => rooms.value.filter((r) => r.status === 'active').map((r) => ({ value: r.id, label: `${r.name} · ${r.capacity}` })))
 function openRule() {
-  Object.assign(rule, { weekdays: [], start: '16:00', end: '17:30', room_id: g.value?.room_id ?? roomOptions.value[0]?.value ?? 0, from: isoDate(new Date()), to: '' })
+  Object.assign(rule, { weekdays: [], start: '16:00', end: '17:30', room_id: g.value?.room_id ?? roomOptions.value[0]?.value ?? 0, from: isoDate(schoolNow()), to: '' })
   ruleError.value = null
   modal.value = 'rule'
 }

@@ -1,4 +1,5 @@
 import { intlLocale, t, type Locale } from '@/i18n'
+import { schoolNow, toSchool } from './dates'
 
 export function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean)
@@ -12,8 +13,8 @@ export function avatarColor(seed: number | string): number {
 }
 
 /** "сейчас", "12 мин назад", "вчера, 18:40", "12 окт., 09:15" */
-export function relativeTime(iso: string, locale: Locale, now = new Date()): string {
-  const d = new Date(iso)
+export function relativeTime(iso: string, locale: Locale, now = schoolNow()): string {
+  const d = toSchool(iso)
   const tag = intlLocale(locale)
   const diffMin = Math.round((now.getTime() - d.getTime()) / 60000)
   if (diffMin < 1) return t('time.now')
@@ -27,7 +28,7 @@ export function relativeTime(iso: string, locale: Locale, now = new Date()): str
 }
 
 export function shortDate(iso: string, locale: Locale): string {
-  return new Date(iso).toLocaleDateString(intlLocale(locale), { day: 'numeric', month: 'short', year: 'numeric' })
+  return toSchool(iso).toLocaleDateString(intlLocale(locale), { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
 export interface DeviceInfo {

@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { UiButton, UiCard, UiEmptyState, UiSegmented, UiSkeleton } from '@/components/ui'
 import { payrollApi, type DayStatus, type Timesheet, type TimesheetPerson } from '@/api/payroll'
 import { useToastStore } from '@/stores/toast'
-import { isoDate, money } from '@/utils/dates'
+import { isoDate, money, schoolNow } from '@/utils/dates'
 import { apiErr } from '@/utils/err'
 import type { Locale } from '@/i18n'
 
@@ -18,7 +18,7 @@ const brush = ref<DayStatus | 'clear'>('work')
 const saving = ref<string | null>(null)
 const STATUSES: DayStatus[] = ['work', 'off', 'sick', 'vacation', 'absent']
 const brushOptions = computed(() => [...STATUSES.map((s) => ({ value: s, label: t(`payroll.ts.s.${s}`) })), { value: 'clear' as const, label: t('payroll.ts.clear') }])
-const todayIso = isoDate(new Date())
+const todayIso = isoDate(schoolNow())
 
 const days = computed(() => {
   const [y = 2026, m = 1] = props.period.split('-').map(Number)

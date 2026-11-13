@@ -5,7 +5,7 @@ import { UiButton, UiCard, UiField, UiInput, UiSegmented, UiSelect, UiSkeleton, 
 import { adminApi, type Rate } from '@/api/admin'
 import { useAuthStore } from '@/stores/auth'
 import { useToastStore } from '@/stores/toast'
-import { dmy, isoDate, money } from '@/utils/dates'
+import { dmy, isoDate, money, schoolNow } from '@/utils/dates'
 import { apiErr } from '@/utils/err'
 import type { Locale } from '@/i18n'
 
@@ -26,7 +26,7 @@ const values = ref<Record<string, Val> | null>(null)
 const draft = reactive<Record<string, string>>({})
 const saving = ref<string | null>(null)
 const rates = ref<Rate[] | null>(null)
-const rateForm = reactive({ key: '', value: '', effective_from: isoDate(new Date()) })
+const rateForm = reactive({ key: '', value: '', effective_from: isoDate(schoolNow()) })
 const rateErr = ref<string | null>(null)
 const rateBusy = ref(false)
 
@@ -103,7 +103,7 @@ const dirty = (key: string) => {
 }
 
 /** Rates grouped by key: the one in force today, the scheduled one and the history */
-const today = isoDate(new Date())
+const today = isoDate(schoolNow())
 const rateGroups = computed(() => {
   const m = new Map<string, Rate[]>()
   for (const r of rates.value ?? []) m.set(r.key, [...(m.get(r.key) ?? []), r])
