@@ -359,12 +359,14 @@ async def dashboard(db: DB, actor: Actor = require("dashboard", "view"), branch_
     )).one()
     out["attendance_rate"] = round(att[1] / att[0] * 100, 1) if att[0] else None
     if actor.can("crm", "view"):
+        # Archived leads stay in the database but are not counted on the dashboard
         leads = select(func.count()).select_from(Lead).where(br(Lead.branch_id), Lead.created_at >= m_start,
-                                                             Lead.created_at < m_end)
+                                                             Lead.created_at < m_end, Lead.archived_at.is_(None))
         new = await db.scalar(leads)
         won = await db.scalar(leads.join(LeadStage, LeadStage.id == Lead.stage_id).where(LeadStage.is_won.is_(True)))
         by_source = (await db.execute(select(Lead.source, func.count()).where(
-            br(Lead.branch_id), Lead.created_at >= m_start, Lead.created_at < m_end).group_by(Lead.source))).all()
+            br(Lead.branch_id), Lead.created_at >= m_start, Lead.created_at < m_end,
+            Lead.archived_at.is_(None)).group_by(Lead.source))).all()
         out["leads_month"], out["conversion"] = new, round(won / new * 100, 1) if new else None
         out["leads_by_source"] = {s: c for s, c in by_source}
     return out
