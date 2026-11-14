@@ -33,7 +33,7 @@ from app.modules.academics import schedule as sched
 from app.modules.students.router import is_frozen_on
 from app.modules.students.scope import get_student_scoped
 from app.services import balance as bal
-from app.services import chats, crm
+from app.services import chats, crm, retention
 from app.services.clock import end_of_local_day, local, now, today
 from app.services.coins import award_auto
 from app.services.messaging import notify_guardians
@@ -614,11 +614,21 @@ async def substitute(lesson_id: int, body: SubstituteIn, db: DB, actor: Actor = 
     lesson = await _get_lesson(db, actor, lesson_id)
     actor.ensure_branch("schedule", "edit", lesson.branch_id)
     await _check_teacher(db, body.teacher_id, lesson.branch_id)
-    if c := await sched.conflicts(db, room_id=-1, teacher_id=body.teacher_id, starts_at=lesson.starts_at,
-                                  ends_at=lesson.ends_at, exclude_id=lesson.id):
-        raise conflict(c[0])
+    if lesson.status == LessonStatus.CANCELLED:
+        raise bad_request("Урок отменён")
+    # A substitute may be busy with their own lesson at this time: for this one lesson they run both.
     before = lesson.actual_teacher_id
     lesson.actual_teacher_id = None if body.teacher_id == lesson.teacher_id else body.teacher_id
+    if lesson.attendance_marked_at is not None:
+        # Already held and paid: the pay moves to the teacher who actually taught it.
+        group = await db.get(Group, lesson.group_id) if lesson.group_id else None
+        trial_counts = bool(await setting(db, "trial_counts_in_n"))
+        n = sum(1 for x in await db.scalars(select(Attendance).where(Attendance.lesson_id == lesson.id))
+                if x.status in (AttendanceStatus.PRESENT, AttendanceStatus.LATE) and (x.student_id or trial_counts))
+        await accrue_lesson(db, teacher_id=lesson.actual_teacher_id or lesson.teacher_id, lesson_id=lesson.id, n=n,
+                            on=local(lesson.starts_at).date(), branch_id=lesson.branch_id,
+                            group_name=group.name if group else f"Support «{lesson.topic}»" if lesson.is_support else "индивидуально",
+                            actor_id=actor.id, kind="support" if lesson.is_support else group.kind if group else "individual")
     await write_audit(db, actor_id=actor.id, action="lesson.substitute", entity="lesson", entity_id=lesson.id,
                       branch_id=lesson.branch_id, ip=actor.ip, before={"actual_teacher_id": before},
                       after={"actual_teacher_id": lesson.actual_teacher_id})
@@ -718,6 +728,26 @@ class MarksIn(In):
     topic: str | None = Field(default=None, max_length=255)
 
 
+MISSED = (AttendanceStatus.ABSENT, AttendanceStatus.EXCUSED)
+
+
+async def _two_absences(db: DB, s: Student, lesson: Lesson, group: Group | None, actor_id: int) -> None:
+    """The student missed this lesson and the one before it → a task for the methodist to call the parents."""
+    same = (Lesson.group_id == lesson.group_id) if lesson.group_id else (Lesson.student_id == s.id)
+    last = (await db.execute(
+        select(Attendance.status, Lesson.starts_at).join(Lesson, Lesson.id == Attendance.lesson_id)
+        .where(Attendance.student_id == s.id, same, Lesson.status != LessonStatus.CANCELLED,
+               Lesson.starts_at <= lesson.starts_at).order_by(Lesson.starts_at.desc()).limit(2))).all()
+    if len(last) < 2 or any(st not in MISSED for st, _ in last):
+        return
+    days = " и ".join(f"{local(at):%d.%m}" for _, at in reversed(last))
+    await retention.follow_up(
+        db, s, "absence2", f"Связаться с родителями: {s.full_name} пропустил 2 урока подряд",
+        f"Ученик не был на двух уроках подряд ({days})" + (f", группа «{group.name}»" if group else "")
+        + ". Свяжитесь с родителями или учеником, узнайте причину и напишите результат в комментарии к задаче.",
+        actor_id)
+
+
 def _charged(status: str, charge_absent: bool, charge_late: bool) -> bool:
     return status == AttendanceStatus.PRESENT or (status == AttendanceStatus.LATE and charge_late) or (
         status == AttendanceStatus.ABSENT and charge_absent)
@@ -778,6 +808,9 @@ async def mark(lesson_id: int, body: MarksIn, db: DB, actor: Actor = require("at
                 variables = {"time": f"{loc:%H:%M}", "group": group.name if group else ""}
                 if m.status == AttendanceStatus.ABSENT:
                     await notify_guardians(db, s, "absence", variables, ref=("attendance", lesson.id))
+                if m.status in MISSED and not await is_frozen_on(db, s.id, loc.date()):
+                    await db.flush()
+                    await _two_absences(db, s, lesson, group, actor.id)
                 elif m.status == AttendanceStatus.PRESENT and await setting(db, "notify_present"):
                     await notify_guardians(db, s, "present", variables, ref=("attendance", lesson.id))
                 elif m.status == AttendanceStatus.LATE and await setting(db, "notify_late"):

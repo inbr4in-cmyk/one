@@ -1,4 +1,4 @@
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
@@ -11,11 +11,13 @@ from app.core.query import contains_digits, icontains, paginate
 from app.core.schemas import Page
 from app.core.security import mask_phone, normalize_phone
 from app.models import (
+    Attendance,
     Book,
     BookMovement,
     Freeze,
     Group,
     GroupMember,
+    Lesson,
     Level,
     Payment,
     Student,
@@ -32,6 +34,7 @@ from app.modules.students.schemas import (
     GuardianIn,
     GuardianOut,
     GuardianPatch,
+    LeaveDecisionIn,
     LedgerOut,
     StudentIn,
     StudentListOut,
@@ -43,9 +46,9 @@ from app.modules.students.schemas import (
 from app.modules.students.scope import get_student_scoped, student_filter
 from app.services import balance as bal
 from app.modules.auth.service import revoke_all
-from app.services import chats
+from app.services import bookpay, chats, retention
 from app.services.realtime import sessions_ended
-from app.services.clock import now, today
+from app.services.clock import at_local, local, now, today
 from app.services.coins import balance as coin_balance
 from app.services.values import setting
 
@@ -142,7 +145,19 @@ async def card(db: DB, s: Student, actor: Actor) -> StudentOut:
         groups=[{"id": g.id, "name": g.name, "joined_on": m.joined_on, "left_on": m.left_on, "level_id": g.level_id,
                  "teacher_id": g.teacher_id} for m, g in groups],
         created_at=s.created_at, archived_at=s.archived_at,
+        leave_request=({"at": s.leave_requested_at.isoformat(),
+                        "by": await db.scalar(select(User.full_name).where(User.id == s.leave_requested_by))}
+                       if s.leave_requested_at else None),
+        can_decide_leave=await _can_decide_leave(db, actor), leave_reason=s.leave_reason, return_note=s.return_note,
+        book_from_payment=bookpay.capacity(s, src) if (src := await bookpay.source(db, s)) else 0,
     )
+
+
+async def _can_decide_leave(db: DB, actor: Actor) -> bool:
+    """«Ушёл» is the methodist's decision (and the owner's). A school without a methodist role: whoever may delete students."""
+    if actor.is_owner or await retention.is_methodist(db, actor.id):
+        return True
+    return actor.can("students", "archive") and not await retention.has_methodists(db)
 
 
 @router.get("", response_model=Page[StudentListOut])
@@ -223,6 +238,31 @@ async def update_student(student_id: int, body: StudentPatch, db: DB, actor: Act
     data = body.model_dump(exclude_unset=True)
     if "status" in data and (data["status"] is None or s.status == "frozen"):
         data.pop("status")  # a freeze is ended through «Снять заморозку»
+    reason = (data.pop("leave_reason", None) or "").strip() or None
+    return_note = (data.pop("return_note", None) or "").strip() or None
+    leave_note = None
+    if data.get("status") == StudentStatus.LEFT and s.status != StudentStatus.LEFT:
+        if await _can_decide_leave(db, actor):
+            if not reason:
+                raise bad_request("Укажите причину ухода")
+            s.left_at, s.leave_reason, s.return_note = now(), reason, return_note
+            s.leave_requested_at = s.leave_requested_by = None
+            await retention.close_tasks(db, s.id, "leave")
+            leave_note = f"Причина: {reason}" + (f". Возврат: {return_note}" if return_note else "")
+        else:
+            # Not saved as «ушёл» yet: the methodist talks to the student first and decides.
+            data.pop("status")
+            if s.leave_requested_at is None:
+                s.leave_requested_at, s.leave_requested_by = now(), actor.id
+                await retention.follow_up(
+                    db, s, "leave", f"Связаться с учеником: {s.full_name} хочет уйти",
+                    "Сотрудник отметил, что ученик уходит. Свяжитесь с учеником или родителями, узнайте причину и в карточке "
+                    "ученика нажмите «Решение»: ушёл (с причиной) или остаётся."
+                    + (f"\nКомментарий сотрудника: {reason}" if reason else ""), actor.id)
+                await write_audit(db, actor_id=actor.id, action="student.leave_request", entity="student", entity_id=s.id,
+                                  branch_id=s.branch_id, ip=actor.ip, note=reason)
+    elif data.get("status") in (StudentStatus.ACTIVE, StudentStatus.FINISHED) and s.status == StudentStatus.LEFT:
+        s.left_at = None
     if "contract_no" in data:
         data["contract_no"] = (data["contract_no"] or "").strip() or None
         await _contract_free(db, data["contract_no"], s.id)
@@ -244,7 +284,35 @@ async def update_student(student_id: int, body: StudentPatch, db: DB, actor: Act
             u.full_name = s.full_name
     b, a = diff(before, snapshot(s, fields))
     await write_audit(db, actor_id=actor.id, action="student.update", entity="student", entity_id=s.id,
-                      branch_id=s.branch_id, ip=actor.ip, before=b, after=a)
+                      branch_id=s.branch_id, ip=actor.ip, before=b, after=a, note=leave_note)
+    await db.commit()
+    return await card(db, s, actor)
+
+
+@router.post("/{student_id}/leave-decision", response_model=StudentOut)
+async def leave_decision(student_id: int, body: LeaveDecisionIn, db: DB, actor: Actor = require("students", "view")) -> StudentOut:
+    """The methodist's answer after talking to the student: really left (with the reason and, if known, when they
+    may come back) or stays. Also used to write the reason for a student who is already «ушёл»."""
+    s = await get_student_scoped(db, actor, student_id, lock=True)
+    if not await _can_decide_leave(db, actor):
+        raise forbidden("Решение об уходе ученика принимает методист")
+    reason, note = body.reason.strip(), (body.return_note or "").strip() or None
+    if body.left:
+        if s.status == StudentStatus.FROZEN:
+            raise bad_request("Сначала снимите заморозку")
+        if s.status != StudentStatus.LEFT:
+            s.status, s.left_at = StudentStatus.LEFT, now()
+        s.leave_reason, s.return_note = reason, note
+        text = f"Ушёл. Причина: {reason}" + (f". Возврат: {note}" if note else "")
+    else:
+        if s.status == StudentStatus.LEFT:
+            s.status, s.left_at = StudentStatus.ACTIVE, None
+        s.leave_reason = s.return_note = None
+        text = f"Остаётся учиться. {reason}"
+    s.leave_requested_at = s.leave_requested_by = None
+    await retention.close_tasks(db, s.id, "leave")
+    await write_audit(db, actor_id=actor.id, action="student.leave_decision", entity="student", entity_id=s.id,
+                      branch_id=s.branch_id, ip=actor.ip, after={"left": body.left}, note=text)
     await db.commit()
     return await card(db, s, actor)
 
@@ -358,11 +426,22 @@ SIMPLE_EVENTS = {
     "student.unfreeze": ("freeze", "Заморозка снята"),
     "student.freeze_ended": ("freeze", "Заморозка закончилась"),
     "student.archive": ("status", "Удалён (в архиве)"),
+    "student.leave_request": ("status", "Отмечено, что ученик хочет уйти: задача методисту"),
+    "student.leave_decision": ("status", "Решение методиста"),
     "student.guardian_add": ("other", "Добавлен родитель"),
     "student.guardian_edit": ("other", "Изменены данные родителя"),
     "student.guardian_remove": ("other", "Родитель убран из карточки"),
     "student.import_balance": ("other", "Перенесён остаток уроков"),
 }
+
+
+def _span(a: date, b: date) -> str:
+    """«2 мес. 5 дн.» between two dates."""
+    days = max((b - a).days, 0)
+    months, rest = divmod(days, 30)
+    if months and rest:
+        return f"{months} мес. {rest} дн."
+    return f"{months} мес." if months else f"{rest} дн."
 
 
 class HistoryItem(BaseModel):
@@ -386,11 +465,19 @@ async def history(student_id: int, db: DB, actor: Actor = require("students", "v
                                   .where(GroupMember.student_id == s.id))).all():
         lvl = f" ({levels[g.level_id]})" if g.level_id in levels else ""
         out.append(HistoryItem(at=at_local(m.joined_on, time(0)), kind="group", text=f"Начал заниматься в группе «{g.name}»{lvl}"))
+        end = m.left_on or ((g.updated_at.date() if g.updated_at else m.joined_on) if g.status == "finished" else None)
+        # How long the student studied in the group and how many of its lessons they came to.
+        visited = int(await db.scalar(
+            select(func.count()).select_from(Attendance).join(Lesson, Lesson.id == Attendance.lesson_id)
+            .where(Attendance.student_id == s.id, Lesson.group_id == g.id, Attendance.status.in_(("present", "late")))) or 0)
+        studied = f"Занимался {_span(m.joined_on, end or today())}, посетил {visited} ур."
         if m.left_on:
-            out.append(HistoryItem(at=at_local(m.left_on, time(0)), kind="group", text=f"Вышел из группы «{g.name}»{lvl}"))
+            out.append(HistoryItem(at=at_local(m.left_on, time(0)), kind="group", text=f"Вышел из группы «{g.name}»{lvl}. {studied}"))
         elif g.status == "finished":
-            out.append(HistoryItem(at=at_local(g.updated_at.date() if g.updated_at else m.joined_on, time(0)), kind="group",
-                                   text=f"Группа «{g.name}» закончила курс{lvl}"))
+            out.append(HistoryItem(at=at_local(end, time(0)), kind="group", text=f"Группа «{g.name}» закончила курс{lvl}. {studied}"))
+        else:
+            out[-1].text += f". Сейчас в группе: {_span(m.joined_on, today())}, посетил {visited} ур."
+
     logs = (await db.scalars(select(AuditLog).where(AuditLog.entity == "student", AuditLog.entity_id == s.id)
                              .order_by(AuditLog.id).limit(500))).all()
     names = {u.id: u.full_name for u in await db.scalars(
@@ -400,12 +487,14 @@ async def history(student_id: int, db: DB, actor: Actor = require("students", "v
         b, af = a.before or {}, a.after or {}
         if a.action == "student.transfer":
             out.append(HistoryItem(at=a.at, kind="transfer", actor=who,
-                                   text=f"Переведён из «{b.get('group') or '—'}» в «{af.get('group')}»"))
+                                   text=f"Переведён из «{b.get('group') or '—'}» в «{af.get('group')}»"
+                                        + (f". Причина: {a.note}" if a.note else "")))
         elif a.action == "student.update":
             for k, v in af.items():
                 if k == "status":
                     out.append(HistoryItem(at=a.at, kind="status", actor=who,
-                                           text=f"Статус: {STATUS_RU.get(b.get(k), b.get(k) or '—')} → {STATUS_RU.get(v, v)}"))
+                                           text=f"Статус: {STATUS_RU.get(b.get(k), b.get(k) or '—')} → {STATUS_RU.get(v, v)}"
+                                                + (f". {a.note}" if a.note else "")))
                 elif k == "level_id":
                     out.append(HistoryItem(at=a.at, kind="level", actor=who,
                                            text=f"Уровень: {levels.get(b.get(k), '—')} → {levels.get(v, '—')}"))
@@ -470,6 +559,7 @@ async def transfer_preview(student_id: int, body: TransferIn, db: DB, actor: Act
 @router.post("/{student_id}/transfer", response_model=StudentOut)
 async def transfer(student_id: int, body: TransferIn, db: DB, actor: Actor = require("students", "transfer")) -> StudentOut:
     s = await get_student_scoped(db, actor, student_id, "students", "transfer")
+    reason = body.need_reason()
     to_group, current, old_level, new_level, calc = await _transfer_ctx(db, s, body.to_group_id)
     actor.ensure_branch("students", "transfer", to_group.branch_id)
     members = await db.scalar(select(func.count()).select_from(GroupMember).where(GroupMember.group_id == to_group.id,
@@ -479,7 +569,7 @@ async def transfer(student_id: int, body: TransferIn, db: DB, actor: Actor = req
     t = Transfer(student_id=s.id, at=now(), from_group_id=current[1].id if current else None, to_group_id=to_group.id,
                  from_level_id=s.level_id, to_level_id=new_level.id, lessons_before=calc.lessons_before,
                  money_before=calc.money_before, lessons_after=calc.lessons_after, money_after=calc.money_after,
-                 actor_id=actor.id, reason=body.reason)
+                 actor_id=actor.id, reason=reason)
     db.add(t)
     await db.flush()
     if not calc.same_price:
@@ -498,12 +588,15 @@ async def transfer(student_id: int, body: TransferIn, db: DB, actor: Actor = req
     await write_audit(db, actor_id=actor.id, action="student.transfer", entity="student", entity_id=s.id,
                       branch_id=s.branch_id, ip=actor.ip,
                       before={"group": current[1].name if current else None, "lessons": calc.lessons_before, "money": calc.money_before},
-                      after={"group": to_group.name, "lessons": calc.lessons_after, "money": calc.money_after})
+                      after={"group": to_group.name, "lessons": calc.lessons_after, "money": calc.money_after}, note=reason)
     await db.commit()
     return await card(db, s, actor)
 
 
 # ---------- freezes ----------
+FREEZE_BACKDATE_DAYS = 31
+
+
 def _current_freeze(student_id: int, d: date):
     return select(Freeze).where(Freeze.student_id == student_id, Freeze.starts_on <= d,
                                 func.coalesce(Freeze.ended_early_on, Freeze.ends_on) > d)
@@ -514,8 +607,8 @@ async def freeze(student_id: int, body: FreezeIn, db: DB, actor: Actor = require
     """Rules p.362: by request, at most a month per course, and only with a month prepaid. ends_on is the first day back."""
     s = await get_student_scoped(db, actor, student_id, "students", "transfer", lock=True)
     d = today()
-    if body.starts_on < d:
-        raise bad_request("Заморозка не может начинаться в прошлом")
+    if body.starts_on < d - timedelta(days=FREEZE_BACKDATE_DAYS):
+        raise bad_request(f"Заморозку можно оформить не раньше чем {FREEZE_BACKDATE_DAYS} дней назад")
     if body.ends_on <= body.starts_on:
         raise bad_request("Дата окончания должна быть позже начала")
     if s.status not in (StudentStatus.ACTIVE,):
@@ -535,15 +628,26 @@ async def freeze(student_id: int, body: FreezeIn, db: DB, actor: Actor = require
     if used >= max_count and not actor.is_owner:
         raise forbidden(f"Лимит заморозок за курс: {max_count}")
     # «При условии предоплаты за месяц»: a month of lessons must already be paid and waiting on the balance.
+    # A freeze entered late: lessons already taken from the balance on the frozen days come back.
+    late = (await db.execute(
+        select(Attendance, Lesson.starts_at).join(Lesson, Lesson.id == Attendance.lesson_id)
+        .where(Attendance.student_id == s.id, Attendance.charged.is_(True), Attendance.status.not_in(("present", "late")),
+               Lesson.starts_at >= at_local(body.starts_on, time(0)), Lesson.starts_at < at_local(body.ends_on, time(0))))).all()
     prepaid = int(await setting(db, "freeze_prepaid_lessons") or 0)
-    if s.lessons_left < prepaid:
-        raise bad_request(f"Заморозка — только при предоплате за месяц: нужно {prepaid} ур. на балансе, сейчас {s.lessons_left}")
+    if s.lessons_left + len(late) < prepaid:
+        raise bad_request(f"Заморозка — только при предоплате за месяц: нужно {prepaid} ур. на балансе, сейчас {s.lessons_left + len(late)}")
     f = Freeze(student_id=s.id, starts_on=body.starts_on, ends_on=body.ends_on, reason=body.reason, created_by=actor.id)
     db.add(f)
-    if body.starts_on <= d:
+    if body.starts_on <= d < body.ends_on:
         s.status = StudentStatus.FROZEN
+    returned = len(late)
+    for a, at in late:
+        await bal.apply(db, s, "lesson", lessons=1, price=s.balance_lesson_price, ref=("attendance", a.lesson_id),
+                        actor_id=actor.id, counts_as_done=True, note=f"Возврат урока {local(at):%d.%m}: заморозка")
+        a.charged = False
     await write_audit(db, actor_id=actor.id, action="student.freeze", entity="student", entity_id=s.id,
-                      branch_id=s.branch_id, ip=actor.ip, after={"from": body.starts_on.isoformat(), "to": body.ends_on.isoformat()})
+                      branch_id=s.branch_id, ip=actor.ip, after={"from": body.starts_on.isoformat(), "to": body.ends_on.isoformat()},
+                      note=" ".join(x for x in (body.reason, f"Возвращено уроков: {returned}" if returned else None) if x) or None)
     await db.commit()
     return await card(db, s, actor)
 

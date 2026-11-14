@@ -16,6 +16,8 @@ from app.models.finance import PaymentMethod
 from app.modules.finance.router import month_bounds
 from app.modules.portal.access import my_students, portal_student
 from app.modules.students.scope import get_student_scoped
+from app.services import balance as bal
+from app.services import bookpay
 from app.services import coins as coin_svc
 from app.services.clock import now, period_of, today
 from app.services.messaging import notify_guardians, notify_user
@@ -232,14 +234,17 @@ async def writeoff(body: WriteoffIn, db: DB, actor: Actor = require("books", "st
 class SaleIn(In):
     student_id: int
     book_id: int
-    method: str = Field(max_length=255)
+    method: str = Field(default="cash", max_length=255)
     qty: int = Field(default=1, ge=1, le=20)
+    # «Из оплаты»: no new money is taken. The book's price is moved out of the course payment the student already
+    # made: that payment gets smaller by it, and the lessons it bought are recounted.
+    from_payment: bool = False
 
 
 @router.post("/books/sell", status_code=201)
 async def sell(body: SaleIn, db: DB, actor: Actor = require("books", "sell")) -> dict:
     """Only to the school's students: the sale is a separate payment (category «Книги») on the student card."""
-    if body.method not in PaymentMethod.ALL:
+    if not body.from_payment and body.method not in PaymentMethod.ALL:
         raise bad_request("Способ оплаты")
     s = await get_student_scoped(db, actor, body.student_id, "books", "sell", lock=True)
     actor.ensure_branch("books", "sell", s.branch_id)
@@ -251,17 +256,34 @@ async def sell(body: SaleIn, db: DB, actor: Actor = require("books", "sell")) ->
         raise conflict(f"В филиале нет этой книги (остаток {st.qty})")
     st.qty -= body.qty
     amount = book.sale_price * body.qty
+    src: Payment | None = None
+    if body.from_payment:
+        src = await bookpay.source(db, s, amount, lock=True)
+        if src is None:
+            raise bad_request("Оплата ещё не получена: у ученика нет оплаты за обучение, из которой можно взять книгу")
     p = Payment(student_id=s.id, branch_id=s.branch_id, level_id=book.level_id, category="book", amount=amount,
-                method=body.method, received_by=actor.id, paid_at=now(), note=f"Книга «{book.title}» × {body.qty}")
+                method=src.method if src else body.method, received_by=actor.id, paid_at=src.paid_at if src else now(),
+                note=f"Книга «{book.title}» × {body.qty}" + (f" (из оплаты №{src.id})" if src else ""))
     db.add(p)
     await db.flush()
+    if src:
+        # Money on the balance goes first; what is missing is taken back from the paid lessons at their price.
+        price = bookpay.lesson_price(s, src)
+        from_money = min(max(s.money_balance, 0), amount)
+        lessons = -(-(amount - from_money) // price) if amount > from_money else 0
+        await bal.apply(db, s, "book", lessons=-lessons, money=lessons * price - amount, price=price, ref=("payment", p.id),
+                        actor_id=actor.id, note=f"Книга «{book.title}» из оплаты: {amount} тг")
+        src.amount -= amount
+        src.lessons = max(src.lessons - lessons, 0)
+        src.note = f"{src.note + '; ' if src.note else ''}книга «{book.title}» −{amount} тг"[:255]
     m = BookMovement(at=now(), kind="sale", branch_id=s.branch_id, book_id=book.id, qty=body.qty, unit_price=book.sale_price,
                      student_id=s.id, payment_id=p.id, actor_id=actor.id)
     db.add(m)
     await db.flush()
     await notify_guardians(db, s, "book_sale", {"book": book.title, "amount": f"{amount:,}".replace(",", " ")}, ref=("book_sale", m.id))
     await write_audit(db, actor_id=actor.id, action="book.sell", entity="book_movement", entity_id=m.id, branch_id=s.branch_id,
-                      ip=actor.ip, after={"student_id": s.id, "book_id": book.id, "qty": body.qty, "amount": amount})
+                      ip=actor.ip, after={"student_id": s.id, "book_id": book.id, "qty": body.qty, "amount": amount,
+                                          "from_payment_id": src.id if src else None})
     await _low_stock_alert(db, st, book)
     await db.commit()
     return {"payment_id": p.id, "amount": amount, "left_in_stock": st.qty}

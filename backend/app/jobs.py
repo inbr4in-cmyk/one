@@ -155,6 +155,29 @@ async def mark_left(db: AsyncSession) -> int:
     return n
 
 
+async def leave_followups(db: AsyncSession) -> int:
+    """One-off, run by hand after the update that sends «ушёл» through the methodist: students whom staff already
+    marked «ушёл» on the site without a reason get a task for the methodist. Safe to repeat."""
+    from app.models import AuditLog, Role
+    from app.models.identity import UserRole
+    from app.services import retention
+
+    owner = await db.scalar(select(UserRole.user_id).join(Role, Role.id == UserRole.role_id).where(Role.code == "owner").limit(1))
+    manual = select(AuditLog.entity_id).where(AuditLog.entity == "student", AuditLog.action == "student.update",
+                                              AuditLog.after["status"].astext == "left")
+    n = 0
+    for s in await db.scalars(select(Student).where(
+            Student.archived_at.is_(None), Student.status == StudentStatus.LEFT, Student.leave_reason.is_(None),
+            Student.id.in_(manual))):
+        t = await retention.follow_up(
+            db, s, "leave", f"Связаться с учеником: {s.full_name} отмечен как ушедший",
+            "Ученику поставили статус «Ушёл» без причины. Свяжитесь с учеником или родителями и в карточке ученика "
+            "нажмите «Решение»: ушёл (с причиной и когда может вернуться) или остаётся.", owner, hours=72)
+        n += t is not None
+    await db.commit()
+    return n
+
+
 async def block_nonpayers(db: AsyncSession) -> int:
     """Rules: no payment within N days after lessons ran out → portal access is blocked until payment."""
     days = int(await setting(db, "nonpayment_block_days"))
@@ -311,4 +334,4 @@ if __name__ == "__main__":
     if cmd == "loop":
         asyncio.run(loop())
     else:
-        print(asyncio.run(_run({"minutely": minutely, "nightly": nightly}[cmd])))
+        print(asyncio.run(_run({"minutely": minutely, "nightly": nightly, "leave-followups": leave_followups}[cmd])))

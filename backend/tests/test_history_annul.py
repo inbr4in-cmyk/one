@@ -14,7 +14,7 @@ async def test_student_history_shows_groups_transfer_and_status(db, client, owne
     r = await client.post("/api/groups", headers=owner_h, json={
         "name": "EL-6", "branch_id": bid, "level_id": g["level_id"], "teacher_id": teacher.id, "room_id": room.id})
     g2 = r.json()
-    r = await client.post(f"/api/students/{s['id']}/transfer", headers=owner_h, json={"to_group_id": g2["id"]})
+    r = await client.post(f"/api/students/{s['id']}/transfer", headers=owner_h, json={"to_group_id": g2["id"], "reason": "Сменил время занятий"})
     assert r.status_code == 200, r.text
     r = await client.patch(f"/api/students/{s['id']}", headers=owner_h, json={"status": "finished"})
     assert r.status_code == 200, r.text

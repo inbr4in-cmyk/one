@@ -42,6 +42,8 @@ class PaymentIn(In):
     package_id: int | None = Field(default=None, ge=1)
     # Entering an earlier payment by hand (e.g. last month). Empty or today = now. Needs finance.edit.
     paid_on: date | None = None
+    # A subscription bought earlier (before the school moved to this site): lessons of it already used up.
+    used_lessons: int = Field(default=0, ge=0, le=1000)
 
 
 class PaymentOut(ORM):
@@ -134,7 +136,7 @@ async def quote(body: PaymentIn, db: DB, actor: Actor = require("payments", "cre
 _IDEM_KEY = re.compile(r"^[A-Za-z0-9_\-:.]{8,64}$")
 # Without an Idempotency-Key, the same payment by the same person within this window is treated as a double tap.
 DOUBLE_TAP = timedelta(seconds=15)
-BACKDATE_DAYS = 180
+BACKDATE_DAYS = 400
 
 
 def _out(p: Payment, s: Student) -> PaymentOut:
@@ -187,6 +189,12 @@ async def take_payment(body: PaymentIn, db: DB, response: Response, actor: Actor
         q, level, pkg = await _package_quote(db, s, body, actor)
     else:
         q, level = await _quote(db, s, body, actor)
+    if body.used_lessons:
+        if not (pkg and backdated):
+            raise bad_request("Использованные уроки указывают только для абонемента с прошлой датой оплаты")
+        if body.used_lessons > q.lessons:
+            raise bad_request(f"В абонементе всего {q.lessons} ур.")
+        q.lessons -= body.used_lessons
     if s.level_id is None and level is not None:
         # A student without a level (e.g. imported) gets the level chosen at the first payment.
         s.level_id = level.id
@@ -210,7 +218,9 @@ async def take_payment(body: PaymentIn, db: DB, response: Response, actor: Actor
         response.status_code = 200
         return _out(done, await db.get(Student, done.student_id))
     await bal.apply(db, s, "payment", lessons=q.lessons, money=-q.money_balance_used, price=q.lesson_price,
-                    ref=("payment", p.id), actor_id=actor.id, note=f"Абонемент «{pkg.name}»: {q.lessons} ур." if pkg
+                    ref=("payment", p.id), actor_id=actor.id,
+                    note=f"Абонемент «{pkg.name}»: {q.lessons} ур."
+                    + (f" (из {pkg.lessons}, использовано {body.used_lessons})" if body.used_lessons else "") if pkg
                     else f"Оплата {q.lessons} × {q.lesson_price}" if body.amount is None
                     else f"Оплата {q.to_pay} тг: {q.lessons} ур. × {q.lesson_price}")
     s.last_payment_at = max(p.paid_at, s.last_payment_at) if s.last_payment_at else p.paid_at
@@ -320,6 +330,11 @@ class PaymentPatch(In):
     method: str | None = Field(default=None, max_length=16)
     note: str | None = Field(default=None, max_length=255)
     paid_on: date | None = None
+    # Fixing a mistake made at the till (owner / branch admin): how many lessons the payment bought, for which
+    # level, and the amount actually received. The student's balance follows the lessons.
+    lessons: int | None = Field(default=None, ge=0, le=500)
+    level_id: int | None = Field(default=None, ge=1)
+    amount: int | None = Field(default=None, ge=0, le=100_000_000)
 
 
 @router.patch("/payments/{payment_id}", response_model=PaymentOut)
@@ -331,7 +346,33 @@ async def edit_payment(payment_id: int, body: PaymentPatch, db: DB, actor: Actor
         raise not_found("Оплата")
     actor.ensure_branch("payments", "create", p.branch_id)
     data = body.model_dump(exclude_unset=True)
-    before = {"method": p.method, "note": p.note, "paid_on": local(p.paid_at).date().isoformat()}
+    before = {"method": p.method, "note": p.note, "paid_on": local(p.paid_at).date().isoformat(),
+              "lessons": p.lessons, "level_id": p.level_id, "amount": p.amount}
+    money_fix = {k: data[k] for k in ("lessons", "level_id", "amount") if data.get(k) is not None and data[k] != before[k]}
+    if money_fix:
+        if not actor.can("finance", "edit"):
+            raise forbidden("Менять уроки и сумму оплаты может только руководитель или админ филиала")
+        if p.category != "course" or p.source == "import":
+            raise bad_request("Так исправляют только оплаты за обучение, внесённые на сайте")
+        if p.refunded or await _refunded_lessons(db, p.id):
+            raise bad_request("По этой оплате уже был возврат: её нельзя изменить")
+        s = await db.get(Student, p.student_id, with_for_update=True, populate_existing=True)
+        if "level_id" in money_fix:
+            level = await db.get(Level, money_fix["level_id"])
+            if level is None or level.archived_at:
+                raise not_found("Уровень")
+            p.level_id, p.lesson_price = level.id, level.lesson_price
+        if "amount" in money_fix:
+            p.amount = money_fix["amount"]
+        if "lessons" in money_fix:
+            delta = money_fix["lessons"] - p.lessons
+            if delta < 0 and -delta > await lessons_left_from(db, p, s):
+                raise bad_request(f"Убрать можно не больше {await lessons_left_from(db, p, s)} ур.: остальные уже пройдены")
+            p.lessons = money_fix["lessons"]
+            await bal.apply(db, s, "payment", lessons=delta, price=p.lesson_price, ref=("payment", p.id), actor_id=actor.id,
+                            note=f"Исправление оплаты: было {before['lessons']} ур., стало {p.lessons} ур.")
+        elif "level_id" in money_fix and p.lessons and await lessons_left_from(db, p, s):
+            s.balance_lesson_price = p.lesson_price
     if "method" in data and data["method"] is not None:
         if data["method"] not in PaymentMethod.ALL:
             raise bad_request("Неизвестный способ оплаты")
@@ -344,7 +385,8 @@ async def edit_payment(payment_id: int, body: PaymentPatch, db: DB, actor: Actor
         if data["paid_on"] > today() or data["paid_on"] < today() - timedelta(days=BACKDATE_DAYS):
             raise bad_request(f"Дата оплаты — не в будущем и не раньше чем {BACKDATE_DAYS} дней назад")
         p.paid_at = at_local(data["paid_on"], local(p.paid_at).time())
-    after = {"method": p.method, "note": p.note, "paid_on": local(p.paid_at).date().isoformat()}
+    after = {"method": p.method, "note": p.note, "paid_on": local(p.paid_at).date().isoformat(),
+             "lessons": p.lessons, "level_id": p.level_id, "amount": p.amount}
     if before != after:
         await write_audit(db, actor_id=actor.id, action="payment.edit", entity="payment", entity_id=p.id, branch_id=p.branch_id,
                           ip=actor.ip, before={k: v for k, v in before.items() if after[k] != v},

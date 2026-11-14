@@ -92,6 +92,59 @@ async def sheet(db: DB, actor: Actor = require("payroll", "view"), period: str |
             "total": sum(p["total"] for p in people.values())}
 
 
+LESSON_SECTIONS = (("group", "Групповые уроки"), ("duo", "Дуэт"), ("individual", "Индивидуальные уроки"),
+                   ("support", "Support-уроки"), ("club", "Открытые уроки"))
+
+
+async def breakdown(db: DB, user_id: int, period: str, extra_filter: list) -> dict:
+    """How one person's pay for the month is made up: lessons by format at the rate (ставка), the extra for
+    students above the threshold separately (KPI), then everything else (оклад, премии, удержания…)."""
+    from app.models import Group
+    from app.services.clock import local
+    from app.services.values import rate
+
+    rows = (await db.execute(
+        select(Accrual, Lesson, Group.kind).outerjoin(Lesson, (Accrual.ref_type == "lesson") & (Lesson.id == Accrual.ref_id))
+        .outerjoin(Group, Group.id == Lesson.group_id)
+        .where(Accrual.user_id == user_id, Accrual.period == period, *extra_filter).order_by(Accrual.id))).all()
+    lessons = {k: {"key": k, "title": t, "count": 0, "amount": 0} for k, t in LESSON_SECTIONS}
+    kpi = {"key": "kpi", "title": "KPI: доплата за учеников", "count": 0, "amount": 0}
+    other: dict[str, dict] = {}
+    bases: dict = {}
+    for a, lesson, gkind in rows:
+        if a.kind == "lesson" and lesson is not None:
+            kind = "support" if lesson.is_support else (gkind or "group") if lesson.group_id else "individual"
+            sec = lessons.get(kind) or lessons["group"]
+            sec["count"] += 1
+            if kind == "group":
+                on = local(lesson.starts_at).date()
+                if on not in bases:
+                    bases[on] = await rate(db, "teacher_lesson_base", on)
+                base = min(a.amount, bases[on])
+                sec["amount"] += base
+                if a.amount > base:
+                    kpi["count"] += 1
+                    kpi["amount"] += a.amount - base
+            else:
+                sec["amount"] += a.amount
+        else:
+            o = other.setdefault(a.kind, {"key": a.kind, "title": KIND_NAMES.get(a.kind, a.kind), "count": 0, "amount": 0})
+            o["count"] += 1
+            o["amount"] += a.amount
+    rate_rows = [x for x in lessons.values() if x["count"]]
+    return {"lessons": rate_rows, "lessons_total": sum(x["amount"] for x in rate_rows),
+            "lessons_count": sum(x["count"] for x in rate_rows), "kpi": kpi,
+            "other": list(other.values()), "total": sum(a.amount for a, _, _ in rows)}
+
+
+@router.get("/payroll/breakdown")
+async def get_breakdown(user_id: int, db: DB, actor: Actor = require("payroll", "view"), period: str | None = None,
+                        branch_id: int | None = None) -> dict:
+    period = period or period_of(today())
+    month_bounds(period)
+    return await breakdown(db, user_id, period, _scope_filter(actor, "view", branch_id))
+
+
 @router.get("/payroll/accruals", response_model=list[AccrualOut])
 async def accruals(db: DB, actor: Actor = require("payroll", "view"), period: str | None = None,
                    user_id: int | None = None, branch_id: int | None = None) -> list[AccrualOut]:
@@ -109,7 +162,8 @@ async def my_pay(db: DB, actor: Actor = require("payroll", "view"), period: str 
                                                  .order_by(Accrual.id))]
     salary = sum(i.amount for i in items if i.kind == "salary")
     return {"period": period, "total": sum(i.amount for i in items), "salary_total": salary,
-            "rates_total": sum(i.amount for i in items) - salary, "items": items}
+            "rates_total": sum(i.amount for i in items) - salary, "items": items,
+            "breakdown": await breakdown(db, actor.id, period, [])}
 
 
 class AdjustIn(In):

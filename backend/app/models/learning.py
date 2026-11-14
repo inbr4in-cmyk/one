@@ -48,6 +48,12 @@ class Student(IdMixin, TimestampMixin, ArchiveMixin, Base):
     last_payment_at: Mapped[DTN]
     last_visit_at: Mapped[DTN]
     left_at: Mapped[DTN]
+    # «Ушёл» is decided by the methodist: a request waits here until they talk to the student.
+    leave_requested_at: Mapped[DTN]
+    leave_requested_by: Mapped[IntN]
+    leave_reason: Mapped[str | None] = mapped_column(String(500), default=None)
+    # When / on what terms the student may come back (filled by the methodist).
+    return_note: Mapped[str | None] = mapped_column(String(500), default=None)
     stars: Mapped[Int]  # kids' stars for following the rules
     notes: Mapped[TextN]
     contract_no: Mapped[StrN] = mapped_column(String(64), default=None)

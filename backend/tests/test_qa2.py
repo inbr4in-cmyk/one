@@ -103,7 +103,7 @@ async def test_b5_freeze_rules_and_nightly_end(db, client, owner_h):
     await _pay(client, owner_h, st["id"], 12)
     r = await client.post(f"/api/students/{st['id']}/freeze", headers=owner_h,
                           json={"starts_on": "2020-01-01", "ends_on": "2020-01-08"})
-    assert r.status_code == 400 and "прошлом" in r.json()["detail"]
+    assert r.status_code == 400 and "не раньше" in r.json()["detail"]
     r = await client.post(f"/api/students/{st['id']}/freeze", headers=owner_h, json=body)
     assert r.status_code == 200 and r.json()["status"] == "frozen"
     # The freeze ran out (dates moved back) — the nightly job brings the student back.

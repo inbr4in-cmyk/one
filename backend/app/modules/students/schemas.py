@@ -41,6 +41,16 @@ class StudentPatch(In):
     contract_date: date | None = None
     # manual status: studying / finished the course / left (freezes have their own flow)
     status: str | None = Field(default=None, pattern="^(active|finished|left)$")
+    # With status «left»: why (the methodist's decision needs it; other staff may add what they know).
+    leave_reason: str | None = Field(default=None, max_length=500)
+    return_note: str | None = Field(default=None, max_length=500)
+
+
+class LeaveDecisionIn(In):
+    # True = the student really leaves; False = stays and keeps studying.
+    left: bool
+    reason: str = Field(min_length=3, max_length=500)
+    return_note: str | None = Field(default=None, max_length=500)
 
 
 class GuardianPatch(In):
@@ -101,6 +111,13 @@ class StudentOut(StudentListOut):
     archived_at: datetime | None
     # Current subscription (абонемент): {name, valid_to} or None
     subscription: dict | None = None
+    # «Ушёл» waits for the methodist: {at, by} or None; who may decide; the saved reason and return note.
+    leave_request: dict | None = None
+    can_decide_leave: bool = False
+    leave_reason: str | None = None
+    return_note: str | None = None
+    # Money of the latest course payment that can still be turned into a book payment
+    book_from_payment: int = 0
 
 
 class LedgerOut(ORM):
@@ -118,6 +135,13 @@ class LedgerOut(ORM):
 class TransferIn(In):
     to_group_id: int
     reason: str | None = Field(default=None, max_length=255)
+
+    def need_reason(self) -> str:
+        r = (self.reason or "").strip()
+        if len(r) < 3:
+            from app.core.errors import bad_request
+            raise bad_request("Укажите причину перевода")
+        return r
 
 
 class TransferPreview(BaseModel):

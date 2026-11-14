@@ -143,13 +143,19 @@ def _check_expense_branch(actor: Actor, branch_id: int | None) -> None:
 @router.get("/expenses", response_model=Page[ExpenseOut])
 async def list_expenses(db: DB, actor: Actor = require("finance", "view"), period: str | None = None,
                         branch_id: int | None = None, category_id: int | None = None,
+                        date_from: date | None = None, date_to: date | None = None,
                         limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0)) -> Page:
     q = select(Expense).where(Expense.archived_at.is_(None))
     branches = _branches(actor, "finance", "view", branch_id)
     if branches is not None:
         q = q.where(Expense.branch_id.in_(branches) if branch_id else
                     (Expense.branch_id.in_(branches) | Expense.branch_id.is_(None)))
-    if period:
+    if date_from or date_to:
+        if date_from:
+            q = q.where(Expense.spent_on >= date_from)
+        if date_to:
+            q = q.where(Expense.spent_on <= date_to)
+    elif period:
         s, e, _, _ = month_bounds(period)
         q = q.where(Expense.spent_on >= s, Expense.spent_on < e)
     if category_id:
@@ -203,9 +209,45 @@ async def archive_expense(expense_id: int, db: DB, actor: Actor = require("finan
 
 
 # ---------- P&L ----------
-async def pnl(db: DB, period: str, branches: set[int] | None) -> dict:
-    """Revenue − refunds − expenses (own + share of network ones by revenue) − payroll accruals."""
+async def _payroll_between(db: DB, s: date, e: date) -> dict:
+    """Payroll for any [s, e) range of days, by branch: lessons by the day they were held, the monthly salary by
+    the share of its month inside the range, everything else by the day it was written."""
+    s_dt, e_dt = at_local(s, time(0)), at_local(e, time(0))
+    out: dict = {}
+
+    def add(b, v):
+        out[b] = out.get(b, 0) + int(v)
+
+    for b, v in (await db.execute(
+            select(Accrual.branch_id, func.sum(Accrual.amount)).join(Lesson, Lesson.id == Accrual.ref_id)
+            .where(Accrual.ref_type == "lesson", Lesson.starts_at >= s_dt, Lesson.starts_at < e_dt).group_by(Accrual.branch_id))).all():
+        add(b, v)
+    for b, v in (await db.execute(
+            select(Accrual.branch_id, func.sum(Accrual.amount))
+            .where(func.coalesce(Accrual.ref_type, "") != "lesson", Accrual.kind != "salary",
+                   Accrual.created_at >= s_dt, Accrual.created_at < e_dt).group_by(Accrual.branch_id))).all():
+        add(b, v)
+    for b, per, v in (await db.execute(
+            select(Accrual.branch_id, Accrual.period, func.sum(Accrual.amount)).where(Accrual.kind == "salary")
+            .group_by(Accrual.branch_id, Accrual.period))).all():
+        ms, me, _, _ = month_bounds(per)
+        days = (min(me, e) - max(ms, s)).days
+        if days > 0:
+            add(b, round(int(v) * days / (me - ms).days))
+    return out
+
+
+async def pnl(db: DB, period: str, branches: set[int] | None, date_from: date | None = None,
+              date_to: date | None = None) -> dict:
+    """Revenue − refunds − expenses (own + share of network ones by revenue) − payroll accruals.
+    A whole month by `period`, or any range of days with date_from / date_to (both inclusive)."""
     s, e, s_dt, e_dt = month_bounds(period)
+    ranged = bool(date_from or date_to)
+    if ranged:
+        s, e = date_from or date(2000, 1, 1), (date_to or today()) + timedelta(days=1)
+        if e <= s:
+            raise bad_request("Дата «по» раньше даты «с»")
+        s_dt, e_dt = at_local(s, time(0)), at_local(e, time(0))
     all_ids = list(await db.scalars(select(Branch.id).where(Branch.archived_at.is_(None)).order_by(Branch.id)))
     ids = [b for b in all_ids if branches is None or b in branches]
     names = {b.id: b.name for b in await db.scalars(select(Branch).where(Branch.id.in_(all_ids)))}
@@ -213,15 +255,18 @@ async def pnl(db: DB, period: str, branches: set[int] | None) -> dict:
     rev = {(b, c): int(v) for b, c, v in (await db.execute(
         select(Payment.branch_id, Payment.category, func.sum(Payment.amount))
         .where(Payment.paid_at >= s_dt, Payment.paid_at < e_dt).group_by(Payment.branch_id, Payment.category))).all()}
-    refunds = {b: int(v) for b, v in (await db.execute(
-        select(Payment.branch_id, func.sum(Refund.amount)).join(Payment, Payment.id == Refund.payment_id)
-        .where(Refund.created_at >= s_dt, Refund.created_at < e_dt).group_by(Payment.branch_id))).all()}
+    ref_cat = {(b, c): int(v) for b, c, v in (await db.execute(
+        select(Payment.branch_id, Payment.category, func.sum(Refund.amount)).join(Payment, Payment.id == Refund.payment_id)
+        .where(Refund.created_at >= s_dt, Refund.created_at < e_dt).group_by(Payment.branch_id, Payment.category))).all()}
+    refunds: dict = {}
+    for (b, _), v in ref_cat.items():
+        refunds[b] = refunds.get(b, 0) + v
     cats = {c.id: c.name for c in await db.scalars(select(ExpenseCategory))}
     exp = (await db.execute(
         select(Expense.branch_id, Expense.category_id, func.sum(Expense.amount))
         .where(Expense.archived_at.is_(None), Expense.spent_on >= s, Expense.spent_on < e)
         .group_by(Expense.branch_id, Expense.category_id))).all()
-    payroll = {b: int(v) for b, v in (await db.execute(
+    payroll = await _payroll_between(db, s, e) if ranged else {b: int(v) for b, v in (await db.execute(
         select(Accrual.branch_id, func.sum(Accrual.amount)).where(Accrual.period == period)
         .group_by(Accrual.branch_id))).all()}
 
@@ -243,17 +288,20 @@ async def pnl(db: DB, period: str, branches: set[int] | None) -> dict:
         gross = sum(revenue.values()) - refunds.get(b, 0)
         total_exp = sum(expenses.values()) + pay
         rows.append({"branch_id": b, "branch": names[b], "revenue": revenue, "refunds": refunds.get(b, 0),
+                     "receipts": sum(revenue.values()),
+                     "net_by_category": {c: v - ref_cat.get((b, c), 0) for c, v in revenue.items()},
                      "net_revenue": gross, "expenses": expenses, "payroll": pay, "total_expenses": total_exp,
                      "profit": gross - total_exp, "margin": round((gross - total_exp) / gross * 100, 1) if gross else None})
-    tot = {k: sum(r[k] for r in rows) for k in ("refunds", "net_revenue", "payroll", "total_expenses", "profit")}
+    tot = {k: sum(r[k] for r in rows) for k in ("receipts", "refunds", "net_revenue", "payroll", "total_expenses", "profit")}
     tot["margin"] = round(tot["profit"] / tot["net_revenue"] * 100, 1) if tot["net_revenue"] else None
-    return {"period": period, "branches": rows, "total": tot}
+    return {"period": period, "date_from": s.isoformat() if ranged else None,
+            "date_to": (e - timedelta(days=1)).isoformat() if ranged else None, "branches": rows, "total": tot}
 
 
 @router.get("/finance/pnl")
 async def get_pnl(db: DB, actor: Actor = require("finance", "view"), period: str | None = None,
-                  branch_id: int | None = None) -> dict:
-    return await pnl(db, period or period_of(today()), _branches(actor, "finance", "view", branch_id))
+                  branch_id: int | None = None, date_from: date | None = None, date_to: date | None = None) -> dict:
+    return await pnl(db, period or period_of(today()), _branches(actor, "finance", "view", branch_id), date_from, date_to)
 
 
 # ---------- dashboard ----------

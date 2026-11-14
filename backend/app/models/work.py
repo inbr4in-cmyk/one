@@ -33,6 +33,8 @@ class Task(IdMixin, TimestampMixin, ArchiveMixin, Base):
     # daily | weekly — a template that spawns copies
     recurrence: Mapped[StrN]
     parent_task_id: Mapped[int | None] = fk("tasks.id", nullable=True)
+    # Made by the system: absence2 (two absences in a row) | leave (student wants to leave)
+    auto_kind: Mapped[str | None] = mapped_column(String(16), default=None)
 
 
 class TaskAssignee(IdMixin, Base):
