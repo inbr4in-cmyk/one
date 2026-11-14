@@ -1,0 +1,1 @@
+import{c as e,k as t}from"./vue-i18n-DBghp67Z.js";import{s as n}from"./index-BFCIecv8.js";function r(){let r=n();return t(()=>r.loadStaff()),e(()=>r.teachers.map(e=>({id:e.id,name:e.full_name,branchIds:e.branch_ids})).sort((e,t)=>e.name.localeCompare(t.name)))}export{r as t};

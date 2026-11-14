@@ -1,0 +1,524 @@
+"""Course sale and payments (ТЗ 5.2, 9.2, 13.1). Sales staff can't take payments: payments.create is not in their role."""
+
+import re
+from datetime import date, datetime, time, timedelta
+
+from fastapi import APIRouter, Header, Query, Response
+from pydantic import BaseModel, Field
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
+
+from app.core.audit import write_audit
+from app.core.deps import DB, Actor, require
+from app.core.errors import bad_request, conflict, forbidden, not_found
+from app.core.permissions import NETWORK
+from app.core.schemas import In, ORM, Page
+from app.models import Attendance, Lead, Lesson, Level, Payment, Refund, Student, SubscriptionPackage
+from app.services.reversals import reverse_for_payment
+from app.models.finance import PaymentMethod
+from app.models.learning import AttendanceStatus, StudentStatus
+from app.modules.students.scope import get_student_scoped
+from app.services import balance as bal
+from app.services import crm
+from app.services.clock import at_local, local, local_range, now, parse_day, today
+from app.services.messaging import notify_guardians
+from app.services.payroll import accrue_once
+from app.services.values import rate
+
+router = APIRouter(tags=["payments"])
+
+
+class PaymentIn(In):
+    student_id: int = Field(ge=1)
+    # Either a number of lessons, or any amount the client actually paid (partial payment).
+    lessons: int = Field(default=0, ge=0, le=500)
+    amount: int | None = Field(default=None, ge=1, le=100_000_000)
+    method: str = Field(max_length=16)
+    discount: int = Field(default=0, ge=0, le=100_000_000)
+    promo_code: str | None = Field(default=None, max_length=64)
+    note: str | None = Field(default=None, max_length=255)
+    level_id: int | None = Field(default=None, ge=1)
+    # Selling a subscription (абонемент): price and lessons come from the package.
+    package_id: int | None = Field(default=None, ge=1)
+    # Entering an earlier payment by hand (e.g. last month). Empty or today = now. Needs finance.edit.
+    paid_on: date | None = None
+    # A subscription bought earlier (before the school moved to this site): lessons of it already used up.
+    used_lessons: int = Field(default=0, ge=0, le=1000)
+
+
+class PaymentOut(ORM):
+    id: int
+    student_id: int
+    branch_id: int
+    level_id: int | None
+    category: str
+    amount: int
+    discount: int
+    lessons: int
+    lesson_price: int
+    method: str
+    received_by: int
+    paid_at: datetime
+    refunded: int
+    is_first: bool
+    note: str | None
+    package_id: int | None = None
+    valid_to: date | None = None
+    student_name: str | None = None
+    student_lessons_left: int | None = None  # refund form: can't take back more lessons than are left
+
+
+class PaymentQuote(BaseModel):
+    lessons: int
+    lesson_price: int
+    gross: int
+    discount: int
+    money_balance_used: int
+    to_pay: int
+
+
+async def _package_quote(db: DB, s: Student, body: PaymentIn, actor: Actor) -> tuple[PaymentQuote, Level | None, SubscriptionPackage]:
+    pkg = await db.get(SubscriptionPackage, body.package_id)
+    if pkg is None or pkg.archived_at:
+        raise not_found("Абонемент")
+    if body.discount and not actor.can("payments", "discount"):
+        raise forbidden("Скидки — только у сотрудников с правом")
+    if body.discount > pkg.price:
+        raise bad_request("Скидка больше суммы")
+    level = await db.get(Level, body.level_id or s.level_id) if (body.level_id or s.level_id) else None
+    used = min(max(s.money_balance, 0), pkg.price - body.discount)
+    return PaymentQuote(lessons=pkg.lessons, lesson_price=pkg.price // max(pkg.lessons, 1), gross=pkg.price, discount=body.discount,
+                        money_balance_used=used, to_pay=pkg.price - body.discount - used), level, pkg
+
+
+async def _quote(db: DB, s: Student, body: PaymentIn, actor: Actor) -> tuple[PaymentQuote, Level]:
+    level = await db.get(Level, body.level_id or s.level_id) if (body.level_id or s.level_id) else None
+    if level is None:
+        raise bad_request("У ученика не указан уровень")
+    if body.level_id and s.level_id and body.level_id != s.level_id and not actor.can("payments", "discount"):
+        # Paying at another level's price is a discount in disguise; only the next level is allowed (moving up).
+        current = await db.get(Level, s.level_id)
+        if current is None or current.next_level_id != body.level_id:
+            raise forbidden("Оплата по цене другого уровня — только у сотрудников с правом на скидки")
+    if body.discount and not actor.can("payments", "discount"):
+        raise forbidden("Скидки — только у сотрудников с правом")
+    if body.amount is not None:
+        # Any sum: it buys whole lessons at the level price together with money already on the balance;
+        # what is left over stays on the money balance (negative money_balance_used = put on the balance).
+        if body.discount:
+            raise bad_request("Скидка указывается при оплате уроками, а не суммой")
+        if level.lesson_price <= 0:
+            raise bad_request("У уровня не указана цена урока")
+        available = body.amount + max(s.money_balance, 0)
+        lessons = min(available // level.lesson_price, 500)
+        gross = lessons * level.lesson_price
+        return PaymentQuote(lessons=lessons, lesson_price=level.lesson_price, gross=gross, discount=0,
+                            money_balance_used=gross - body.amount, to_pay=body.amount), level
+    if body.lessons < 1:
+        raise bad_request("Укажите количество уроков или сумму")
+    gross = body.lessons * level.lesson_price
+    if body.discount > gross:
+        raise bad_request("Скидка больше суммы")
+    # Money left from a level transfer counts toward the next payment (ТЗ 5.3).
+    used = min(max(s.money_balance, 0), gross - body.discount)
+    return PaymentQuote(lessons=body.lessons, lesson_price=level.lesson_price, gross=gross, discount=body.discount,
+                        money_balance_used=used, to_pay=gross - body.discount - used), level
+
+
+@router.post("/payments/quote", response_model=PaymentQuote)
+async def quote(body: PaymentIn, db: DB, actor: Actor = require("payments", "create")) -> PaymentQuote:
+    s = await get_student_scoped(db, actor, body.student_id, "payments", "create")
+    if body.package_id:
+        return (await _package_quote(db, s, body, actor))[0]
+    return (await _quote(db, s, body, actor))[0]
+
+
+_IDEM_KEY = re.compile(r"^[A-Za-z0-9_\-:.]{8,64}$")
+# Without an Idempotency-Key, the same payment by the same person within this window is treated as a double tap.
+DOUBLE_TAP = timedelta(seconds=15)
+BACKDATE_DAYS = 400
+
+
+def _out(p: Payment, s: Student) -> PaymentOut:
+    out = PaymentOut.model_validate(p)
+    out.student_name = s.full_name
+    return out
+
+
+async def _by_key(db: DB, key: str, actor: Actor, student_id: int) -> Payment | None:
+    p = await db.scalar(select(Payment).where(Payment.idempotency_key == key))
+    if p is not None and (p.received_by != actor.id or p.student_id != student_id):
+        raise conflict("Этот ключ запроса уже использован для другой оплаты")
+    return p
+
+
+@router.post("/payments", response_model=PaymentOut, status_code=201)
+async def take_payment(body: PaymentIn, db: DB, response: Response, actor: Actor = require("payments", "create"),
+                       idempotency_key: str | None = Header(default=None, alias="Idempotency-Key")) -> PaymentOut:
+    """QA C-1: a repeated request (double tap, retry after a timeout) never takes the money twice.
+    The client sends a fresh Idempotency-Key per payment form; a repeat with the same key returns the first payment (200)."""
+    if body.method not in PaymentMethod.ALL:
+        raise bad_request("Неизвестный способ оплаты")
+    if idempotency_key is not None and not _IDEM_KEY.match(idempotency_key):
+        raise bad_request("Некорректный заголовок Idempotency-Key")
+    if idempotency_key and (done := await _by_key(db, idempotency_key, actor, body.student_id)):
+        response.status_code = 200
+        return _out(done, await db.get(Student, done.student_id))
+    # The student row lock serializes payments for one student: the checks below see the previous one.
+    s = await get_student_scoped(db, actor, body.student_id, "payments", "create", lock=True)
+    actor.ensure_branch("payments", "create", s.branch_id)
+    if idempotency_key and (done := await _by_key(db, idempotency_key, actor, s.id)):
+        response.status_code = 200
+        return _out(done, s)
+    if not idempotency_key:
+        recent = await db.scalar(select(Payment.id).where(
+            Payment.student_id == s.id, Payment.received_by == actor.id, Payment.category == "course",
+            (Payment.package_id == body.package_id) if body.package_id else (Payment.amount == body.amount) if body.amount is not None else (Payment.lessons == body.lessons), Payment.method == body.method, Payment.paid_at > now() - DOUBLE_TAP))
+        if recent:
+            raise conflict("Такая оплата уже проведена только что. Обновите страницу")
+    backdated = body.paid_on is not None and body.paid_on != today()
+    if backdated:
+        if not actor.can("finance", "edit"):
+            raise forbidden("Указывать прошлую дату оплаты может только руководитель или админ филиала")
+        if body.paid_on > today():
+            raise bad_request("Дата оплаты не может быть в будущем")
+        if body.paid_on < today() - timedelta(days=BACKDATE_DAYS):
+            raise bad_request(f"Дата оплаты не может быть раньше чем {BACKDATE_DAYS} дней назад")
+    pkg: SubscriptionPackage | None = None
+    if body.package_id:
+        q, level, pkg = await _package_quote(db, s, body, actor)
+    else:
+        q, level = await _quote(db, s, body, actor)
+    if body.used_lessons:
+        if not (pkg and backdated):
+            raise bad_request("Использованные уроки указывают только для абонемента с прошлой датой оплаты")
+        if body.used_lessons > q.lessons:
+            raise bad_request(f"В абонементе всего {q.lessons} ур.")
+        q.lessons -= body.used_lessons
+    if s.level_id is None and level is not None:
+        # A student without a level (e.g. imported) gets the level chosen at the first payment.
+        s.level_id = level.id
+    paid_day = body.paid_on if backdated else today()
+    valid_to = (_add_months(paid_day, pkg.months) - timedelta(days=1)) if pkg else None
+    prior = await db.scalar(select(func.count()).select_from(Payment).where(Payment.student_id == s.id, Payment.category == "course"))
+    was_left = s.status == StudentStatus.LEFT
+    p = Payment(student_id=s.id, branch_id=s.branch_id, level_id=level.id if level else None, category="course", amount=q.to_pay,
+                discount=q.discount, promo_code=body.promo_code, lessons=q.lessons, lesson_price=q.lesson_price,
+                method=body.method, received_by=actor.id, paid_at=at_local(body.paid_on, time(12, 0)) if backdated else now(),
+                is_first=prior == 0, note=body.note or (f"Абонемент «{pkg.name}» до {valid_to:%d.%m.%Y}" if pkg else None),
+                idempotency_key=idempotency_key, package_id=pkg.id if pkg else None, valid_to=valid_to)
+    try:
+        async with db.begin_nested():
+            db.add(p)
+    except IntegrityError:
+        # A parallel request with the same key won the race: answer with its payment.
+        done = await _by_key(db, idempotency_key, actor, body.student_id) if idempotency_key else None
+        if done is None:
+            raise
+        response.status_code = 200
+        return _out(done, await db.get(Student, done.student_id))
+    await bal.apply(db, s, "payment", lessons=q.lessons, money=-q.money_balance_used, price=q.lesson_price,
+                    ref=("payment", p.id), actor_id=actor.id,
+                    note=f"Абонемент «{pkg.name}»: {q.lessons} ур."
+                    + (f" (из {pkg.lessons}, использовано {body.used_lessons})" if body.used_lessons else "") if pkg
+                    else f"Оплата {q.lessons} × {q.lesson_price}" if body.amount is None
+                    else f"Оплата {q.to_pay} тг: {q.lessons} ур. × {q.lesson_price}")
+    s.last_payment_at = max(p.paid_at, s.last_payment_at) if s.last_payment_at else p.paid_at
+    s.access_blocked_at = None
+    if s.status in (StudentStatus.LEAD, StudentStatus.TRIAL, StudentStatus.LEFT, StudentStatus.FINISHED):
+        s.status = StudentStatus.ACTIVE
+    if not s.office_user_id:
+        s.office_user_id = actor.id
+    # An old payment typed in later: the parents were told back then, and no sales bonuses are paid retroactively.
+    if not backdated:
+        await _sale_facts(db, s, p, actor, was_left)
+        await notify_guardians(db, s, "payment", {"amount": f"{p.amount:,}".replace(",", " "), "what": f"абонемент «{pkg.name}»" if pkg else f"обучение ({level.name if level else ''})",
+                                                  "lessons": q.lessons, "left": s.lessons_left}, ref=("payment", p.id))
+    await write_audit(db, actor_id=actor.id, action="payment.create", entity="payment", entity_id=p.id, branch_id=p.branch_id,
+                      ip=actor.ip, after={"student_id": s.id, "amount": p.amount, "lessons": p.lessons, "method": p.method,
+                                          "discount": p.discount, "package_id": p.package_id, "paid_on": body.paid_on.isoformat() if backdated else None})
+    await db.commit()
+    return _out(p, s)
+
+
+def _add_months(d: date, n: int) -> date:
+    m = d.month - 1 + n
+    y, m = d.year + m // 12, m % 12 + 1
+    last = [31, 29 if y % 4 == 0 and (y % 100 or y % 400 == 0) else 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][m - 1]
+    return date(y, m, min(d.day, last))
+
+
+async def _sale_facts(db: DB, s: Student, p: Payment, actor: Actor, was_left: bool) -> None:
+    """First payment of a lead → «Оплатил», office manager's sale bonus, trial teacher's retention bonus;
+    a «Возврат» lead paying → return bonus for the sales person (ТЗ 9.2, 9.3, 10)."""
+    lead = await db.get(Lead, s.lead_id) if s.lead_id else None
+    if lead is None:
+        return
+    d = local(p.paid_at).date()
+    paid_stage = await crm.stage_by_code(db, "return" if was_left else "main", "paid")
+    if paid_stage and lead.stage_id != paid_stage.id:
+        await crm.move(db, lead, paid_stage, actor.id, f"Оплата {p.amount} тг")
+    if was_left and lead.owner_id:
+        await accrue_once(db, user_id=lead.owner_id, kind="return", amount=await rate(db, "sales_return", d), ref=("lead", lead.id),
+                          on=d, branch_id=s.branch_id, description=f"Возврат ученика: {s.full_name}", created_by=actor.id)
+        return
+    if not p.is_first or not lead.trial_lesson_id:
+        return
+    trial = await db.get(Lesson, lead.trial_lesson_id)
+    attended = await db.scalar(select(Attendance.id).where(
+        Attendance.lesson_id == lead.trial_lesson_id, Attendance.lead_id == lead.id,
+        Attendance.status.in_((AttendanceStatus.PRESENT, AttendanceStatus.LATE))))
+    if trial is None or attended is None:
+        return
+    await accrue_once(db, user_id=actor.id, kind="sale", amount=await rate(db, "office_sale", d), ref=("payment", p.id), on=d,
+                      branch_id=s.branch_id, description=f"Продажа после пробного: {s.full_name}", created_by=actor.id)
+    await accrue_once(db, user_id=trial.actual_teacher_id or trial.teacher_id, kind="trial_retention",
+                      amount=await rate(db, "teacher_trial_retention", d), ref=("lead", lead.id), on=d,
+                      branch_id=s.branch_id, description=f"Удержание после пробного: {s.full_name}", created_by=actor.id)
+
+
+@router.get("/payments", response_model=Page[PaymentOut])
+async def list_payments(db: DB, actor: Actor = require("payments", "view"), student_id: int | None = Query(None, ge=1),
+                        branch_id: int | None = Query(None, ge=1), date_from: str | None = Query(None, max_length=40),
+                        date_to: str | None = Query(None, max_length=40), limit: int = Query(50, ge=1, le=200),
+                        offset: int = Query(0, ge=0)) -> Page[PaymentOut]:
+    """date_from / date_to are school-local calendar days, both inclusive (QA B-2): «today–today» is the whole day."""
+    q = select(Payment, Student.full_name, Student.lessons_left).join(Student, Student.id == Payment.student_id)
+    if actor.scope("payments", "view") != NETWORK:
+        q = q.where(Payment.branch_id.in_(actor.branch_ids or {-1}))
+    if student_id:
+        q = q.where(Payment.student_id == student_id)
+    if branch_id:
+        q = q.where(Payment.branch_id == branch_id)
+    start, end = local_range(parse_day(date_from), parse_day(date_to))
+    if start:
+        q = q.where(Payment.paid_at >= start)
+    if end:
+        q = q.where(Payment.paid_at < end)
+    total = await db.scalar(select(func.count()).select_from(q.subquery()))
+    rows = (await db.execute(q.order_by(Payment.id.desc()).limit(limit).offset(offset))).all()
+    items = []
+    for p, name, left in rows:
+        o = PaymentOut.model_validate(p)
+        o.student_name, o.student_lessons_left = name, left
+        items.append(o)
+    return Page(items=items, total=int(total or 0), limit=limit, offset=offset)
+
+
+class RefundIn(In):
+    lessons: int = Field(ge=0, le=10_000)
+    amount: int = Field(ge=0, le=1_000_000_000)
+    reason: str = Field(min_length=3, max_length=255)
+
+
+async def _refunded_lessons(db: DB, payment_id: int) -> int:
+    return int(await db.scalar(select(func.coalesce(func.sum(Refund.lessons_removed), 0)).where(Refund.payment_id == payment_id)))
+
+
+async def lessons_left_from(db: DB, p: Payment, s: Student) -> int:
+    """Lessons of this payment still on the balance. Lessons are spent oldest payment first, so the newest
+    payments hold what is left: this payment keeps whatever the later ones don't cover."""
+    own = p.lessons - await _refunded_lessons(db, p.id)
+    later = 0
+    for q_id, q_lessons in (await db.execute(select(Payment.id, Payment.lessons).where(
+            Payment.student_id == s.id, Payment.category == "course", Payment.id > p.id))).all():
+        later += max(q_lessons - await _refunded_lessons(db, q_id), 0)
+    return max(0, min(own, s.lessons_left - later))
+
+
+class PaymentPatch(In):
+    method: str | None = Field(default=None, max_length=16)
+    note: str | None = Field(default=None, max_length=255)
+    paid_on: date | None = None
+    # Fixing a mistake made at the till (owner / branch admin): how many lessons the payment bought, for which
+    # level, and the amount actually received. The student's balance follows the lessons.
+    lessons: int | None = Field(default=None, ge=0, le=500)
+    level_id: int | None = Field(default=None, ge=1)
+    amount: int | None = Field(default=None, ge=0, le=100_000_000)
+
+
+@router.patch("/payments/{payment_id}", response_model=PaymentOut)
+async def edit_payment(payment_id: int, body: PaymentPatch, db: DB, actor: Actor = require("payments", "create")) -> PaymentOut:
+    """Fix a typo: payment method, comment, and (owner / branch admin) the date. The amount and lessons are not edited
+    here: they already changed the student's balance and bonuses — a refund and a new payment keep everything exact."""
+    p = await db.get(Payment, payment_id, with_for_update=True)
+    if p is None:
+        raise not_found("Оплата")
+    actor.ensure_branch("payments", "create", p.branch_id)
+    data = body.model_dump(exclude_unset=True)
+    before = {"method": p.method, "note": p.note, "paid_on": local(p.paid_at).date().isoformat(),
+              "lessons": p.lessons, "level_id": p.level_id, "amount": p.amount}
+    money_fix = {k: data[k] for k in ("lessons", "level_id", "amount") if data.get(k) is not None and data[k] != before[k]}
+    if money_fix:
+        if not actor.can("finance", "edit"):
+            raise forbidden("Менять уроки и сумму оплаты может только руководитель или админ филиала")
+        if p.category != "course" or p.source == "import":
+            raise bad_request("Так исправляют только оплаты за обучение, внесённые на сайте")
+        if p.refunded or await _refunded_lessons(db, p.id):
+            raise bad_request("По этой оплате уже был возврат: её нельзя изменить")
+        s = await db.get(Student, p.student_id, with_for_update=True, populate_existing=True)
+        if "level_id" in money_fix:
+            level = await db.get(Level, money_fix["level_id"])
+            if level is None or level.archived_at:
+                raise not_found("Уровень")
+            p.level_id, p.lesson_price = level.id, level.lesson_price
+        if "amount" in money_fix:
+            p.amount = money_fix["amount"]
+        if "lessons" in money_fix:
+            delta = money_fix["lessons"] - p.lessons
+            if delta < 0 and -delta > await lessons_left_from(db, p, s):
+                raise bad_request(f"Убрать можно не больше {await lessons_left_from(db, p, s)} ур.: остальные уже пройдены")
+            p.lessons = money_fix["lessons"]
+            await bal.apply(db, s, "payment", lessons=delta, price=p.lesson_price, ref=("payment", p.id), actor_id=actor.id,
+                            note=f"Исправление оплаты: было {before['lessons']} ур., стало {p.lessons} ур.")
+        elif "level_id" in money_fix and p.lessons and await lessons_left_from(db, p, s):
+            s.balance_lesson_price = p.lesson_price
+    if "method" in data and data["method"] is not None:
+        if data["method"] not in PaymentMethod.ALL:
+            raise bad_request("Неизвестный способ оплаты")
+        p.method = data["method"]
+    if "note" in data:
+        p.note = (data["note"] or "").strip() or None
+    if data.get("paid_on") and data["paid_on"] != local(p.paid_at).date():
+        if not actor.can("finance", "edit"):
+            raise forbidden("Менять дату оплаты может только руководитель или админ филиала")
+        if data["paid_on"] > today() or data["paid_on"] < today() - timedelta(days=BACKDATE_DAYS):
+            raise bad_request(f"Дата оплаты — не в будущем и не раньше чем {BACKDATE_DAYS} дней назад")
+        p.paid_at = at_local(data["paid_on"], local(p.paid_at).time())
+    after = {"method": p.method, "note": p.note, "paid_on": local(p.paid_at).date().isoformat(),
+             "lessons": p.lessons, "level_id": p.level_id, "amount": p.amount}
+    if before != after:
+        await write_audit(db, actor_id=actor.id, action="payment.edit", entity="payment", entity_id=p.id, branch_id=p.branch_id,
+                          ip=actor.ip, before={k: v for k, v in before.items() if after[k] != v},
+                          after={k: v for k, v in after.items() if before[k] != v})
+    await db.commit()
+    return _out(p, await db.get(Student, p.student_id))
+
+
+@router.get("/payments/{payment_id}/refundable")
+async def refundable(payment_id: int, db: DB, actor: Actor = require("payments", "refund")) -> dict:
+    """Limits for the refund form."""
+    p = await db.get(Payment, payment_id)
+    if p is None:
+        raise not_found("Оплата")
+    actor.ensure_branch("payments", "refund", p.branch_id)
+    s = await db.get(Student, p.student_id)
+    left = await lessons_left_from(db, p, s) if p.lessons else 0
+    money_left = p.amount - p.refunded
+    return {"lessons_max": left, "amount_max": _amount_cap(p, left, money_left, await _refunded_lessons(db, p.id)) if p.lessons
+            else money_left, "amount_left": money_left}
+
+
+def _amount_cap(p: Payment, lessons: int, money_left: int, refunded_lessons: int) -> int:
+    """Money that matches `lessons` of this payment: their share of what was paid; taking every remaining lesson
+    of the payment allows the whole remaining amount (no rounding leftovers)."""
+    if lessons >= p.lessons - refunded_lessons:
+        return money_left
+    return min(money_left, -(-p.amount * lessons // p.lessons))
+
+
+@router.post("/payments/{payment_id}/refund", status_code=201)
+async def refund(payment_id: int, body: RefundIn, db: DB, actor: Actor = require("payments", "refund")) -> dict:
+    """QA B-3: a refund takes back at most the lessons left from this payment and the money matching them.
+    0 lessons and 0 tenge is not a refund. Bonuses for the sale are reversed in full on a full refund, in proportion otherwise."""
+    p = await db.get(Payment, payment_id, with_for_update=True, populate_existing=True)
+    if p is None:
+        raise not_found("Оплата")
+    actor.ensure_branch("payments", "refund", p.branch_id)
+    s = await db.get(Student, p.student_id, with_for_update=True, populate_existing=True)
+    if body.lessons == 0 and body.amount == 0:
+        raise bad_request("Укажите сумму или уроки для возврата")
+    money_left = p.amount - p.refunded
+    if body.amount > money_left:
+        raise bad_request(f"Сумма возврата больше оплаченной: можно вернуть не больше {money_left} ₸")
+    if p.lessons:
+        refunded_lessons = await _refunded_lessons(db, p.id)
+        left = await lessons_left_from(db, p, s)
+        if body.lessons > left:
+            raise bad_request(f"По этой оплате осталось только {left} ур.")
+        if body.lessons == 0:
+            raise bad_request("Возврат денег без уроков невозможен: укажите, сколько уроков списать")
+        cap = _amount_cap(p, body.lessons, money_left, refunded_lessons)
+        if body.amount > cap:
+            raise bad_request(f"За {body.lessons} ур. можно вернуть не больше {cap} ₸")
+    elif body.lessons:
+        raise bad_request("В этой оплате нет уроков")
+    r = Refund(payment_id=p.id, amount=body.amount, lessons_removed=body.lessons, reason=body.reason, created_by=actor.id)
+    db.add(r)
+    await db.flush()
+    p.refunded += body.amount
+    if body.lessons:
+        await bal.apply(db, s, "refund", lessons=-body.lessons, price=p.lesson_price, ref=("refund", r.id), actor_id=actor.id,
+                        note=f"Возврат: {body.reason}")
+    # ТЗ 10.5: bonuses tied to this sale are cancelled — fully on a full refund, in proportion on a partial one.
+    if p.amount > 0:
+        share = (p.refunded, p.amount)
+    else:  # paid entirely from the money balance: the lessons tell how much was given back
+        share = (await _refunded_lessons(db, p.id), p.lessons or 1)
+    reversed_ = await reverse_for_payment(db, p, s, actor.id, share=share, refund_id=r.id)
+    await write_audit(db, actor_id=actor.id, action="payment.refund", entity="payment", entity_id=p.id, branch_id=p.branch_id,
+                      ip=actor.ip, after={"amount": body.amount, "lessons": body.lessons, "reason": body.reason,
+                                          "bonuses_reversed": reversed_, "full": share[0] >= share[1]})
+    await db.commit()
+    return {"refund_id": r.id, "bonuses_reversed": reversed_, "full": share[0] >= share[1]}
+
+
+# ---- Subscription packages (абонементы), edited on the Справочники page ----
+
+class PackageIn(In):
+    name: str = Field(min_length=2, max_length=120)
+    months: int = Field(ge=1, le=36)
+    price: int = Field(ge=1, le=100_000_000)
+    lessons: int = Field(ge=1, le=1000)
+
+
+class PackageOut(ORM):
+    id: int
+    name: str
+    months: int
+    price: int
+    lessons: int
+
+
+@router.get("/packages", response_model=list[PackageOut])
+async def list_packages(db: DB, actor: Actor = require("payments", "view")) -> list:
+    return list(await db.scalars(select(SubscriptionPackage).where(SubscriptionPackage.archived_at.is_(None))
+                                 .order_by(SubscriptionPackage.months, SubscriptionPackage.id)))
+
+
+@router.post("/packages", response_model=PackageOut, status_code=201)
+async def create_package(body: PackageIn, db: DB, actor: Actor = require("settings", "edit")):
+    if await db.scalar(select(SubscriptionPackage.id).where(func.lower(SubscriptionPackage.name) == body.name.strip().lower(),
+                                                            SubscriptionPackage.archived_at.is_(None))):
+        raise bad_request("Абонемент с таким названием уже есть")
+    pkg = SubscriptionPackage(name=body.name.strip(), months=body.months, price=body.price, lessons=body.lessons)
+    db.add(pkg)
+    await db.flush()
+    await write_audit(db, actor_id=actor.id, action="package.create", entity="package", entity_id=pkg.id, ip=actor.ip,
+                      after=body.model_dump())
+    await db.commit()
+    return pkg
+
+
+@router.patch("/packages/{package_id}", response_model=PackageOut)
+async def edit_package(package_id: int, body: PackageIn, db: DB, actor: Actor = require("settings", "edit")):
+    """Changes apply to new sales only: sold subscriptions keep their price, lessons and end date."""
+    pkg = await db.get(SubscriptionPackage, package_id)
+    if pkg is None or pkg.archived_at:
+        raise not_found("Абонемент")
+    before = {"name": pkg.name, "months": pkg.months, "price": pkg.price, "lessons": pkg.lessons}
+    pkg.name, pkg.months, pkg.price, pkg.lessons = body.name.strip(), body.months, body.price, body.lessons
+    await write_audit(db, actor_id=actor.id, action="package.edit", entity="package", entity_id=pkg.id, ip=actor.ip,
+                      before=before, after=body.model_dump())
+    await db.commit()
+    return pkg
+
+
+@router.post("/packages/{package_id}/archive", status_code=204)
+async def archive_package(package_id: int, db: DB, actor: Actor = require("settings", "edit")) -> None:
+    pkg = await db.get(SubscriptionPackage, package_id)
+    if pkg is None or pkg.archived_at:
+        raise not_found("Абонемент")
+    pkg.archived_at = now()
+    await write_audit(db, actor_id=actor.id, action="package.archive", entity="package", entity_id=pkg.id, ip=actor.ip)
+    await db.commit()

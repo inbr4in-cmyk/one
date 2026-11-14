@@ -1,0 +1,1 @@
+import{o as e}from"./i18n-DGjBynfG.js";function t(t){return t instanceof e&&t.detail?t.detail:null}export{t};

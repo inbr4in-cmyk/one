@@ -1,0 +1,1 @@
+import{n as e}from"./vue-i18n-DBghp67Z.js";import{t}from"./sources-C4zbgblW.js";function n(){let{t:n,te:r}=e(),i=t();return i.load(),e=>e?i.byCode.get(e)?.name??(r(`crm.source.${e}`)?n(`crm.source.${e}`):e):``}export{n as t};
