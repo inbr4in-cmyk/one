@@ -16,8 +16,8 @@ const emit = defineEmits<{ done: [Student] }>()
 const { t } = useI18n()
 const refs = useRefsStore()
 const toast = useToastStore()
-const form = reactive({ full_name: '', birth_date: '', phone: '', level_id: 0, source: '', notes: '', contract_no: '', contract_date: '', status: '' })
-const errors = reactive<{ full_name: string | null; phone: string | null; contract: string | null }>({ full_name: null, phone: null, contract: null })
+const form = reactive({ full_name: '', birth_date: '', phone: '', level_id: 0, source: '', notes: '', contract_no: '', contract_date: '', status: '', leave_reason: '', return_note: '' })
+const errors = reactive<{ full_name: string | null; phone: string | null; contract: string | null; leave: string | null }>({ full_name: null, phone: null, contract: null, leave: null })
 const busy = ref(false)
 
 const levelOptions = computed(() => [{ value: 0, label: t('students.noLevel') }, ...refs.levels.map((l) => ({ value: l.id, label: l.name }))])
@@ -32,21 +32,24 @@ const sourceOptions = computed(() => {
 const canStatus = computed(() => ['active', 'finished', 'left'].includes(props.student.status))
 const statusOptions = computed(() => (['active', 'finished', 'left'] as const).map((v) => ({ value: v, label: t(`students.status.${v}`) })))
 const age = computed(() => ageOf(form.birth_date || null))
+/** «Ушёл» chosen now: the methodist decides (with a reason); other staff only send the request. */
+const leaving = computed(() => canStatus.value && form.status === 'left' && props.student.status !== 'left')
 
 watch(open, (v) => {
   if (!v) return
   const s = props.student
   Object.assign(form, {
     full_name: s.full_name, birth_date: s.birth_date ?? '', phone: s.phone ?? '', level_id: s.level_id ?? 0,
-    source: s.source ?? '', notes: s.notes ?? '', contract_no: s.contract_no ?? '', contract_date: s.contract_date ?? '', status: s.status,
+    source: s.source ?? '', notes: s.notes ?? '', contract_no: s.contract_no ?? '', contract_date: s.contract_date ?? '', status: s.status, leave_reason: '', return_note: '',
   })
-  errors.full_name = errors.phone = errors.contract = null
+  errors.full_name = errors.phone = errors.contract = errors.leave = null
 })
 
 async function submit() {
   errors.full_name = form.full_name.trim().length < 2 ? t('students.form.nameRequired') : null
   errors.phone = errors.contract = null
-  if (errors.full_name) return
+  errors.leave = leaving.value && props.student.can_decide_leave && form.leave_reason.trim().length < 3 ? t('nv.leave.reasonRequired') : null
+  if (errors.full_name || errors.leave) return
   busy.value = true
   try {
     const s = await studentsApi.update(props.student.id, {
@@ -59,8 +62,9 @@ async function submit() {
       contract_no: form.contract_no.trim() || null,
       contract_date: form.contract_date || null,
       ...(canStatus.value && form.status !== props.student.status ? { status: form.status as 'active' | 'finished' | 'left' } : {}),
+      ...(leaving.value ? { leave_reason: form.leave_reason.trim() || null, return_note: form.return_note.trim() || null } : {}),
     })
-    toast.ok(t('students.edit.saved'))
+    toast.ok(leaving.value && !props.student.can_decide_leave ? t('nv.leave.sent') : t('students.edit.saved'))
     emit('done', s)
     open.value = false
   } catch (e) {
@@ -97,6 +101,11 @@ async function submit() {
       <UiField v-if="canStatus" :label="t('students.col.status')">
         <UiSelect v-model="form.status" :options="statusOptions" :label="t('students.col.status')" block />
       </UiField>
+      <template v-if="leaving">
+        <div v-if="!student.can_decide_leave" class="alert info"><span>{{ t('nv.leave.viaMethodist') }}</span></div>
+        <UiTextarea v-model="form.leave_reason" :label="student.can_decide_leave ? t('nv.leave.reason') : t('nv.leave.comment')" :rows="2" :maxlength="500" :error="errors.leave" />
+        <UiInput v-if="student.can_decide_leave" v-model="form.return_note" :label="t('nv.leave.returnNote')" :maxlength="500" />
+      </template>
       <UiTextarea v-model="form.notes" :label="t('students.form.notes')" :rows="3" :maxlength="4000" />
     </form>
     <template #footer="{ close }">

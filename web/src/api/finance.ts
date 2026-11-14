@@ -31,6 +31,10 @@ export interface PnlRow {
   branch_id: number
   branch: string
   revenue: Record<string, number>
+  /** All payments taken, before refunds */
+  receipts: number
+  /** Revenue per category with that category's refunds taken off */
+  net_by_category: Record<string, number>
   refunds: number
   net_revenue: number
   expenses: Record<string, number>
@@ -42,8 +46,10 @@ export interface PnlRow {
 
 export interface Pnl {
   period: string
+  date_from: string | null
+  date_to: string | null
   branches: PnlRow[]
-  total: { refunds: number; net_revenue: number; payroll: number; total_expenses: number; profit: number; margin: number | null }
+  total: { receipts: number; refunds: number; net_revenue: number; payroll: number; total_expenses: number; profit: number; margin: number | null }
 }
 
 export interface ExpenseCategory {
@@ -82,12 +88,12 @@ type BranchQ = { branch_id?: number | null }
 export const financeApi = {
   dashboard: (p: BranchQ & { period?: string } = {}) => http.get<Dashboard>(`/dashboard${qs(p)}`),
   ratings: (p: BranchQ & { period?: string } = {}) => http.get<Ratings>(`/payroll/ratings${qs(p)}`, { silent: true }),
-  pnl: (p: BranchQ & { period: string }) => http.get<Pnl>(`/finance/pnl${qs(p)}`),
+  pnl: (p: BranchQ & { period: string; date_from?: string | null; date_to?: string | null }) => http.get<Pnl>(`/finance/pnl${qs(p)}`),
   categories: () => http.get<ExpenseCategory[]>('/expense-categories'),
   createCategory: (body: { name: string; code?: string }) => http.post<ExpenseCategory>('/expense-categories', body, { silent: true }),
   renameCategory: (id: number, name: string) => http.patch<ExpenseCategory>(`/expense-categories/${id}`, { name }),
   archiveCategory: (id: number) => http.post<void>(`/expense-categories/${id}/archive`),
-  expenses: (p: BranchQ & { period?: string; category_id?: number | null; limit?: number; offset?: number }) =>
+  expenses: (p: BranchQ & { period?: string; date_from?: string | null; date_to?: string | null; category_id?: number | null; limit?: number; offset?: number }) =>
     http.get<Page<Expense>>(`/expenses${qs(p)}`),
   createExpense: (body: ExpenseIn) => http.post<Expense>('/expenses', body, { silent: true }),
   updateExpense: (id: number, body: ExpenseIn) => http.patch<Expense>(`/expenses/${id}`, body, { silent: true }),

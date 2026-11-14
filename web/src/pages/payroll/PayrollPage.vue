@@ -5,7 +5,8 @@ import { useRoute } from 'vue-router'
 import { UiAvatar, UiButton, UiCard, UiChip, UiDrawer, UiEmptyState, UiPeriod, UiPrompt, UiSkeleton, UiTabs } from '@/components/ui'
 import AdjustModal from '@/components/ops/AdjustModal.vue'
 import TimesheetGrid from '@/components/ops/TimesheetGrid.vue'
-import { payrollApi, type Accrual, type PayrollPerson, type PayrollSheet, type PeriodStatus } from '@/api/payroll'
+import PayBreakdownView from '@/components/ops/PayBreakdown.vue'
+import { payrollApi, type Accrual, type PayBreakdown, type PayrollPerson, type PayrollSheet, type PeriodStatus } from '@/api/payroll'
 import { ApiError } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
 import { useBranchStore } from '@/stores/branch'
@@ -34,7 +35,8 @@ const tabs = computed(() => [
 ])
 const period = ref(periodOf())
 const sheet = ref<PayrollSheet | null>(null)
-const my = ref<{ total: number; rates_total?: number; salary_total?: number; items: Accrual[] } | null>(null)
+const my = ref<{ total: number; rates_total?: number; salary_total?: number; items: Accrual[]; breakdown?: PayBreakdown } | null>(null)
+const breakdown = ref<PayBreakdown | null>(null)
 const detail = ref<PayrollPerson | null>(null)
 const accruals = ref<Accrual[] | null>(null)
 const adjustOpen = ref(false)
@@ -63,7 +65,10 @@ watch(() => [period.value, branch.filterId, tab.value], load)
 async function openPerson(p: PayrollPerson) {
   detail.value = p
   accruals.value = null
-  accruals.value = await payrollApi.accruals({ period: period.value, user_id: p.user_id, branch_id: branch.filterId }).catch(() => [])
+  breakdown.value = null
+  const q = { period: period.value, user_id: p.user_id, branch_id: branch.filterId }
+  payrollApi.breakdown(q).then((b) => (detail.value?.user_id === p.user_id ? (breakdown.value = b) : undefined), () => undefined)
+  accruals.value = await payrollApi.accruals(q).catch(() => [])
 }
 function adjust(userId: number | null) {
   adjustFor.value = userId
@@ -155,6 +160,7 @@ const signed = (n: number) => (n > 0 ? `+${money(n, loc.value)}` : n < 0 ? `−$
         <span v-if="my && my.salary_total" class="muted" style="font-size: 12px">{{ t('payroll.bySalary') }} {{ money(my.salary_total, loc) }} · {{ t('payroll.byRates') }} {{ money(my.rates_total ?? 0, loc) }}</span>
       </div>
     </div>
+    <PayBreakdownView v-if="my?.breakdown && my.items.length" :data="my.breakdown" style="margin-bottom: 16px; background: var(--surface)" />
     <UiCard :title="t('payroll.lines')" flush>
       <div v-if="!my" class="card-pad"><UiSkeleton :lines="5" /></div>
       <div v-else-if="my.items.length" class="card-b lr-list">
@@ -171,7 +177,8 @@ const signed = (n: number) => (n > 0 ? `+${money(n, loc.value)}` : n < 0 ? `−$
     <template v-if="detail">
       <div class="stack">
         <div class="muted">{{ detail.position ?? '' }} · {{ periodLabel(period, loc) }}</div>
-        <div class="kv-grid">
+        <PayBreakdownView v-if="breakdown" :data="breakdown" />
+        <div v-else class="kv-grid">
           <template v-for="(v, k) in detail.by_kind" :key="k"><span>{{ kindLabel(String(k)) }} <span class="muted">× {{ v.count }}</span></span><b class="num">{{ money(v.amount, loc) }}</b></template>
           <template v-if="detail.salary_total">
             <span class="muted">{{ t('payroll.bySalary') }}</span><b class="num">{{ money(detail.salary_total, loc) }}</b>

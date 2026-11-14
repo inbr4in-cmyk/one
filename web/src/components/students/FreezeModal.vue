@@ -15,6 +15,8 @@ const toast = useToastStore()
 const form = reactive({ from: '', to: '', reason: '' })
 const error = ref<string | null>(null)
 const busy = ref(false)
+/** A freeze can be entered late: up to a month back. */
+const minFrom = isoDate(addDays(schoolNow(), -31))
 
 const days = computed(() => {
   if (!form.from || !form.to) return 0
@@ -53,7 +55,7 @@ async function submit() {
     <form id="fr-form" class="stack" @submit.prevent="submit">
       <p class="muted m0">{{ t('students.freeze.text') }}</p>
       <div class="form-2">
-        <UiInput v-model="form.from" type="date" :label="t('students.freeze.from')" />
+        <UiInput v-model="form.from" type="date" :min="minFrom" :label="t('students.freeze.from')" />
         <UiInput v-model="form.to" type="date" :label="t('students.freeze.to')" :min="form.from" :hint="days > 0 ? t('students.freeze.days', { n: days }) : undefined" />
       </div>
       <UiTextarea v-model="form.reason" :label="t('common.reason')" :rows="2" />

@@ -13,6 +13,7 @@ import GuardianModal from '@/components/students/GuardianModal.vue'
 import RefundModal from '@/components/students/RefundModal.vue'
 import PaymentEditModal from '@/components/payments/PaymentEditModal.vue'
 import StudentEditModal from '@/components/students/StudentEditModal.vue'
+import LeaveDecisionModal from '@/components/students/LeaveDecisionModal.vue'
 import AttendanceCard from '@/components/students/AttendanceCard.vue'
 import StudentCoinsTab from '@/components/store/StudentCoinsTab.vue'
 import StudentBooksTab from '@/components/store/StudentBooksTab.vue'
@@ -48,7 +49,7 @@ const HIST_ICON: Record<HistoryItem['kind'], string> = { created: 'add', group: 
 const payments = ref<Payment[] | null>(null)
 const attempts = ref<Attempt[] | null>(null)
 const marks = ref<AttendanceMark[] | null>(null)
-const modal = ref<'pay' | 'package' | 'transfer' | 'freeze' | 'guardian' | 'unfreeze' | 'archive' | 'edit' | null>(null)
+const modal = ref<'pay' | 'package' | 'transfer' | 'freeze' | 'guardian' | 'unfreeze' | 'archive' | 'edit' | 'leave' | null>(null)
 const refundOf = ref<Payment | null>(null)
 const editPay = ref<Payment | null>(null)
 const editG = ref<Guardian | null>(null)
@@ -222,6 +223,22 @@ const canRefund = (p: Payment) => auth.can('payments.refund') && p.refunded < p.
 
     <Transition name="fade" mode="out-in">
       <div v-if="tab === 'overview'" key="o">
+        <div v-if="s.leave_request" class="alert">
+          <UiIcon name="alert" :size="24" />
+          <div class="grow">
+            <b>{{ t('nv.leave.pending') }}</b>
+            <span>{{ t('nv.leave.pendingBy', { date: dmy(s.leave_request.at, loc), by: s.leave_request.by ?? '—' }) }}</span>
+          </div>
+          <UiButton v-if="s.can_decide_leave" size="sm" variant="navy" @click="modal = 'leave'">{{ t('nv.leave.decide') }}</UiButton>
+        </div>
+        <div v-else-if="s.status === 'left'" class="alert info">
+          <UiIcon name="flag" :size="24" />
+          <div class="grow">
+            <b>{{ s.leave_reason ? t('nv.leave.reasonIs', { reason: s.leave_reason }) : t('nv.leave.noReason') }}</b>
+            <span v-if="s.return_note">{{ t('nv.leave.returnIs', { note: s.return_note }) }}</span>
+          </div>
+          <UiButton v-if="s.can_decide_leave" size="sm" @click="modal = 'leave'">{{ s.leave_reason ? t('common.edit') : t('nv.leave.addReason') }}</UiButton>
+        </div>
         <div v-if="left <= 3 && s.status === 'active'" class="alert" :class="{ red: left <= 0 }">
           <UiIcon name="alert" :size="24" />
           <div class="grow">
@@ -366,6 +383,7 @@ const canRefund = (p: Payment) => auth.can('payments.refund') && p.refunded < p.
     <TransferModal :open="modal === 'transfer'" :student="s" @update:open="(v) => !v && (modal = null)" @done="updated" />
     <FreezeModal :open="modal === 'freeze'" :student="s" @update:open="(v) => !v && (modal = null)" @done="updated" />
     <StudentEditModal :open="modal === 'edit'" :student="s" @update:open="(v) => !v && (modal = null)" @done="updated" />
+    <LeaveDecisionModal :open="modal === 'leave'" :student="s" @update:open="(v) => !v && (modal = null)" @done="updated" />
     <GuardianModal :open="modal === 'guardian'" :student="s" @update:open="(v) => !v && (modal = null)" @done="updated" />
     <RefundModal :payment="refundOf" @close="refundOf = null" @done="afterPayment" />
     <PaymentEditModal :payment="editPay" @close="editPay = null" @done="afterPayment" />

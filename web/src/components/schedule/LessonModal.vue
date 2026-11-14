@@ -34,6 +34,8 @@ const l = computed(() => props.lesson)
 /** «Удалить урок»: admins only, for a lesson created by mistake (no marks yet). */
 const canDelete = computed(() => auth.can('students.archive') && !l.value?.attendance_marked_at)
 const canEdit = computed(() => auth.can('schedule.edit') && l.value?.status === 'planned')
+/** A substitute can be set for any lesson that is not cancelled, also after it was held: the pay follows. */
+const canSub = computed(() => auth.can('schedule.edit') && !!l.value && l.value.status !== 'cancelled')
 const past = computed(() => (l.value ? new Date(l.value.ends_at) < new Date() : false))
 const roomOptions = computed(() => rooms.value.filter((r) => r.status === 'active').map((r) => ({ value: r.id, label: r.name })))
 const teacherOptions = computed(() => props.teachers.filter((x) => !l.value || !x.branchIds?.length || x.branchIds.includes(l.value.branch_id)).map((x) => ({ value: x.id, label: x.name })))
@@ -117,7 +119,8 @@ async function submit() {
         <div class="lsn-meta">
           <div><UiIcon name="cal" :size="18" /><b class="num">{{ dayLabel(l.starts_at, loc, { weekday: 'long', day: 'numeric', month: 'long' }) }}, {{ hm(l.starts_at, loc) }}–{{ hm(l.ends_at, loc) }}</b></div>
           <div><UiIcon name="door" :size="18" />{{ l.room_name ?? '—' }}</div>
-          <div><UiIcon name="user" :size="18" />{{ l.teacher_name ?? '—' }}<UiChip v-if="l.actual_teacher_id" tone="info" small>{{ t('schedule.sub') }}</UiChip></div>
+          <div><UiIcon name="user" :size="18" />{{ l.teacher_name ?? '—' }}<UiChip v-if="l.actual_teacher_id" tone="info" small>{{ t('schedule.sub') }}</UiChip>
+            <UiButton v-if="canSub && mode === 'view'" size="sm" icon="transfer" style="margin-left: auto" @click="start('sub')">{{ t('nv.sub.action') }}</UiButton></div>
           <div v-if="l.level_id"><UiIcon name="level" :size="18" /><LevelTag :id="l.level_id" full /></div>
           <div v-if="l.trials"><UiIcon name="flag" :size="18" />{{ t('schedule.trials', { n: l.trials }) }}</div>
         </div>
@@ -153,7 +156,6 @@ async function submit() {
         <UiButton v-if="canDelete" variant="ghost" danger icon="delete" @click="start('delete')">{{ t('schedule.delete') }}</UiButton>
         <span class="sp" />
         <template v-if="canEdit && !past">
-          <UiButton variant="ghost" @click="start('sub')">{{ t('schedule.substitute') }}</UiButton>
           <UiButton variant="ghost" @click="start('move')">{{ t('schedule.move') }}</UiButton>
           <UiButton variant="ghost" danger @click="start('cancel')">{{ t('schedule.cancel') }}</UiButton>
         </template>

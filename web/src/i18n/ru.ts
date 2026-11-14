@@ -3,6 +3,7 @@ import ops from './ops.ru'
 import tests from './tests.ru'
 import oldCrm from './oldcrm.ru'
 import dict from './dict.ru'
+import nov from './nov.ru'
 
 const ru = {
   ...modules,
@@ -10,6 +11,7 @@ const ru = {
   ...tests,
   ...oldCrm,
   ...dict,
+  ...nov,
   app: {
     name: 'One English',
     tagline: 'Innovation in Learning',

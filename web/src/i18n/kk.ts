@@ -4,6 +4,7 @@ import ops from './ops.kk'
 import tests from './tests.kk'
 import oldCrm from './oldcrm.kk'
 import dict from './dict.kk'
+import nov from './nov.kk'
 
 const kk: Messages = {
   ...modules,
@@ -11,6 +12,7 @@ const kk: Messages = {
   ...tests,
   ...oldCrm,
   ...dict,
+  ...nov,
   app: {
     name: 'One English',
     tagline: 'Innovation in Learning',

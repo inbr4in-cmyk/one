@@ -27,7 +27,7 @@ const levelOptions = computed(() => [{ value: 0, label: t('payments.pickLevel') 
 
 const PACKS = [8, 12, 24]
 const todayIso = () => isoDate(schoolNow())
-const form = reactive({ by: (props.mode ?? 'amount') as By, lessons: '12', amount: '', method: 'kaspi' as PaymentMethod, discount: '', promo: '', note: '', paid_on: todayIso() })
+const form = reactive({ by: (props.mode ?? 'amount') as By, lessons: '12', amount: '', method: 'kaspi' as PaymentMethod, discount: '', promo: '', note: '', paid_on: todayIso(), used: '' })
 const byOptions = computed(() => [
   { value: 'amount' as By, label: t('payments.byAmount') },
   { value: 'lessons' as By, label: t('payments.byLessons') },
@@ -61,11 +61,12 @@ const body = computed(() => ({
   promo_code: form.promo.trim() || null,
   note: form.note.trim() || null,
   paid_on: backdated.value ? form.paid_on : null,
+  used_lessons: byPackage.value && backdated.value ? Math.max(0, Math.floor(Number(form.used) || 0)) : 0,
 }))
 
 watch(open, (v) => {
   if (!v) return
-  Object.assign(form, { by: props.mode ?? 'amount', lessons: '12', amount: '', method: 'kaspi', discount: '', promo: '', note: '', paid_on: todayIso() })
+  Object.assign(form, { by: props.mode ?? 'amount', lessons: '12', amount: '', method: 'kaspi', discount: '', promo: '', note: '', paid_on: todayIso(), used: '' })
   levelPick.value = 0
   pkgId.value = 0
   quote.value = null
@@ -169,7 +170,10 @@ async function submit() {
         <UiInput v-if="auth.can('payments.discount') && !byAmount" v-model="form.discount" type="number" inputmode="numeric" :min="0" :label="t('payments.discount')" />
         <UiInput v-model="form.promo" :label="t('payments.promo')" autocomplete="off" />
       </div>
-      <UiInput v-if="canBackdate" v-model="form.paid_on" type="date" :max="todayIso()" :label="t('payments.paidOn')" />
+      <div class="form-2">
+        <UiInput v-if="canBackdate" v-model="form.paid_on" type="date" :max="todayIso()" :label="t('payments.paidOn')" />
+        <UiInput v-if="byPackage && backdated" v-model="form.used" type="number" inputmode="numeric" :min="0" :label="t('nv.usedLessons')" />
+      </div>
       <UiTextarea v-model="form.note" :label="t('payments.note')" :rows="2" />
 
       <div class="quote" aria-live="polite">

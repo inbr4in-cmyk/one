@@ -51,6 +51,13 @@ export interface Student extends StudentListItem {
   coins: number
   /** current subscription (абонемент), if any */
   subscription?: { name: string; valid_to: string } | null
+  /** «Ушёл» waits for the methodist's decision */
+  leave_request?: { at: string; by: string | null } | null
+  can_decide_leave?: boolean
+  leave_reason?: string | null
+  return_note?: string | null
+  /** money of the latest course payment that can still pay for a book */
+  book_from_payment?: number
   balance: { lessons_paid: number; lessons_done: number; lessons_left: number; money_balance: number; lesson_price: number }
   guardians: Guardian[]
   groups: StudentGroupRef[]
@@ -148,7 +155,9 @@ export const studentsApi = {
   list: (f: StudentFilters) => http.get<Page<StudentListItem>>(`/students${qs({ ...f })}`),
   get: (id: number) => http.get<Student>(`/students/${id}`),
   create: (body: StudentIn) => http.post<Student>('/students', body),
-  update: (id: number, body: Partial<StudentIn> & { status?: 'active' | 'finished' | 'left' }) => http.patch<Student>(`/students/${id}`, body),
+  update: (id: number, body: Partial<StudentIn> & { status?: 'active' | 'finished' | 'left'; leave_reason?: string | null; return_note?: string | null }) => http.patch<Student>(`/students/${id}`, body),
+  leaveDecision: (id: number, body: { left: boolean; reason: string; return_note?: string | null }) =>
+    http.post<Student>(`/students/${id}/leave-decision`, body, { silent: true }),
   addGuardian: (id: number, g: GuardianIn) => http.post<Student>(`/students/${id}/guardians`, g),
   editGuardian: (id: number, gid: number, g: { full_name?: string; phone?: string; relation?: string | null; notify?: boolean }) =>
     http.patch<Student>(`/students/${id}/guardians/${gid}`, g, { silent: true }),

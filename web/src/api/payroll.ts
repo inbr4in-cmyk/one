@@ -35,6 +35,9 @@ export interface Accrual {
   created_at: string
 }
 
+export interface PayLine { key: string; title: string; count: number; amount: number }
+export interface PayBreakdown { lessons: PayLine[]; lessons_total: number; lessons_count: number; kpi: PayLine; other: PayLine[]; total: number }
+
 export interface AdjustIn {
   user_id: number
   branch_id: number
@@ -63,7 +66,8 @@ export const payrollApi = {
     http.put<{ ok: boolean }>('/payroll/timesheet', body, { silent: true }),
   sheet: (p: { period: string; branch_id?: number | null }) => http.get<PayrollSheet>(`/payroll${qs(p)}`),
   accruals: (p: { period: string; user_id?: number; branch_id?: number | null }) => http.get<Accrual[]>(`/payroll/accruals${qs(p)}`),
-  my: (period: string) => http.get<{ period: string; total: number; rates_total: number; salary_total: number; items: Accrual[] }>(`/payroll/my${qs({ period })}`),
+  my: (period: string) => http.get<{ period: string; total: number; rates_total: number; salary_total: number; items: Accrual[]; breakdown?: PayBreakdown }>(`/payroll/my${qs({ period })}`),
+  breakdown: (p: { period: string; user_id: number; branch_id?: number | null }) => http.get<PayBreakdown>(`/payroll/breakdown${qs(p)}`, { silent: true }),
   adjust: (body: AdjustIn) => http.post<Accrual>('/payroll/adjust', body, { silent: true }),
   approve: (period: string, branch_id: number) => http.post<{ status: PeriodStatus; total: number }>('/payroll/periods/approve', { period, branch_id }, { silent: true }),
   paid: (period: string, branch_id: number) => http.post<{ status: PeriodStatus }>('/payroll/periods/paid', { period, branch_id }, { silent: true }),

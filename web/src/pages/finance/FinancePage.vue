@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { UiButton, UiCard, UiChip, UiEmptyState, UiPager, UiPeriod, UiPrompt, UiSelect, UiSkeleton, UiTable, UiTabs, type TableColumn } from '@/components/ui'
+import { UiButton, UiCard, UiChip, UiEmptyState, UiInput, UiPager, UiPeriod, UiPrompt, UiSelect, UiSkeleton, UiTable, UiTabs, type TableColumn } from '@/components/ui'
 import HBars from '@/components/charts/HBars.vue'
 import ExpenseDrawer from '@/components/ops/ExpenseDrawer.vue'
 import { financeApi, type Expense, type ExpenseCategory, type Pnl } from '@/api/finance'
@@ -9,8 +9,8 @@ import { useAuthStore } from '@/stores/auth'
 import { useBranchStore } from '@/stores/branch'
 import { useRefsStore } from '@/stores/refs'
 import { useToastStore } from '@/stores/toast'
-import { dmy, money } from '@/utils/dates'
-import { compactMoney, num, periodLabel, periodOf } from '@/utils/period'
+import { dmy, money, todayIso } from '@/utils/dates'
+import { num, periodLabel, periodOf } from '@/utils/period'
 import type { Locale } from '@/i18n'
 
 const LIMIT = 30
@@ -40,19 +40,26 @@ const exporting = ref<'payments' | 'pnl' | null>(null)
 const tabs = computed(() => [{ value: 'pnl' as const, label: t('fin.tab.pnl') }, { value: 'expenses' as const, label: t('fin.tab.expenses'), count: total.value || undefined }])
 const catName = (id: number) => categories.value.find((c) => c.id === id)?.name ?? `#${id}`
 const catOptions = computed(() => [{ value: 0, label: t('fin.allCategories') }, ...categories.value.map((c) => ({ value: c.id, label: c.name }))])
-const cm = (n: number) => compactMoney(n, loc.value)
-const unit = (u: 'mln' | 'k' | '') => (u ? t(`dash.unit.${u}`) : '')
+/** Any range of days instead of the month: filled dates win over the month stepper. */
+const range = ref({ from: '', to: '' })
+const ranged = computed(() => Boolean(range.value.from || range.value.to))
+const dates = computed(() => ({ date_from: range.value.from || null, date_to: range.value.to || null }))
+const rangeLabel = computed(() => {
+  const { from, to } = range.value
+  if (from && to) return `${dmy(from, loc.value)} – ${dmy(to, loc.value)}`
+  return from ? t('nv.fin.since', { d: dmy(from, loc.value) }) : t('nv.fin.until', { d: dmy(to, loc.value) })
+})
 
 async function loadPnl() {
   pnl.value = null
-  pnl.value = await financeApi.pnl({ period: period.value, branch_id: branch.filterId }).catch(() => null)
+  pnl.value = await financeApi.pnl({ period: period.value, branch_id: branch.filterId, ...dates.value }).catch(() => null)
 }
 let seq = 0
 async function loadExpenses() {
   const my = ++seq
   expLoading.value = true
   try {
-    const page = await financeApi.expenses({ period: period.value, branch_id: branch.filterId, category_id: catFilter.value || null, limit: LIMIT, offset: offset.value })
+    const page = await financeApi.expenses({ period: period.value, branch_id: branch.filterId, ...dates.value, category_id: catFilter.value || null, limit: LIMIT, offset: offset.value })
     if (my !== seq) return
     expenses.value = page.items
     total.value = page.total
@@ -70,11 +77,10 @@ onMounted(async () => {
   categories.value = await financeApi.categories().catch(() => [])
   reload()
 })
-watch(() => [period.value, branch.filterId, catFilter.value], reload)
+watch(() => [period.value, branch.filterId, catFilter.value, range.value.from, range.value.to], reload)
 watch(offset, loadExpenses)
 
 const totals = computed(() => pnl.value?.total)
-const revenue = computed(() => pnl.value?.branches.reduce((a, r) => a + Object.values(r.revenue).reduce((x, y) => x + y, 0), 0) ?? 0)
 const byCategory = computed(() => {
   const acc = new Map<string, number>()
   for (const r of pnl.value?.branches ?? []) for (const [k, v] of Object.entries(r.expenses)) acc.set(k, (acc.get(k) ?? 0) + v)
@@ -85,7 +91,7 @@ const byCategory = computed(() => {
 })
 const revenueCats = computed(() => {
   const acc = new Map<string, number>()
-  for (const r of pnl.value?.branches ?? []) for (const [k, v] of Object.entries(r.revenue)) acc.set(k, (acc.get(k) ?? 0) + v)
+  for (const r of pnl.value?.branches ?? []) for (const [k, v] of Object.entries(r.net_by_category ?? r.revenue)) acc.set(k, (acc.get(k) ?? 0) + v)
   return [...acc.entries()].map(([k, v]) => ({ key: k, label: te(`fin.revCat.${k}`) ? t(`fin.revCat.${k}`) : k, value: v })).sort((a, b) => b.value - a.value)
 })
 const marginLabel = (m: number | null) => (m === null ? '—' : `${num(m, loc.value, 1)}%`)
@@ -135,9 +141,9 @@ async function exportFile(kind: 'payments' | 'pnl') {
 
 <template>
   <div class="ph">
-    <div><h1>{{ t('fin.title') }}</h1><p>{{ periodLabel(period, loc) }} · {{ branch.filterId === null ? t('branch.all') : branch.current.name }}</p></div>
+    <div><h1>{{ t('fin.title') }}</h1><p>{{ ranged ? rangeLabel : periodLabel(period, loc) }} · {{ branch.filterId === null ? t('branch.all') : branch.current.name }}</p></div>
     <span class="sp" />
-    <template v-if="auth.can('finance.export')">
+    <template v-if="auth.can('finance.export') && !ranged">
       <UiButton icon="dl" :loading="exporting === 'pnl'" @click="exportFile('pnl')">{{ t('fin.exportPnl') }}</UiButton>
       <UiButton icon="dl" :loading="exporting === 'payments'" @click="exportFile('payments')">{{ t('fin.exportPayments') }}</UiButton>
     </template>
@@ -145,18 +151,21 @@ async function exportFile(kind: 'payments' | 'pnl') {
   </div>
 
   <div class="toolbar">
-    <UiPeriod v-model="period" />
+    <UiPeriod v-if="!ranged" v-model="period" />
+    <UiInput v-model="range.from" type="date" :max="range.to || todayIso()" class="tb-date" :aria-label="t('payments.from')" />
+    <span class="muted">—</span>
+    <UiInput v-model="range.to" type="date" :min="range.from" :max="todayIso()" class="tb-date" :aria-label="t('payments.to')" />
+    <UiButton v-if="ranged" size="sm" variant="ghost" icon="x" @click="range = { from: '', to: '' }">{{ t('nv.fin.byMonth') }}</UiButton>
     <UiTabs v-model="tab" :items="tabs" :label="t('fin.title')" class="tb-tabs" />
   </div>
 
   <template v-if="tab === 'pnl'">
-    <div class="grid fin-k stagger">
-      <template v-if="!totals"><div v-for="i in 4" :key="i" class="card kpi"><UiSkeleton :lines="3" /></div></template>
+    <div class="grid fin-k stagger" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr))">
+      <template v-if="!totals"><div v-for="i in 3" :key="i" class="card kpi"><UiSkeleton :lines="3" /></div></template>
       <template v-else>
-        <div class="card kpi"><div class="k">{{ t('fin.revenue') }}</div><div class="v num">{{ cm(totals.net_revenue).v }}<small> {{ unit(cm(totals.net_revenue).unit) }} ₸</small></div><span class="muted" style="font-size: 12px">{{ totals.refunds ? t('fin.refundsNote', { sum: money(totals.refunds, loc) }) : t('fin.noRefunds') }}</span></div>
-        <div class="card kpi"><div class="k">{{ t('fin.expenses') }}</div><div class="v num">{{ cm(totals.total_expenses).v }}<small> {{ unit(cm(totals.total_expenses).unit) }} ₸</small></div><span class="muted" style="font-size: 12px">{{ t('fin.payrollNote', { sum: money(totals.payroll, loc) }) }}</span></div>
-        <div class="card kpi"><div class="k">{{ t('fin.profit') }}</div><div class="v num" :class="{ redc: totals.profit < 0 }">{{ cm(totals.profit).v }}<small> {{ unit(cm(totals.profit).unit) }} ₸</small></div><span class="muted" style="font-size: 12px">{{ t('fin.margin', { m: marginLabel(totals.margin) }) }}</span></div>
-        <div class="card kpi"><div class="k">{{ t('fin.gross') }}</div><div class="v num">{{ cm(revenue).v }}<small> {{ unit(cm(revenue).unit) }} ₸</small></div><span class="muted" style="font-size: 12px">{{ t('fin.grossNote') }}</span></div>
+        <div class="card kpi"><div class="k">{{ t('fin.gross') }}</div><div class="v num">{{ money(totals.receipts, loc) }}</div><span class="muted" style="font-size: 12px">{{ totals.refunds ? t('nv.fin.refundsNet', { refunds: money(totals.refunds, loc), net: money(totals.net_revenue, loc) }) : t('fin.noRefunds') }}</span></div>
+        <div class="card kpi"><div class="k">{{ t('fin.expenses') }}</div><div class="v num">{{ money(totals.total_expenses, loc) }}</div><span class="muted" style="font-size: 12px">{{ t('fin.payrollNote', { sum: money(totals.payroll, loc) }) }}</span></div>
+        <div class="card kpi"><div class="k">{{ t('fin.profit') }}</div><div class="v num" :class="{ redc: totals.profit < 0 }">{{ money(totals.profit, loc) }}</div><span class="muted" style="font-size: 12px">{{ t('fin.margin', { m: marginLabel(totals.margin) }) }}</span></div>
       </template>
     </div>
 
@@ -165,7 +174,7 @@ async function exportFile(kind: 'payments' | 'pnl') {
         <div v-if="!pnl" class="card-pad"><UiSkeleton :lines="4" /></div>
         <div v-else class="scroll-x">
           <table class="tbl" style="min-width: 560px">
-            <thead><tr><th>{{ t('branch.label') }}</th><th class="r">{{ t('fin.revenue') }}</th><th class="r">{{ t('fin.payroll') }}</th><th class="r">{{ t('fin.expenses') }}</th><th class="r">{{ t('fin.profit') }}</th><th class="r">{{ t('fin.marginCol') }}</th></tr></thead>
+            <thead><tr><th>{{ t('branch.label') }}</th><th class="r">{{ t('nv.fin.netRevenue') }}</th><th class="r">{{ t('fin.payroll') }}</th><th class="r">{{ t('fin.expenses') }}</th><th class="r">{{ t('fin.profit') }}</th><th class="r">{{ t('fin.marginCol') }}</th></tr></thead>
             <tbody class="num">
               <tr v-for="r in pnl.branches" :key="r.branch_id">
                 <td><b>{{ r.branch }}</b><div v-if="r.refunds" class="muted" style="font-size: 12px">{{ t('fin.refundsNote', { sum: money(r.refunds, loc) }) }}</div></td>
@@ -188,7 +197,7 @@ async function exportFile(kind: 'payments' | 'pnl') {
         </div>
       </UiCard>
       <div class="grid" style="align-content: start; grid-template-columns: minmax(0, 1fr)">
-        <UiCard :title="t('fin.revenueByCat')">
+        <UiCard :title="t('nv.fin.netByCat')">
           <UiSkeleton v-if="!pnl" :lines="3" />
           <HBars v-else-if="revenueCats.length" :items="revenueCats" :format="(v) => money(v, loc)" />
           <p v-else class="muted m0">{{ t('fin.noRevenue') }}</p>

@@ -57,6 +57,11 @@ watch(target, async (id) => {
 
 async function submit() {
   if (!target.value || !preview.value) return
+  if (reason.value.trim().length < 3) {
+    error.value = t('nv.transferReason')
+    return
+  }
+  error.value = null
   busy.value = true
   try {
     const s = await studentsApi.transfer(props.student.id, target.value, reason.value.trim() || null)
@@ -99,8 +104,8 @@ async function submit() {
         <div v-if="!preview.same_price" class="alert info"><UiIcon name="alert" /><div class="grow"><span>{{ t('students.transfer.recalc') }}</span></div></div>
         <div v-if="preview.book_hint" class="alert"><UiIcon name="book" /><div class="grow"><span>{{ preview.book_hint }}</span></div></div>
       </div>
+      <UiTextarea v-model="reason" :label="t('students.transfer.reason')" :rows="2" :maxlength="255" required />
       <p v-if="error" class="form-err m0" role="alert">{{ error }}</p>
-      <UiTextarea v-model="reason" :label="t('students.transfer.reason')" :rows="2" />
     </form>
     <template #footer="{ close }">
       <UiButton @click="close">{{ t('common.cancel') }}</UiButton>

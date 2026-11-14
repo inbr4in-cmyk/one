@@ -18,6 +18,8 @@ export interface PaymentIn {
   package_id?: number | null
   /** ISO date; only for owners and branch admins (finance.edit) entering an earlier payment */
   paid_on?: string | null
+  /** a subscription bought earlier: lessons of it already used before the school moved to the site */
+  used_lessons?: number
 }
 
 export interface Quote {
@@ -56,7 +58,8 @@ export const paymentsApi = {
   quote: (body: PaymentIn) => http.post<Quote>('/payments/quote', body),
   /** `key`: Idempotency-Key, one per payment form, so a retried or double submit records one payment (QA C-1). */
   create: (body: PaymentIn, key: string) => http.post<Payment>('/payments', body, { headers: { 'Idempotency-Key': key } }),
-  edit: (id: number, body: { method?: PaymentMethod; note?: string | null; paid_on?: string }) => http.patch<Payment>(`/payments/${id}`, body),
+  edit: (id: number, body: { method?: PaymentMethod; note?: string | null; paid_on?: string; lessons?: number; level_id?: number; amount?: number }) =>
+    http.patch<Payment>(`/payments/${id}`, body, { silent: true }),
   refundable: (id: number) => http.get<{ lessons_max: number; amount_max: number; amount_left: number }>(`/payments/${id}/refundable`, { silent: true }),
   list: (p: { student_id?: number; branch_id?: number | null; date_from?: string; date_to?: string; limit?: number; offset?: number }) =>
     http.get<Page<Payment>>(`/payments${qs(p)}`),

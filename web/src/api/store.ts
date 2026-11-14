@@ -109,7 +109,7 @@ export const booksApi = {
   confirm: (id: number) => http.post<{ qty: number }>(`/books/transfers/${id}/confirm`),
   writeoff: (body: { branch_id: number; book_id: number; qty: number; reason: string }) =>
     http.post<{ qty: number }>('/books/writeoff', body, { silent: true }),
-  sell: (body: { student_id: number; book_id: number; method: PaymentMethod; qty: number }) =>
+  sell: (body: { student_id: number; book_id: number; method: PaymentMethod; qty: number; from_payment?: boolean }) =>
     http.post<{ payment_id: number; amount: number; left_in_stock: number }>('/books/sell', body, { silent: true }),
   ofStudent: (id: number) => http.get<StudentBooks>(`/students/${id}/books`, { silent: true }),
   report: (p: { period: string; branch_id?: number | null }) => http.get<BooksReport>(`/books/report${qs(p)}`),
