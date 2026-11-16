@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { nowMs } from '@/utils/clock'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { UiAvatar, UiButton, UiCard, UiChip, UiEmptyState, UiIcon, UiInput, UiModal, UiPager, UiPrompt, UiSkeleton, UiTabs } from '@/components/ui'
@@ -119,7 +120,7 @@ async function confirmAction() {
 const isOwner = computed(() => !!auth.user?.roles.includes('owner'))
 const dayLabelText = computed(() => (day.value === isoDate(schoolNow()) ? t('staff.today') : day.value))
 const hours = (r: CheckinRow) => {
-  const end = r.out_at ? new Date(r.out_at) : new Date()
+  const end = r.out_at ? new Date(r.out_at) : new Date(nowMs())
   const h = (end.getTime() - new Date(r.in_at).getTime()) / 3600000
   return `${Math.floor(h)}:${String(Math.round((h % 1) * 60)).padStart(2, '0')}`
 }

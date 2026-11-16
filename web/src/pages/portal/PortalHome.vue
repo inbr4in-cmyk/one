@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { nowMs } from '@/utils/clock'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { UiCard, UiChip, UiIcon, UiSkeleton } from '@/components/ui'
@@ -26,7 +27,7 @@ watch(() => child.value?.id, async (id) => {
     child.value?.blocked ? Promise.reject(new Error('blocked')) : portalApi.homework(id),
     child.value?.blocked ? Promise.reject(new Error('blocked')) : portalApi.attendance(id),
   ])
-  lessons.value = l.status === 'fulfilled' ? l.value.filter((x) => new Date(x.ends_at) > new Date()).slice(0, 3) : []
+  lessons.value = l.status === 'fulfilled' ? l.value.filter((x) => new Date(x.ends_at).getTime() > nowMs()).slice(0, 3) : []
   homework.value = h.status === 'fulfilled' ? h.value.filter((x) => x.status === 'assigned') : []
   rate.value = a.status === 'fulfilled' ? a.value.month.rate : null
 }, { immediate: true })

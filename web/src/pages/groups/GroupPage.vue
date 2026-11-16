@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { nowMs } from '@/utils/clock'
 import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
@@ -69,7 +70,7 @@ async function load() {
 watch(id, load, { immediate: true })
 
 const upcoming = computed(() => {
-  const now = Date.now()
+  const now = nowMs()
   return (lessons.value ?? []).filter((l) => new Date(l.ends_at).getTime() >= now - 86400000).slice(0, 8)
 })
 
@@ -178,7 +179,7 @@ async function archive() {
 
 const STATUS_TONE = { recruiting: 'info', active: 'ok', finished: undefined } as const
 const roomName = (rid: number) => rooms.value.find((r) => r.id === rid)?.name ?? `#${rid}`
-const lessonState = (l: Lesson) => (l.status === 'cancelled' ? 'red' : l.attendance_marked_at ? 'ok' : new Date(l.starts_at) <= new Date() ? 'warn' : undefined)
+const lessonState = (l: Lesson) => (l.status === 'cancelled' ? 'red' : l.attendance_marked_at ? 'ok' : new Date(l.starts_at).getTime() <= nowMs() ? 'warn' : undefined)
 </script>
 
 <template>

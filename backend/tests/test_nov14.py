@@ -270,8 +270,17 @@ async def test_transfer_and_leave_with_past_date(db, client, owner_h):
     assert st.status == "left" and local(st.left_at).date() == left and st.return_note.startswith("с ")
     t = await db.scalar(select(Task).where(Task.auto_kind == "return", Task.link_id == sid))
     assert t is not None and local(t.due_at).date() == d + timedelta(days=30)
-    assert await db.scalar(select(TaskAssignee.user_id).where(TaskAssignee.task_id == t.id)) == admin.id
+    # from the day after leaving the student is not in the group; a lesson before that still lists them
+    await db.refresh(new)
+    assert new.left_on == left + timedelta(days=1)
+    g2d = {**g, "id": g2["id"]}
+    before, after = await _past_lesson(db, g2d, teacher, room, 2, minutes=200), await _past_lesson(db, g2d, teacher, room, 0, minutes=5)
+    in_roster = lambda r: any(x["student_id"] == sid for x in r.json()["rows"])
+    assert in_roster(await client.get(f"/api/lessons/{before.id}/attendance", headers=owner_h))
+    assert not in_roster(await client.get(f"/api/lessons/{after.id}/attendance", headers=owner_h))
     r = await client.post(f"/api/students/{sid}/leave-decision", headers=owner_h, json={"left": False, "reason": "вернулся"})
     assert r.status_code == 200, r.text
     await db.refresh(t)
     assert t.status == "done"
+    await db.refresh(new)
+    assert new.left_on is None  # «остаётся»: back in the group

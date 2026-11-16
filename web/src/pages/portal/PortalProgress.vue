@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { nowMs } from '@/utils/clock'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { UiCard, UiEmptyState, UiIcon, UiSkeleton, UiTabs } from '@/components/ui'
@@ -31,7 +32,7 @@ watch(() => portal.child?.id, async (id) => {
 }, { immediate: true })
 
 const ST = { present: '✓', late: '~', absent: '×', excused: '○' } as const
-const canRate = (m: PortalMark) => (m.status === 'present' || m.status === 'late') && Date.now() - new Date(m.at).getTime() < 7 * 86400000
+const canRate = (m: PortalMark) => (m.status === 'present' || m.status === 'late') && nowMs() - new Date(m.at).getTime() < 7 * 86400000
 const shown = (m: PortalMark) => (hover.value?.id === m.lesson_id ? hover.value.n : m.my_rating ?? 0)
 
 async function rate(m: PortalMark, stars: number) {

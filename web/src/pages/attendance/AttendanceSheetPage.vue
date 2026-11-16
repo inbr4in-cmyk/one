@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { nowMs } from '@/utils/clock'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
@@ -49,8 +50,8 @@ const error = ref<string | null>(null)
 const notFound = ref(false)
 const busy = ref(false)
 const dirty = ref(false)
-const now = ref(Date.now())
-const tick = setInterval(() => (now.value = Date.now()), 30_000)
+const now = ref(nowMs())
+const tick = setInterval(() => (now.value = nowMs()), 30_000)
 onBeforeUnmount(() => clearInterval(tick))
 
 const id = computed(() => Number(route.params.lessonId))

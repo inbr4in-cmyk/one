@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { nowMs } from '@/utils/clock'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { UiCard, UiChip, UiEmptyState, UiSkeleton } from '@/components/ui'
@@ -30,7 +31,7 @@ const days = computed(() => {
 })
 const today = isoDate(schoolNow())
 const range = computed(() => `${dayLabel(start.value, loc.value, { day: 'numeric', month: 'short' })} — ${dayLabel(addDays(start.value, DAYS - 1), loc.value, { day: 'numeric', month: 'short' })}`)
-const isPast = (l: PortalLesson) => new Date(l.ends_at) < new Date()
+const isPast = (l: PortalLesson) => new Date(l.ends_at).getTime() < nowMs()
 </script>
 
 <template>

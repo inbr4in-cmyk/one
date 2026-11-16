@@ -265,6 +265,7 @@ async def _mark_left(db: DB, s: Student, actor: Actor, reason: str, note: str | 
         s.left_at = at_local(left_on, time(12)) if left_on and left_on < d else now()
         if left_on and left_on < d:
             returned = await _refund_absences(db, s, left_on, actor, "ушёл")
+        await retention.leave_groups(db, s, local(s.left_at).date())
     if return_on:
         import re
         note = re.sub(r"^с \d{2}\.\d{2}\.\d{4}(, )?", "", note or "") or None
@@ -315,6 +316,8 @@ async def update_student(student_id: int, body: StudentPatch, db: DB, actor: Act
                 await write_audit(db, actor_id=actor.id, action="student.leave_request", entity="student", entity_id=s.id,
                                   branch_id=s.branch_id, ip=actor.ip, note=reason)
     elif data.get("status") in (StudentStatus.ACTIVE, StudentStatus.FINISHED) and s.status == StudentStatus.LEFT:
+        if data["status"] == StudentStatus.ACTIVE and s.left_at:
+            await retention.rejoin_groups(db, s, local(s.left_at).date())
         s.left_at = None
         await retention.close_tasks(db, s.id, "return")
     if "contract_no" in data:
@@ -357,6 +360,8 @@ async def leave_decision(student_id: int, body: LeaveDecisionIn, db: DB, actor: 
         text = await _mark_left(db, s, actor, reason, note, body.left_on, body.return_on)
     else:
         if s.status == StudentStatus.LEFT:
+            if s.left_at:
+                await retention.rejoin_groups(db, s, local(s.left_at).date())
             s.status, s.left_at = StudentStatus.ACTIVE, None
         s.leave_reason = s.return_note = None
         text = f"Остаётся учиться. {reason}"

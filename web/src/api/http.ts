@@ -1,3 +1,4 @@
+import { syncClock } from '@/utils/clock'
 /**
  * HTTP client for the One English API.
  *
@@ -193,13 +194,15 @@ async function send(method: string, path: string, opts: RequestOptions): Promise
   const isForm = opts.body instanceof FormData
   if (opts.body !== undefined && !isForm) headers['Content-Type'] = 'application/json'
   if (opts.auth !== false && accessToken) headers.Authorization = `Bearer ${accessToken}`
-  return fetch(`${BASE}${path}`, {
+  const res = await fetch(`${BASE}${path}`, {
     method,
     headers,
     credentials: 'include',
     body: opts.body === undefined ? undefined : isForm ? (opts.body as FormData) : JSON.stringify(opts.body),
     signal: opts.signal,
   })
+  syncClock(res.headers.get('date'))
+  return res
 }
 
 export async function request<T>(method: string, path: string, opts: RequestOptions = {}): Promise<T> {

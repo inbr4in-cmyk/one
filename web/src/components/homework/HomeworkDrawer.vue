@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { nowMs } from '@/utils/clock'
 import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { UiAvatar, UiButton, UiChip, UiDrawer, UiEmptyState, UiIcon, UiPrompt, UiSegmented, UiSkeleton, UiTextarea } from '@/components/ui'
@@ -41,7 +42,7 @@ const counts = computed(() => {
 const filters = computed(() => (['all', 'submitted', 'assigned', 'checked'] as const).map((f) => ({ value: f, label: `${t(`hw.f.${f}`)} ${counts.value[f]}` })))
 const shown = computed(() => (rows.value ?? []).filter((r) => filter.value === 'all' || r.status === filter.value || justChecked.value.has(r.student_id)))
 const grades = computed(() => [{ value: 0, label: '—' }, ...[1, 2, 3, 4, 5].map((n) => ({ value: n, label: String(n) }))])
-const overdue = computed(() => !!props.homework?.due_at && new Date(props.homework.due_at) < new Date())
+const overdue = computed(() => !!props.homework?.due_at && new Date(props.homework.due_at).getTime() < nowMs())
 
 async function load() {
   const h = props.homework

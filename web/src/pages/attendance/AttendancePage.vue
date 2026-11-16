@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { nowMs } from '@/utils/clock'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
@@ -33,7 +34,7 @@ async function load() {
 watch([date, () => branch.filterId], load)
 onMounted(load)
 
-const now = Date.now()
+const now = nowMs()
 const live = (l: Lesson) => new Date(l.starts_at).getTime() - 15 * 60000 <= now && now < new Date(l.ends_at).getTime()
 const state = (l: Lesson) => {
   if (l.attendance_marked_at) return { tone: 'ok' as const, text: t('attendance.marked') }

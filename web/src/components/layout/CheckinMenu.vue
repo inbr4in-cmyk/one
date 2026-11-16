@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { nowMs } from '@/utils/clock'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { UiButton, UiIcon, UiSelect, UiTextarea } from '@/components/ui'
@@ -79,7 +80,7 @@ async function sendReport() {
   reportBusy.value = true
   try {
     await workApi.report(report.value.trim())
-    saved.value = { text: report.value.trim(), at: new Date().toISOString() }
+    saved.value = { text: report.value.trim(), at: new Date(nowMs()).toISOString() }
     writePref(draftKey(), null)
     toast.ok(t('checkin.reportSaved'))
   } catch (e) {

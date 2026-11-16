@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { nowMs } from '@/utils/clock'
 import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { UiButton, UiChip, UiEmptyState, UiIcon, UiSkeleton, UiTextarea } from '@/components/ui'
@@ -31,7 +32,7 @@ watch(() => portal.child?.id, async (id) => {
 
 const TONE: Record<string, 'ok' | 'warn' | 'info' | 'red' | undefined> = { assigned: 'warn', submitted: 'info', checked: 'ok' }
 const statusLabel = (s: string) => (['assigned', 'submitted', 'checked'].includes(s) ? t(`portal.hw.${s}`) : s)
-const overdue = (h: PortalHomework) => h.status === 'assigned' && !!h.due_at && new Date(h.due_at) < new Date()
+const overdue = (h: PortalHomework) => h.status === 'assigned' && !!h.due_at && new Date(h.due_at).getTime() < nowMs()
 
 function start(h: PortalHomework) {
   openId.value = h.id

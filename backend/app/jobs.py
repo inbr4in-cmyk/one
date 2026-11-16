@@ -178,6 +178,20 @@ async def leave_followups(db: AsyncSession) -> int:
     return n
 
 
+async def close_left_members(db: AsyncSession) -> int:
+    """One-off, run by hand after the update: students already «ушёл» who are still listed in a group leave it the
+    day after they left, so they are no longer on the attendance list. Marked attendance is not touched. Safe to repeat."""
+    from app.services import retention
+
+    n = 0
+    for s in await db.scalars(select(Student).where(
+            Student.archived_at.is_(None), Student.status == StudentStatus.LEFT,
+            exists().where(GroupMember.student_id == Student.id, GroupMember.left_on.is_(None)))):
+        n += await retention.leave_groups(db, s, local(s.left_at).date() if s.left_at else today())
+    await db.commit()
+    return n
+
+
 async def block_nonpayers(db: AsyncSession) -> int:
     """Rules: no payment within N days after lessons ran out → portal access is blocked until payment."""
     days = int(await setting(db, "nonpayment_block_days"))
@@ -334,4 +348,5 @@ if __name__ == "__main__":
     if cmd == "loop":
         asyncio.run(loop())
     else:
-        print(asyncio.run(_run({"minutely": minutely, "nightly": nightly, "leave-followups": leave_followups}[cmd])))
+        print(asyncio.run(_run({"minutely": minutely, "nightly": nightly, "leave-followups": leave_followups,
+                                 "close-left-members": close_left_members}[cmd])))

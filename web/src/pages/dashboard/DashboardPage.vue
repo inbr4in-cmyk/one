@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { nowMs } from '@/utils/clock'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { UiButton, UiCard, UiChip, UiEmptyState, UiIcon, UiPeriod, UiSkeleton } from '@/components/ui'
@@ -93,7 +94,7 @@ const sources = computed(() => Object.entries(data.value?.leads_by_source ?? {})
   .map(([k, v]) => ({ key: k, label: srcLabel(k), value: v, icon: SRC[k]?.icon ?? 'user', iconCls: SRC[k]?.cls ?? 'call' }))
   .sort((a, b) => b.value - a.value))
 const upcoming = computed(() => {
-  const now = Date.now()
+  const now = nowMs()
   return (lessons.value ?? []).filter((l) => l.status !== 'cancelled' && new Date(l.ends_at).getTime() > now).slice(0, 5)
 })
 const teacherRows = computed(() => (ratings.value?.teachers ?? []).slice(0, 6))

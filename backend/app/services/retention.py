@@ -1,6 +1,6 @@
 """Keeping students: follow-up tasks for the methodist (two absences in a row, a student who wants to leave)."""
 
-from datetime import timedelta
+from datetime import date, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -83,3 +83,36 @@ async def close_tasks(db: AsyncSession, student_id: int, auto_kind: str) -> None
     for t in await db.scalars(select(Task).where(
             Task.auto_kind == auto_kind, Task.link_type == "student", Task.link_id == student_id, Task.status.in_(OPEN))):
         t.status, t.done_at = TaskStatus.DONE, now()
+
+
+async def leave_groups(db: AsyncSession, s: Student, last_day: date) -> int:
+    """A student who left is in their groups up to and including `last_day`: from the next day they are not on the
+    attendance list. Attendance already marked stays as it is."""
+    from app.models import Group, GroupMember
+    from app.services import chats
+
+    n = 0
+    for m in await db.scalars(select(GroupMember).where(GroupMember.student_id == s.id, GroupMember.left_on.is_(None))):
+        m.left_on = max(last_day + timedelta(days=1), m.joined_on)
+        g = await db.get(Group, m.group_id)
+        if g is not None:
+            await chats.sync_student_in_group_chat(db, g, s, False)
+        n += 1
+    return n
+
+
+async def rejoin_groups(db: AsyncSession, s: Student, last_day: date) -> int:
+    """The student did not leave after all: the groups closed by leave_groups for that day are theirs again."""
+    from app.models import Group, GroupMember
+    from app.services import chats
+
+    n = 0
+    for m in await db.scalars(select(GroupMember).where(
+            GroupMember.student_id == s.id, GroupMember.left_on == last_day + timedelta(days=1))):
+        g = await db.get(Group, m.group_id)
+        if g is None or g.archived_at is not None:
+            continue
+        m.left_on = None
+        await chats.sync_student_in_group_chat(db, g, s, True)
+        n += 1
+    return n

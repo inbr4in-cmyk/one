@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { nowMs } from '@/utils/clock'
 import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { UiButton, UiChip, UiField, UiIcon, UiInput, UiModal, UiSelect, UiTextarea } from '@/components/ui'
@@ -36,7 +37,7 @@ const canDelete = computed(() => auth.can('students.archive') && !l.value?.atten
 const canEdit = computed(() => auth.can('schedule.edit') && l.value?.status === 'planned')
 /** A substitute can be set for any lesson that is not cancelled, also after it was held: the pay follows. */
 const canSub = computed(() => auth.can('schedule.edit') && !!l.value && l.value.status !== 'cancelled')
-const past = computed(() => (l.value ? new Date(l.value.ends_at) < new Date() : false))
+const past = computed(() => (l.value ? new Date(l.value.ends_at).getTime() < nowMs() : false))
 const roomOptions = computed(() => rooms.value.filter((r) => r.status === 'active').map((r) => ({ value: r.id, label: r.name })))
 const teacherOptions = computed(() => props.teachers.filter((x) => !l.value || !x.branchIds?.length || x.branchIds.includes(l.value.branch_id)).map((x) => ({ value: x.id, label: x.name })))
 const hhmm = (iso: string) => {

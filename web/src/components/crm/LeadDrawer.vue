@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { nowMs } from '@/utils/clock'
 import { useSourceLabel } from '@/composables/useSourceLabel'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -110,7 +111,7 @@ async function openTrial() {
   trialOpen.value = !trialOpen.value
   if (!trialOpen.value || !lead.value) return
   lessons.value = null
-  const now = new Date()
+  const now = new Date(nowMs())
   const day = schoolNow()
   const list = await academicsApi.lessons({ from: isoDate(day), to: isoDate(addDays(day, 14)), branch_id: lead.value.branch_id }).catch(() => [])
   const lv = lead.value.level_id

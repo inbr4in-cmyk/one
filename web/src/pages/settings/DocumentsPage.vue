@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { nowMs } from '@/utils/clock'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { UiButton, UiCard, UiChip, UiEmptyState, UiField, UiInput, UiModal, UiSegmented, UiSkeleton, UiTextarea } from '@/components/ui'
@@ -65,7 +66,7 @@ async function publish() {
   busy.value = true
   try {
     const today = isoDate(schoolNow())
-    const at = form.effective_from === today ? new Date().toISOString() : schoolIso(form.effective_from)
+    const at = form.effective_from === today ? new Date(nowMs()).toISOString() : schoolIso(form.effective_from)
     await docsApi.publish({ kind: form.kind, version: form.version.trim(), title: form.title.trim(), body: form.body.trim(), effective_from: at })
     toast.ok(t('docs.published'))
     publishing.value = false

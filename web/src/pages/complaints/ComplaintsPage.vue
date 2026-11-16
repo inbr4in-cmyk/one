@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { nowMs } from '@/utils/clock'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
@@ -67,7 +68,7 @@ async function act(a: 'acknowledge' | 'investigate' | 'answer' | 'close') {
   error.value = null
   try {
     const next = await complaintsApi.act(c.id, a, a === 'answer' ? answer.value.trim() : undefined)
-    items.value = items.value?.map((x) => (x.id === c.id ? { ...x, ...next, overdue: OPEN.includes(next.status) && new Date(next.due_at) < new Date() } : x)) ?? null
+    items.value = items.value?.map((x) => (x.id === c.id ? { ...x, ...next, overdue: OPEN.includes(next.status) && new Date(next.due_at).getTime() < nowMs() } : x)) ?? null
     toast.ok(t(`complaints.done.${a}`))
   } catch (e) {
     error.value = apiErr(e) ?? t('errors.generic')

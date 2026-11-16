@@ -1,4 +1,5 @@
 import { intlLocale, type Locale } from '@/i18n'
+import { nowMs } from './clock'
 
 const pad = (n: number) => String(n).padStart(2, '0')
 
@@ -18,8 +19,8 @@ export function toSchool(x: string | number | Date): Date {
   return new Date(u.getUTCFullYear(), u.getUTCMonth(), u.getUTCDate(), u.getUTCHours(), u.getUTCMinutes(), u.getUTCSeconds(), u.getUTCMilliseconds())
 }
 
-/** Current school wall-clock time. */
-export const schoolNow = (): Date => toSchool(Date.now())
+/** Current school wall-clock time, by the server clock (not the device's). */
+export const schoolNow = (): Date => toSchool(nowMs())
 
 /** Today's school date, YYYY-MM-DD. */
 export const todayIso = (): string => isoDate(schoolNow())
