@@ -155,8 +155,8 @@ export const studentsApi = {
   list: (f: StudentFilters) => http.get<Page<StudentListItem>>(`/students${qs({ ...f })}`),
   get: (id: number) => http.get<Student>(`/students/${id}`),
   create: (body: StudentIn) => http.post<Student>('/students', body),
-  update: (id: number, body: Partial<StudentIn> & { status?: 'active' | 'finished' | 'left'; leave_reason?: string | null; return_note?: string | null }) => http.patch<Student>(`/students/${id}`, body),
-  leaveDecision: (id: number, body: { left: boolean; reason: string; return_note?: string | null }) =>
+  update: (id: number, body: Partial<StudentIn> & { status?: 'active' | 'finished' | 'left'; leave_reason?: string | null; return_note?: string | null; left_on?: string | null; return_on?: string | null }) => http.patch<Student>(`/students/${id}`, body),
+  leaveDecision: (id: number, body: { left: boolean; reason: string; return_note?: string | null; left_on?: string | null; return_on?: string | null }) =>
     http.post<Student>(`/students/${id}/leave-decision`, body, { silent: true }),
   addGuardian: (id: number, g: GuardianIn) => http.post<Student>(`/students/${id}/guardians`, g),
   editGuardian: (id: number, gid: number, g: { full_name?: string; phone?: string; relation?: string | null; notify?: boolean }) =>
@@ -166,8 +166,8 @@ export const studentsApi = {
   ledger: (id: number) => http.get<LedgerEntry[]>(`/students/${id}/ledger`),
   transferPreview: (id: number, to_group_id: number) =>
     http.post<TransferPreview>(`/students/${id}/transfer/preview`, { to_group_id }),
-  transfer: (id: number, to_group_id: number, reason: string | null) =>
-    http.post<Student>(`/students/${id}/transfer`, { to_group_id, reason }),
+  transfer: (id: number, to_group_id: number, reason: string | null, on?: string | null) =>
+    http.post<Student>(`/students/${id}/transfer`, { to_group_id, reason, on: on || null }),
   freeze: (id: number, starts_on: string, ends_on: string, reason: string | null) =>
     http.post<Student>(`/students/${id}/freeze`, { starts_on, ends_on, reason }),
   unfreeze: (id: number) => http.post<Student>(`/students/${id}/unfreeze`),

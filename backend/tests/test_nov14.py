@@ -227,3 +227,51 @@ async def test_pay_breakdown_and_finance_by_dates(db, client, owner_h):
     assert row["net_by_category"] == {"course": 30000} and row["payroll"] == 3700
     y = (today() - timedelta(days=1)).isoformat()
     assert (await client.get(f"/api/finance/pnl?date_from={y}&date_to={y}", headers=owner_h)).json()["total"]["receipts"] == 0
+
+
+# ---------- 16.11: dated transfer, dated leave, task to bring a student back ----------
+async def test_transfer_and_leave_with_past_date(db, client, owner_h):
+    from app.models import GroupMember
+    from app.services.clock import local
+
+    bid, teacher, room, g = await _setup(db, client, owner_h)
+    admin = await make_staff(db, "branch_admin", [YANGI], "+77030000711")
+    s = await _student(db, client, owner_h, bid)
+    sid, d = s["id"], today()
+    await client.post(f"/api/groups/{g['id']}/members", headers=owner_h, json={"student_id": sid})
+    m = await db.scalar(select(GroupMember).where(GroupMember.student_id == sid))
+    m.joined_on = d - timedelta(days=20)
+    await client.post("/api/payments", headers=owner_h, json={"student_id": sid, "lessons": 12, "method": "cash"})
+    lesson = await _past_lesson(db, g, teacher, room, 2)
+    await client.put(f"/api/lessons/{lesson.id}/attendance", headers=owner_h,
+                     json={"marks": [{"student_id": sid, "status": "absent"}], "reason": "отметка"})
+    st = await db.get(Student, sid)
+    await db.refresh(st)
+    assert st.lessons_left == 11
+    g2 = (await client.post("/api/groups", headers=owner_h, json={
+        "name": "ELE-2", "branch_id": bid, "level_id": g["level_id"], "teacher_id": teacher.id, "room_id": room.id})).json()
+    body = {"to_group_id": g2["id"], "reason": "расписание"}
+    assert (await client.post(f"/api/students/{sid}/transfer", headers=owner_h, json={**body, "on": str(d + timedelta(days=1))})).status_code == 400
+    assert (await client.post(f"/api/students/{sid}/transfer", headers=owner_h, json={**body, "on": str(d - timedelta(days=25))})).status_code == 400
+    on = d - timedelta(days=3)
+    r = await client.post(f"/api/students/{sid}/transfer", headers=owner_h, json={**body, "on": str(on)})
+    assert r.status_code == 200, r.text
+    await db.refresh(m)
+    new = await db.scalar(select(GroupMember).where(GroupMember.student_id == sid, GroupMember.left_on.is_(None)))
+    assert m.left_on == on and new.group_id == g2["id"] and new.joined_on == on
+    await db.refresh(st)
+    assert st.lessons_left == 12  # the absence charged in the old group after the move came back
+
+    left = d - timedelta(days=2)
+    r = await client.post(f"/api/students/{sid}/leave-decision", headers=owner_h, json={
+        "left": True, "reason": "переезд", "return_note": "после каникул", "left_on": str(left), "return_on": str(d + timedelta(days=30))})
+    assert r.status_code == 200, r.text
+    await db.refresh(st)
+    assert st.status == "left" and local(st.left_at).date() == left and st.return_note.startswith("с ")
+    t = await db.scalar(select(Task).where(Task.auto_kind == "return", Task.link_id == sid))
+    assert t is not None and local(t.due_at).date() == d + timedelta(days=30)
+    assert await db.scalar(select(TaskAssignee.user_id).where(TaskAssignee.task_id == t.id)) == admin.id
+    r = await client.post(f"/api/students/{sid}/leave-decision", headers=owner_h, json={"left": False, "reason": "вернулся"})
+    assert r.status_code == 200, r.text
+    await db.refresh(t)
+    assert t.status == "done"

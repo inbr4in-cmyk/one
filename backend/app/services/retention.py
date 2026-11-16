@@ -35,6 +35,13 @@ async def methodists(db: AsyncSession, branch_id: int | None) -> list[int]:
     return [uid for uid, _ in await _with_role(db, Role.code == "owner")]
 
 
+async def branch_admins(db: AsyncSession, branch_id: int | None) -> list[int]:
+    """Branch admins of the student's branch; without one, the owner."""
+    people = await _with_role(db, Role.code == "branch_admin")
+    mine = [uid for uid, br in people if branch_id in br]
+    return mine or [uid for uid, _ in await _with_role(db, Role.code == "owner")]
+
+
 async def is_methodist(db: AsyncSession, user_id: int) -> bool:
     return bool(await db.scalar(
         select(UserRole.id).join(Role, Role.id == UserRole.role_id)
@@ -52,15 +59,17 @@ async def open_task(db: AsyncSession, student_id: int, auto_kind: str) -> Task |
 
 
 async def follow_up(db: AsyncSession, s: Student, auto_kind: str, title: str, description: str | None,
-                    creator_id: int, hours: int = 24) -> Task | None:
-    """One open task of a kind per student: a second trigger does not make a duplicate."""
+                    creator_id: int, hours: int = 24, who: list[int] | None = None, due_at=None) -> Task | None:
+    """One open task of a kind per student: a second trigger does not make a duplicate.
+    Goes to the methodists unless `who` names other people."""
     if await open_task(db, s.id, auto_kind):
         return None
-    who = await methodists(db, s.branch_id)
+    if who is None:
+        who = await methodists(db, s.branch_id)
     if not who:
         return None
     t = Task(title=title[:255], description=description, creator_id=creator_id, branch_id=s.branch_id, priority="high",
-             due_at=now() + timedelta(hours=hours), status=TaskStatus.NEW, link_type="student", link_id=s.id,
+             due_at=due_at or now() + timedelta(hours=hours), status=TaskStatus.NEW, link_type="student", link_id=s.id,
              auto_kind=auto_kind)
     db.add(t)
     await db.flush()

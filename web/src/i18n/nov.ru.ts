@@ -5,6 +5,7 @@ export default {
     payAmount: 'Сумма, ₸',
     usedLessons: 'Уже пройдено уроков',
     transferReason: 'Укажите причину перевода',
+    transferOn: 'Дата перевода',
     sub: { action: 'Заменить' },
     leave: {
       reasonRequired: 'Укажите причину ухода',
@@ -12,7 +13,9 @@ export default {
       viaMethodist: 'Статус «Ушёл» ставит методист после разговора с учеником.',
       reason: 'Причина ухода',
       comment: 'Комментарий для методиста',
-      returnNote: 'Когда может вернуться',
+      returnNote: 'Комментарий о возврате',
+      leftOn: 'Дата ухода',
+      returnOn: 'Планирует вернуться',
       left: 'Ушёл',
       stay: 'Остаётся',
       stayRequired: 'Напишите, о чём договорились',

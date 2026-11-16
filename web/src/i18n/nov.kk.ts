@@ -4,6 +4,7 @@ export default {
     payAmount: 'Сома, ₸',
     usedLessons: 'Өтіп қойған сабақтар',
     transferReason: 'Ауыстыру себебін жазыңыз',
+    transferOn: 'Ауыстыру күні',
     sub: { action: 'Ауыстыру' },
     leave: {
       reasonRequired: 'Кету себебін жазыңыз',
@@ -12,6 +13,8 @@ export default {
       reason: 'Кету себебі',
       comment: 'Әдіскерге түсініктеме',
       returnNote: 'Қашан қайта оралуы мүмкін',
+      leftOn: 'Кеткен күні',
+      returnOn: 'Қайта оралу күні',
       left: 'Кетті',
       stay: 'Қалады',
       stayRequired: 'Не туралы келіскеніңізді жазыңыз',

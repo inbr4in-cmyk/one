@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { UiButton, UiField, UiIcon, UiModal, UiSelect, UiSkeleton, UiTextarea } from '@/components/ui'
+import { UiButton, UiField, UiIcon, UiInput, UiModal, UiSelect, UiSkeleton, UiTextarea } from '@/components/ui'
 import { studentsApi, type Student, type TransferPreview } from '@/api/students'
 import { academicsApi, type Group } from '@/api/academics'
 import { ApiError } from '@/api/http'
 import { useToastStore } from '@/stores/toast'
-import { money } from '@/utils/dates'
+import { addDays, isoDate, money, schoolNow, todayIso } from '@/utils/dates'
 import type { Locale } from '@/i18n'
 
 const props = defineProps<{ student: Student }>()
@@ -19,6 +19,9 @@ const loc = computed(() => locale.value as Locale)
 const groups = ref<Group[]>([])
 const target = ref(0)
 const reason = ref('')
+/** The day the student actually moved: today or up to a month back. */
+const on = ref(todayIso())
+const minOn = computed(() => isoDate(addDays(schoolNow(), -31)))
 const preview = ref<TransferPreview | null>(null)
 const error = ref<string | null>(null)
 const loadingPreview = ref(false)
@@ -36,6 +39,7 @@ watch(open, async (v) => {
   if (!v) return
   target.value = 0
   reason.value = ''
+  on.value = todayIso()
   preview.value = null
   error.value = null
   groups.value = await academicsApi.groups({ branch_id: props.student.branch_id }).catch(() => [])
@@ -64,7 +68,7 @@ async function submit() {
   error.value = null
   busy.value = true
   try {
-    const s = await studentsApi.transfer(props.student.id, target.value, reason.value.trim() || null)
+    const s = await studentsApi.transfer(props.student.id, target.value, reason.value.trim() || null, on.value)
     toast.ok(t('students.transfer.done', { group: preview.value.to_group }))
     emit('done', s)
     open.value = false
@@ -104,6 +108,7 @@ async function submit() {
         <div v-if="!preview.same_price" class="alert info"><UiIcon name="alert" /><div class="grow"><span>{{ t('students.transfer.recalc') }}</span></div></div>
         <div v-if="preview.book_hint" class="alert"><UiIcon name="book" /><div class="grow"><span>{{ preview.book_hint }}</span></div></div>
       </div>
+      <UiInput v-model="on" type="date" :min="minOn" :max="todayIso()" :label="t('nv.transferOn')" />
       <UiTextarea v-model="reason" :label="t('students.transfer.reason')" :rows="2" :maxlength="255" required />
       <p v-if="error" class="form-err m0" role="alert">{{ error }}</p>
     </form>

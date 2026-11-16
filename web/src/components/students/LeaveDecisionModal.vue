@@ -5,6 +5,7 @@ import { UiButton, UiField, UiInput, UiModal, UiSegmented, UiTextarea } from '@/
 import { studentsApi, type Student } from '@/api/students'
 import { ApiError } from '@/api/http'
 import { useToastStore } from '@/stores/toast'
+import { todayIso } from '@/utils/dates'
 
 /** The methodist's decision after talking to the student: really left (reason, when they may return) or stays. */
 const props = defineProps<{ student: Student }>()
@@ -12,14 +13,15 @@ const open = defineModel<boolean>('open', { required: true })
 const emit = defineEmits<{ done: [Student] }>()
 const { t } = useI18n()
 const toast = useToastStore()
-const form = reactive({ left: 'left' as 'left' | 'stay', reason: '', return_note: '' })
+const form = reactive({ left: 'left' as 'left' | 'stay', reason: '', return_note: '', left_on: '', return_on: '' })
 const error = ref<string | null>(null)
 const busy = ref(false)
 const options = computed(() => [{ value: 'left' as const, label: t('nv.leave.left') }, { value: 'stay' as const, label: t('nv.leave.stay') }])
 
 watch(open, (v) => {
   if (!v) return
-  Object.assign(form, { left: 'left', reason: props.student.leave_reason ?? '', return_note: props.student.return_note ?? '' })
+  Object.assign(form, { left: 'left', reason: props.student.leave_reason ?? '', return_note: props.student.return_note ?? '',
+    left_on: props.student.status === 'left' ? '' : todayIso(), return_on: '' })
   error.value = null
 })
 
@@ -33,6 +35,7 @@ async function submit() {
   try {
     const s = await studentsApi.leaveDecision(props.student.id, {
       left: form.left === 'left', reason: form.reason.trim(), return_note: form.left === 'left' ? form.return_note.trim() || null : null,
+      ...(form.left === 'left' ? { left_on: form.left_on || null, return_on: form.return_on || null } : {}),
     })
     toast.ok(t('common.saved'))
     emit('done', s)
@@ -53,7 +56,13 @@ async function submit() {
         <UiSegmented v-model="form.left" :options="options" :label="t('nv.leave.decision')" size="sm" />
       </UiField>
       <UiTextarea v-model="form.reason" :label="form.left === 'left' ? t('nv.leave.reason') : t('nv.leave.stayNote')" :rows="3" :maxlength="500" autofocus />
-      <UiInput v-if="form.left === 'left'" v-model="form.return_note" :label="t('nv.leave.returnNote')" :maxlength="500" />
+      <template v-if="form.left === 'left'">
+        <UiInput v-model="form.left_on" type="date" :max="todayIso()" :label="t('nv.leave.leftOn')" />
+        <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px">
+          <UiInput v-model="form.return_on" type="date" :min="todayIso()" :label="t('nv.leave.returnOn')" />
+          <UiInput v-model="form.return_note" :label="t('nv.leave.returnNote')" :maxlength="500" />
+        </div>
+      </template>
       <p v-if="error" class="form-err m0" role="alert">{{ error }}</p>
     </form>
     <template #footer="{ close }">

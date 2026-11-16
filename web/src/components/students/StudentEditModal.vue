@@ -7,7 +7,7 @@ import { useSourcesStore } from '@/stores/sources'
 import { ApiError } from '@/api/http'
 import { useRefsStore } from '@/stores/refs'
 import { useToastStore } from '@/stores/toast'
-import { ageOf } from '@/utils/dates'
+import { ageOf, todayIso } from '@/utils/dates'
 
 /** Edit the student's card. Shown only with students.edit (managers, admins); teachers don't have it. */
 const props = defineProps<{ student: Student }>()
@@ -16,7 +16,7 @@ const emit = defineEmits<{ done: [Student] }>()
 const { t } = useI18n()
 const refs = useRefsStore()
 const toast = useToastStore()
-const form = reactive({ full_name: '', birth_date: '', phone: '', level_id: 0, source: '', notes: '', contract_no: '', contract_date: '', status: '', leave_reason: '', return_note: '' })
+const form = reactive({ full_name: '', birth_date: '', phone: '', level_id: 0, source: '', notes: '', contract_no: '', contract_date: '', status: '', leave_reason: '', return_note: '', left_on: '', return_on: '' })
 const errors = reactive<{ full_name: string | null; phone: string | null; contract: string | null; leave: string | null }>({ full_name: null, phone: null, contract: null, leave: null })
 const busy = ref(false)
 
@@ -40,7 +40,7 @@ watch(open, (v) => {
   const s = props.student
   Object.assign(form, {
     full_name: s.full_name, birth_date: s.birth_date ?? '', phone: s.phone ?? '', level_id: s.level_id ?? 0,
-    source: s.source ?? '', notes: s.notes ?? '', contract_no: s.contract_no ?? '', contract_date: s.contract_date ?? '', status: s.status, leave_reason: '', return_note: '',
+    source: s.source ?? '', notes: s.notes ?? '', contract_no: s.contract_no ?? '', contract_date: s.contract_date ?? '', status: s.status, leave_reason: '', return_note: '', left_on: todayIso(), return_on: '',
   })
   errors.full_name = errors.phone = errors.contract = errors.leave = null
 })
@@ -62,7 +62,7 @@ async function submit() {
       contract_no: form.contract_no.trim() || null,
       contract_date: form.contract_date || null,
       ...(canStatus.value && form.status !== props.student.status ? { status: form.status as 'active' | 'finished' | 'left' } : {}),
-      ...(leaving.value ? { leave_reason: form.leave_reason.trim() || null, return_note: form.return_note.trim() || null } : {}),
+      ...(leaving.value ? { leave_reason: form.leave_reason.trim() || null, return_note: form.return_note.trim() || null, left_on: form.left_on || null, return_on: form.return_on || null } : {}),
     })
     toast.ok(leaving.value && !props.student.can_decide_leave ? t('nv.leave.sent') : t('students.edit.saved'))
     emit('done', s)
@@ -104,7 +104,11 @@ async function submit() {
       <template v-if="leaving">
         <div v-if="!student.can_decide_leave" class="alert info"><span>{{ t('nv.leave.viaMethodist') }}</span></div>
         <UiTextarea v-model="form.leave_reason" :label="student.can_decide_leave ? t('nv.leave.reason') : t('nv.leave.comment')" :rows="2" :maxlength="500" :error="errors.leave" />
-        <UiInput v-if="student.can_decide_leave" v-model="form.return_note" :label="t('nv.leave.returnNote')" :maxlength="500" />
+        <template v-if="student.can_decide_leave">
+          <UiInput v-model="form.left_on" type="date" :max="todayIso()" :label="t('nv.leave.leftOn')" />
+          <UiInput v-model="form.return_on" type="date" :min="todayIso()" :label="t('nv.leave.returnOn')" />
+          <UiInput v-model="form.return_note" :label="t('nv.leave.returnNote')" :maxlength="500" />
+        </template>
       </template>
       <UiTextarea v-model="form.notes" :label="t('students.form.notes')" :rows="3" :maxlength="4000" />
     </form>

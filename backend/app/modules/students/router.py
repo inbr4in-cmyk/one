@@ -230,6 +230,60 @@ async def get_student(student_id: int, db: DB, actor: Actor = require("students"
     return await card(db, await get_student_scoped(db, actor, student_id), actor)
 
 
+LEAVE_BACKDATE_DAYS = 92
+TRANSFER_BACKDATE_DAYS = 31
+
+
+async def _refund_absences(db: DB, s: Student, since: date, actor: Actor, why: str, group_id: int | None = None) -> int:
+    """A date entered late: lessons charged for not coming on or after `since` go back to the balance."""
+    q = (select(Attendance, Lesson.starts_at).join(Lesson, Lesson.id == Attendance.lesson_id)
+         .where(Attendance.student_id == s.id, Attendance.charged.is_(True), Attendance.status.not_in(("present", "late")),
+                Lesson.starts_at >= at_local(since, time(0))))
+    if group_id is not None:
+        q = q.where(Lesson.group_id == group_id)
+    rows = (await db.execute(q)).all()
+    for a, at in rows:
+        await bal.apply(db, s, "lesson", lessons=1, price=s.balance_lesson_price, ref=("attendance", a.lesson_id),
+                        actor_id=actor.id, counts_as_done=True, note=f"Возврат урока {local(at):%d.%m}: {why}")
+        a.charged = False
+    return len(rows)
+
+
+async def _mark_left(db: DB, s: Student, actor: Actor, reason: str, note: str | None, left_on: date | None,
+                     return_on: date | None) -> str:
+    """«Ушёл» with its day (may be in the past) and, when the student may come back, a task for the branch admin."""
+    d = today()
+    if left_on and left_on > d:
+        raise bad_request("Дата ухода не может быть в будущем")
+    if left_on and left_on < d - timedelta(days=LEAVE_BACKDATE_DAYS):
+        raise bad_request(f"Дата ухода не раньше чем {LEAVE_BACKDATE_DAYS} дней назад")
+    if return_on and return_on <= (left_on or d):
+        raise bad_request("Дата возврата должна быть позже даты ухода")
+    returned = 0
+    if s.status != StudentStatus.LEFT or left_on:  # a student already «ушёл» may get the real day later
+        s.status = StudentStatus.LEFT
+        s.left_at = at_local(left_on, time(12)) if left_on and left_on < d else now()
+        if left_on and left_on < d:
+            returned = await _refund_absences(db, s, left_on, actor, "ушёл")
+    if return_on:
+        import re
+        note = re.sub(r"^с \d{2}\.\d{2}\.\d{4}(, )?", "", note or "") or None
+        note = f"с {return_on:%d.%m.%Y}" + (f", {note}" if note else "")
+    s.leave_reason, s.return_note = reason, note
+    s.leave_requested_at = s.leave_requested_by = None
+    await retention.close_tasks(db, s.id, "leave")
+    if note:
+        await retention.close_tasks(db, s.id, "return")
+        await retention.follow_up(
+            db, s, "return", f"Вернуть ученика: {s.full_name}",
+            f"Ученик ушёл {local(s.left_at):%d.%m.%Y}. Причина: {reason}\nКогда может вернуться: {note}\n"
+            "Свяжитесь с учеником или родителями и верните его на учёбу.", actor.id,
+            who=await retention.branch_admins(db, s.branch_id),
+            due_at=at_local(return_on, time(10)) if return_on else now() + timedelta(days=7))
+    return (f"Ушёл {local(s.left_at):%d.%m.%Y}. Причина: {reason}" + (f". Возврат: {note}" if note else "")
+            + (f". Возвращено уроков: {returned}" if returned else ""))
+
+
 @router.patch("/{student_id}", response_model=StudentOut)
 async def update_student(student_id: int, body: StudentPatch, db: DB, actor: Actor = require("students", "edit")) -> StudentOut:
     s = await get_student_scoped(db, actor, student_id, "students", "edit")
@@ -240,15 +294,14 @@ async def update_student(student_id: int, body: StudentPatch, db: DB, actor: Act
         data.pop("status")  # a freeze is ended through «Снять заморозку»
     reason = (data.pop("leave_reason", None) or "").strip() or None
     return_note = (data.pop("return_note", None) or "").strip() or None
+    left_on, return_on = data.pop("left_on", None), data.pop("return_on", None)
     leave_note = None
     if data.get("status") == StudentStatus.LEFT and s.status != StudentStatus.LEFT:
         if await _can_decide_leave(db, actor):
             if not reason:
                 raise bad_request("Укажите причину ухода")
-            s.left_at, s.leave_reason, s.return_note = now(), reason, return_note
-            s.leave_requested_at = s.leave_requested_by = None
-            await retention.close_tasks(db, s.id, "leave")
-            leave_note = f"Причина: {reason}" + (f". Возврат: {return_note}" if return_note else "")
+            data.pop("status")
+            leave_note = await _mark_left(db, s, actor, reason, return_note, left_on, return_on)
         else:
             # Not saved as «ушёл» yet: the methodist talks to the student first and decides.
             data.pop("status")
@@ -263,6 +316,7 @@ async def update_student(student_id: int, body: StudentPatch, db: DB, actor: Act
                                   branch_id=s.branch_id, ip=actor.ip, note=reason)
     elif data.get("status") in (StudentStatus.ACTIVE, StudentStatus.FINISHED) and s.status == StudentStatus.LEFT:
         s.left_at = None
+        await retention.close_tasks(db, s.id, "return")
     if "contract_no" in data:
         data["contract_no"] = (data["contract_no"] or "").strip() or None
         await _contract_free(db, data["contract_no"], s.id)
@@ -300,17 +354,15 @@ async def leave_decision(student_id: int, body: LeaveDecisionIn, db: DB, actor: 
     if body.left:
         if s.status == StudentStatus.FROZEN:
             raise bad_request("Сначала снимите заморозку")
-        if s.status != StudentStatus.LEFT:
-            s.status, s.left_at = StudentStatus.LEFT, now()
-        s.leave_reason, s.return_note = reason, note
-        text = f"Ушёл. Причина: {reason}" + (f". Возврат: {note}" if note else "")
+        text = await _mark_left(db, s, actor, reason, note, body.left_on, body.return_on)
     else:
         if s.status == StudentStatus.LEFT:
             s.status, s.left_at = StudentStatus.ACTIVE, None
         s.leave_reason = s.return_note = None
         text = f"Остаётся учиться. {reason}"
-    s.leave_requested_at = s.leave_requested_by = None
-    await retention.close_tasks(db, s.id, "leave")
+        s.leave_requested_at = s.leave_requested_by = None
+        await retention.close_tasks(db, s.id, "leave")
+        await retention.close_tasks(db, s.id, "return")
     await write_audit(db, actor_id=actor.id, action="student.leave_decision", entity="student", entity_id=s.id,
                       branch_id=s.branch_id, ip=actor.ip, after={"left": body.left}, note=text)
     await db.commit()
@@ -562,11 +614,19 @@ async def transfer(student_id: int, body: TransferIn, db: DB, actor: Actor = req
     reason = body.need_reason()
     to_group, current, old_level, new_level, calc = await _transfer_ctx(db, s, body.to_group_id)
     actor.ensure_branch("students", "transfer", to_group.branch_id)
+    d = today()
+    on = body.on or d
+    if on > d:
+        raise bad_request("Дата перевода не может быть в будущем")
+    if on < d - timedelta(days=TRANSFER_BACKDATE_DAYS):
+        raise bad_request(f"Дата перевода не раньше чем {TRANSFER_BACKDATE_DAYS} дней назад")
+    if current and on < current[0].joined_on:
+        raise bad_request(f"Ученик в группе {current[1].name} с {current[0].joined_on:%d.%m.%Y}: дата перевода не может быть раньше")
     members = await db.scalar(select(func.count()).select_from(GroupMember).where(GroupMember.group_id == to_group.id,
                                                                                     GroupMember.left_on.is_(None)))
     if members >= to_group.capacity:
         raise conflict(f"В группе {to_group.name} нет мест ({members}/{to_group.capacity})")
-    t = Transfer(student_id=s.id, at=now(), from_group_id=current[1].id if current else None, to_group_id=to_group.id,
+    t = Transfer(student_id=s.id, at=now() if on == d else at_local(on, time(12)), from_group_id=current[1].id if current else None, to_group_id=to_group.id,
                  from_level_id=s.level_id, to_level_id=new_level.id, lessons_before=calc.lessons_before,
                  money_before=calc.money_before, lessons_after=calc.lessons_after, money_after=calc.money_after,
                  actor_id=actor.id, reason=reason)
@@ -577,10 +637,13 @@ async def transfer(student_id: int, body: TransferIn, db: DB, actor: Actor = req
                         ref=("transfer", t.id), actor_id=actor.id, note=f"Перевод: {calc.value} тг по старой цене")
         await bal.apply(db, s, "transfer", lessons=calc.lessons_after, money=calc.money_after, price=calc.new_price,
                         ref=("transfer", t.id), actor_id=actor.id, note=f"Перевод: {calc.lessons_after} ур. × {calc.new_price}")
+    returned = 0
     if current:
-        current[0].left_on = today()
+        current[0].left_on = on
+        if on < d:  # absences charged in the old group after the real day of the move come back
+            returned = await _refund_absences(db, s, on, actor, "перевод", current[1].id)
         await chats.sync_student_in_group_chat(db, current[1], s, False)
-    db.add(GroupMember(group_id=to_group.id, student_id=s.id, joined_on=today()))
+    db.add(GroupMember(group_id=to_group.id, student_id=s.id, joined_on=on))
     await chats.sync_student_in_group_chat(db, to_group, s, True)
     s.level_id = new_level.id
     if to_group.branch_id != s.branch_id:
@@ -588,7 +651,8 @@ async def transfer(student_id: int, body: TransferIn, db: DB, actor: Actor = req
     await write_audit(db, actor_id=actor.id, action="student.transfer", entity="student", entity_id=s.id,
                       branch_id=s.branch_id, ip=actor.ip,
                       before={"group": current[1].name if current else None, "lessons": calc.lessons_before, "money": calc.money_before},
-                      after={"group": to_group.name, "lessons": calc.lessons_after, "money": calc.money_after}, note=reason)
+                      after={"group": to_group.name, "lessons": calc.lessons_after, "money": calc.money_after, "on": on.isoformat()},
+                      note=reason + (f". Возвращено уроков: {returned}" if returned else ""))
     await db.commit()
     return await card(db, s, actor)
 

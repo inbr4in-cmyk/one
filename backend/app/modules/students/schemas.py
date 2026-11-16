@@ -44,6 +44,9 @@ class StudentPatch(In):
     # With status «left»: why (the methodist's decision needs it; other staff may add what they know).
     leave_reason: str | None = Field(default=None, max_length=500)
     return_note: str | None = Field(default=None, max_length=500)
+    # The day the student actually stopped coming (may be in the past) and when they plan to come back.
+    left_on: date | None = None
+    return_on: date | None = None
 
 
 class LeaveDecisionIn(In):
@@ -51,6 +54,8 @@ class LeaveDecisionIn(In):
     left: bool
     reason: str = Field(min_length=3, max_length=500)
     return_note: str | None = Field(default=None, max_length=500)
+    left_on: date | None = None
+    return_on: date | None = None
 
 
 class GuardianPatch(In):
@@ -135,6 +140,8 @@ class LedgerOut(ORM):
 class TransferIn(In):
     to_group_id: int
     reason: str | None = Field(default=None, max_length=255)
+    # The day the student actually moved; empty = today. May be in the past.
+    on: date | None = None
 
     def need_reason(self) -> str:
         r = (self.reason or "").strip()
