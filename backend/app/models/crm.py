@@ -92,7 +92,7 @@ class ExternalContact(IdMixin, TimestampMixin, Base):
     __table_args__ = (UniqueConstraint("channel", "external_id"),)
 
     channel: Mapped[str] = mapped_column(String(16))  # instagram | whatsapp
-    external_id: Mapped[str] = mapped_column(String(128))  # IG-scoped id or wa_id
+    external_id: Mapped[str] = mapped_column(String(255))  # IG-scoped id or wa_id
     display_name: Mapped[StrN]
     username: Mapped[StrN]
     phone: Mapped[StrN]
@@ -120,7 +120,7 @@ class ExternalMessage(IdMixin, Base):
     conversation_id: Mapped[int] = fk("conversations.id")
     at: Mapped[DT]
     direction: Mapped[str] = mapped_column(String(4))  # in | out
-    external_message_id: Mapped[StrN] = mapped_column(String(128), unique=True, default=None)
+    external_message_id: Mapped[StrN] = mapped_column(String(512), unique=True, default=None)
     kind: Mapped[str] = mapped_column(String(16), default="text")  # text | image | audio | file | story_reply | template
     text: Mapped[TextN]
     media_url: Mapped[StrN]

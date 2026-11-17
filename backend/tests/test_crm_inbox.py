@@ -200,3 +200,12 @@ async def test_instagram_comment_becomes_a_lead_and_gets_a_private_reply(client,
     r = await client.post(f"/api/inbox/conversations/{conv.id}/messages", headers=owner_h, json={"text": "Здравствуйте! 25 000 в месяц"})
     assert r.status_code == 201 and sent["recipient"] == {"comment_id": "c100"}
     assert await comment_to_answer(db, conv) is None  # answered: the chat goes on in Direct
+
+
+async def test_instagram_long_message_id_is_saved(client, db, owner_h):
+    """Unified-login Instagram sends message ids well over 128 characters."""
+    body, h = signed(ig_payload("17841400000000009", "aWdfZAG1f" + "x" * 300, "тест"))
+    r = await client.post("/api/webhooks/meta", content=body, headers=h)
+    assert r.status_code == 200
+    convs = (await client.get("/api/inbox/conversations", headers=owner_h)).json()
+    assert len(convs) == 1 and convs[0]["channel"] == "instagram"
