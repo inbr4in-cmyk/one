@@ -168,3 +168,35 @@ async def test_unconfigured_whatsapp_never_logs_text(caplog):
     with caplog.at_level(logging.INFO, logger="meta"):
         res = await meta.wa_send_text("+77001234567", "код 123456")
     assert res.ok and "123456" not in caplog.text
+
+
+async def test_instagram_comment_becomes_a_lead_and_gets_a_private_reply(client, db, owner_h, monkeypatch):
+    from app.modules.inbox.service import comment_to_answer
+    from app.services import meta
+
+    own = "17841499999999999"
+    payload = {"object": "instagram", "entry": [{"id": own, "time": 1, "changes": [
+        {"field": "comments", "value": {"id": "c100", "text": "Сколько стоит курс?", "from": {"id": "9001", "username": "aigerim"},
+                                        "media": {"id": "m1"}}},
+        {"field": "comments", "value": {"id": "c101", "text": "Напишем вам в директ", "from": {"id": own, "username": "one.english"}}},
+    ]}]}
+    body, h = signed(payload)
+    r = await client.post("/api/webhooks/meta", content=body, headers=h)
+    assert r.json()["stored"] == 1  # the school's own answer is not a client
+    await client.post("/api/webhooks/meta", content=body, headers=h)  # Meta retries: no duplicate
+    convs = (await client.get("/api/inbox/conversations", headers=owner_h)).json()
+    assert len(convs) == 1 and convs[0]["lead"]["source"] == "instagram" and "Сколько стоит" in convs[0]["last_preview"]
+    assert convs[0]["contact"]["username"] == "aigerim"
+    conv = await db.get(Conversation, convs[0]["id"])
+    assert await comment_to_answer(db, conv) == "c100"
+    sent = {}
+
+    async def fake(url, token, payload):
+        sent.update(payload)
+        return meta.SendResult(True, external_id="out1")
+
+    monkeypatch.setattr(meta, "_post", fake)
+    monkeypatch.setattr(get_settings(), "ig_access_token", "IGAAtest")
+    r = await client.post(f"/api/inbox/conversations/{conv.id}/messages", headers=owner_h, json={"text": "Здравствуйте! 25 000 в месяц"})
+    assert r.status_code == 201 and sent["recipient"] == {"comment_id": "c100"}
+    assert await comment_to_answer(db, conv) is None  # answered: the chat goes on in Direct

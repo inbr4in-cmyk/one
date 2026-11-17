@@ -165,6 +165,34 @@ async def _ig_event(db: AsyncSession, ev: dict) -> bool:
                          media_url=(att.get("payload") or {}).get("url"), at=_ts(ev.get("timestamp"))) is not None
 
 
+COMMENT_PREFIX = "igc_"
+
+
+async def _ig_comment(db: AsyncSession, value: dict, own_id) -> bool:
+    """A comment under the school's post or Reels: its author becomes a contact (and a lead) like someone who wrote
+    to Direct. The school's own comments and answers are skipped."""
+    author = value.get("from") if isinstance(value.get("from"), dict) else {}
+    cid, sender = value.get("id"), author.get("id")
+    if not isinstance(cid, str) or not isinstance(sender, str):
+        raise ValueError("comment without id or author")
+    if sender == str(own_id) or not str(value.get("text") or "").strip():
+        return False
+    username = author.get("username") if isinstance(author.get("username"), str) else None
+    return await receive(db, channel="instagram", external_id=sender, message_id=COMMENT_PREFIX + cid,
+                         text=f"Комментарий: {str(value['text'])[:3900]}", username=username,
+                         name=f"@{username}" if username else None) is not None
+
+
+async def comment_to_answer(db: AsyncSession, conv: Conversation) -> str | None:
+    """Id of the comment the next answer goes to as a private reply: the last thing in the chat is this person's
+    comment and nobody has answered it yet. Otherwise the chat goes on in Direct."""
+    last = await db.scalar(select(ExternalMessage).where(ExternalMessage.conversation_id == conv.id)
+                           .order_by(ExternalMessage.at.desc(), ExternalMessage.id.desc()).limit(1))
+    if last and last.direction == "in" and (last.external_message_id or "").startswith(COMMENT_PREFIX):
+        return last.external_message_id.removeprefix(COMMENT_PREFIX)
+    return None
+
+
 async def handle_meta_payload(db: AsyncSession, payload) -> int:
     """Parse a Meta webhook: WhatsApp Cloud API (`whatsapp_business_account`) or Instagram (`instagram`).
     Each entry, message and status is handled on its own; whatever is malformed is logged and skipped."""
@@ -188,4 +216,7 @@ async def handle_meta_payload(db: AsyncSession, payload) -> int:
         elif obj == "instagram":
             for ev in _dicts(entry.get("messaging")):
                 n += await _one(db, f"event {ev.get('timestamp')}", _ig_event(db, ev))
+            for change in _dicts(entry.get("changes")):
+                if change.get("field") in ("comments", "live_comments") and isinstance(change.get("value"), dict):
+                    n += await _one(db, f"comment {change['value'].get('id')}", _ig_comment(db, change["value"], entry.get("id")))
     return n

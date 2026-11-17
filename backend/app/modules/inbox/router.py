@@ -17,7 +17,7 @@ from app.core.ratelimit import client_ip, hit
 from app.core.schemas import In, ORM
 from app.core.security import mask_phone
 from app.models import Conversation, ExternalContact, ExternalMessage, Lead, LeadStage, MessageTemplate
-from app.modules.inbox.service import handle_meta_payload, in_window
+from app.modules.inbox.service import comment_to_answer, handle_meta_payload, in_window
 from app.services import meta
 from app.services.clock import now
 from app.services.messaging import get_template, render
@@ -161,7 +161,8 @@ async def _send(db: DB, actor: Actor, conv: Conversation, text: str, kind: str =
         res = await meta.wa_send_text(contact.external_id, text)
     else:
         late = conv.last_inbound_at is not None and now() - conv.last_inbound_at > timedelta(hours=24)
-        res = await meta.ig_send_text(contact.external_id, text, human_agent=late)
+        res = await meta.ig_send_text(contact.external_id, text, human_agent=late,
+                                      comment_id=await comment_to_answer(db, conv))
     msg = ExternalMessage(conversation_id=conv.id, at=now(), direction="out", external_message_id=res.external_id, kind=kind,
                           text=text, status="sent" if res.ok else "failed", error=res.error, sender_id=actor.id)
     db.add(msg)

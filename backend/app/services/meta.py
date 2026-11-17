@@ -172,8 +172,9 @@ async def wa_send_auth_code(to_phone: str, name: str, locale: str, code: str) ->
     )
 
 
-async def ig_send_text(recipient_id: str, text: str, human_agent: bool = False) -> SendResult:
-    """human_agent: Instagram allows a person (not a bot) to answer up to 7 days after the client's message."""
+async def ig_send_text(recipient_id: str, text: str, human_agent: bool = False, comment_id: str | None = None) -> SendResult:
+    """human_agent: Instagram allows a person (not a bot) to answer up to 7 days after the client's message.
+    comment_id: a private reply to a comment (one per comment, within 7 days); it opens a Direct chat with its author."""
     s = get_settings()
     token = ig_token()
     if not token:
@@ -181,8 +182,8 @@ async def ig_send_text(recipient_id: str, text: str, human_agent: bool = False) 
             return SendResult(False, error="Instagram не подключён")
         log.info("IG (dev, not sent) -> %s", recipient_id[-4:])
         return SendResult(True)
-    payload: dict = {"recipient": {"id": recipient_id}, "message": {"text": text}}
-    if human_agent:
+    payload: dict = {"recipient": {"comment_id": comment_id} if comment_id else {"id": recipient_id}, "message": {"text": text}}
+    if human_agent and not comment_id:
         payload |= {"messaging_type": "MESSAGE_TAG", "tag": "HUMAN_AGENT"}
     sender = s.ig_page_id if s.ig_page_id and not token.startswith("IG") else "me"
     return await _post(f"{_ig_graph(token)}/{sender}/messages", token, payload)

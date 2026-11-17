@@ -64,7 +64,7 @@ if [ -n "$IG_TOKEN" ]; then
   ig() { printf 'header = "Authorization: Bearer %s"\n' "$IG_TOKEN" | curl -sS -K - -X "$1" "https://graph.instagram.com/$GV/$2"; }
   IG_NAME=$(ig GET "me?fields=username" | field username)
   echo "Instagram account: $IG_NAME"
-  echo "Subscribe Instagram account to messages: $(ig POST "me/subscribed_apps?subscribed_fields=messages" | field success)"
+  echo "Subscribe Instagram account to messages and comments: $(ig POST "me/subscribed_apps?subscribed_fields=messages,comments" | field success)"
   IG_FINAL="$IG_TOKEN"; PAGE_ID=""
 fi
 
