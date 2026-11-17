@@ -209,3 +209,28 @@ async def test_instagram_long_message_id_is_saved(client, db, owner_h):
     assert r.status_code == 200
     convs = (await client.get("/api/inbox/conversations", headers=owner_h)).json()
     assert len(convs) == 1 and convs[0]["channel"] == "instagram"
+
+
+async def test_instagram_name_comes_from_the_profile(client, db, owner_h, monkeypatch):
+    from app import jobs
+    from app.services import meta
+
+    async def nobody(user_id):
+        return None, None
+
+    async def profile(user_id):
+        return "Айгерим Сатова", "aigerim.s"
+
+    monkeypatch.setattr(meta, "ig_profile", nobody)
+    body, h = signed(ig_payload("17841400000000077", "ig.n1", "Здравствуйте"))
+    await client.post("/api/webhooks/meta", content=body, headers=h)
+    conv = (await client.get("/api/inbox/conversations", headers=owner_h)).json()[0]
+    assert conv["lead"]["full_name"] == "Без имени"
+    monkeypatch.setattr(meta, "ig_profile", profile)
+    assert await jobs.instagram_names(db) == 1  # contacts saved before the name was known
+    conv = (await client.get("/api/inbox/conversations", headers=owner_h)).json()[0]
+    assert conv["lead"]["full_name"] == "Айгерим Сатова" and conv["contact"]["username"] == "aigerim.s"
+    body, h = signed(ig_payload("17841400000000078", "ig.n2", "Сколько стоит?"))
+    await client.post("/api/webhooks/meta", content=body, headers=h)
+    names = {c["lead"]["full_name"] for c in (await client.get("/api/inbox/conversations", headers=owner_h)).json()}
+    assert names == {"Айгерим Сатова"}

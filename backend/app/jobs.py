@@ -192,6 +192,29 @@ async def close_left_members(db: AsyncSession) -> int:
     return n
 
 
+async def instagram_names(db: AsyncSession) -> int:
+    """Instagram contacts saved without a name get the name and @username from their profile. Safe to repeat."""
+    from app.models import ExternalContact, Lead
+    from app.modules.inbox.service import NO_NAME
+    from app.services import meta
+
+    n = 0
+    for c in await db.scalars(select(ExternalContact).where(
+            ExternalContact.channel == "instagram", or_(ExternalContact.display_name.is_(None), ExternalContact.username.is_(None)))
+            .order_by(ExternalContact.id.desc()).limit(200)):
+        name, username = await meta.ig_profile(c.external_id)
+        if not (name or username):
+            continue
+        c.username = c.username or username
+        c.display_name = c.display_name or name or f"@{username}"
+        lead = await db.get(Lead, c.lead_id) if c.lead_id else None
+        if lead and lead.full_name == NO_NAME:
+            lead.full_name = c.display_name
+        n += 1
+    await db.commit()
+    return n
+
+
 async def block_nonpayers(db: AsyncSession) -> int:
     """Rules: no payment within N days after lessons ran out → portal access is blocked until payment."""
     days = int(await setting(db, "nonpayment_block_days"))
@@ -315,6 +338,7 @@ async def nightly(db: AsyncSession) -> dict:
     out["salaries"] = await accrue_salaries(db)
     from app.services import meta
     out["instagram_token"] = await meta.ig_refresh()
+    out["instagram_names"] = await instagram_names(db)
     await db.commit()
     return out
 
@@ -351,4 +375,5 @@ if __name__ == "__main__":
         asyncio.run(loop())
     else:
         print(asyncio.run(_run({"minutely": minutely, "nightly": nightly, "leave-followups": leave_followups,
-                                 "close-left-members": close_left_members}[cmd])))
+                                 "close-left-members": close_left_members,
+                                 "instagram-names": instagram_names}[cmd])))

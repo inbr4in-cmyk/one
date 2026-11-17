@@ -172,6 +172,26 @@ async def wa_send_auth_code(to_phone: str, name: str, locale: str, code: str) ->
     )
 
 
+async def ig_profile(user_id: str) -> tuple[str | None, str | None]:
+    """Name and @username of a person who wrote to the school's Instagram. Never raises: no key, no access or a
+    slow answer just means the contact stays without a name until the next message."""
+    token = ig_token()
+    if not token:
+        return None, None
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            r = await client.get(f"{_ig_graph(token)}/{user_id}", params={"fields": "name,username"},
+                                 headers={"Authorization": f"Bearer {token}"})
+        data = r.json() if r.status_code < 400 else {}
+    except (httpx.HTTPError, ValueError):
+        return None, None
+    if not isinstance(data, dict):
+        return None, None
+    name, username = data.get("name"), data.get("username")
+    return (str(name).strip()[:120] or None if isinstance(name, str) else None,
+            str(username).strip()[:64] or None if isinstance(username, str) else None)
+
+
 async def ig_send_text(recipient_id: str, text: str, human_agent: bool = False, comment_id: str | None = None) -> SendResult:
     """human_agent: Instagram allows a person (not a bot) to answer up to 7 days after the client's message.
     comment_id: a private reply to a comment (one per comment, within 7 days); it opens a Direct chat with its author."""

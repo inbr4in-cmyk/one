@@ -10,6 +10,7 @@ from app.core.security import normalize_phone
 from app.models import Conversation, ExternalContact, ExternalMessage, Lead, LeadEvent, LeadStage
 from app.models.crm import LeadSource
 from app.modules.crm.service import create_lead, crm_people, default_branch_id, find_by_phone, find_client_by_phone
+from app.services import meta
 from app.services.clock import now
 from app.services.messaging import notify_user
 from app.services.realtime import publish
@@ -17,6 +18,7 @@ from app.services.realtime import publish
 log = logging.getLogger("inbox")
 WINDOW = timedelta(hours=24)
 IG_HUMAN_WINDOW = timedelta(days=7)
+NO_NAME = "Без имени"
 
 
 def in_window(conv: Conversation) -> bool:
@@ -31,6 +33,8 @@ async def _contact(db: AsyncSession, channel: str, external_id: str, name: str |
     if c:
         if name and not c.display_name:
             c.display_name = name
+        if username and not c.username:
+            c.username = username
         return c, False
     c = ExternalContact(channel=channel, external_id=external_id, display_name=name, username=username, phone=phone)
     db.add(c)
@@ -60,7 +64,7 @@ async def _link_lead(db: AsyncSession, contact: ExternalContact, branch_id: int)
                              actor_id=None, meta={}))
             await db.flush()
     source = LeadSource.WHATSAPP if contact.channel == "whatsapp" else LeadSource.INSTAGRAM
-    name = contact.display_name or (f"@{contact.username}" if contact.username else "Без имени")
+    name = contact.display_name or (f"@{contact.username}" if contact.username else NO_NAME)
     lead = await create_lead(db, full_name=name, phone=contact.phone, branch_id=branch_id, source=source, owner_id=None,
                              notify=False)
     contact.lead_id = lead.id
@@ -80,6 +84,8 @@ async def receive(db: AsyncSession, *, channel: str, external_id: str, message_i
     lead = await _link_lead(db, contact, branch_id)
     if lead:
         branch_id = lead.branch_id
+        if lead.full_name == NO_NAME and (contact.display_name or contact.username):
+            lead.full_name = contact.display_name or f"@{contact.username}"  # the name became known later
     if conv is None:
         conv = Conversation(contact_id=contact.id, channel=channel, branch_id=branch_id,
                             assignee_id=lead.assignee_id if lead else None)
@@ -161,8 +167,14 @@ async def _ig_event(db: AsyncSession, ev: dict) -> bool:
     sender = (ev.get("sender") or {}).get("id")
     if not isinstance(sender, str) or not isinstance(m.get("mid"), str):
         raise ValueError("event without sender or id")
+    name = username = None
+    known = await db.scalar(select(ExternalContact).where(ExternalContact.channel == "instagram",
+                                                          ExternalContact.external_id == sender))
+    if known is None or not (known.display_name and known.username):
+        name, username = await meta.ig_profile(sender)
     return await receive(db, channel="instagram", external_id=sender, message_id=m["mid"], text=m.get("text"), kind=kind,
-                         media_url=(att.get("payload") or {}).get("url"), at=_ts(ev.get("timestamp"))) is not None
+                         media_url=(att.get("payload") or {}).get("url"), at=_ts(ev.get("timestamp")),
+                         name=name or (f"@{username}" if username else None), username=username) is not None
 
 
 COMMENT_PREFIX = "igc_"
