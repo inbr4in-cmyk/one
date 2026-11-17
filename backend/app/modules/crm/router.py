@@ -14,7 +14,10 @@ from app.core.security import mask_phone, normalize_phone
 from app.models import Attempt, Conversation, ExternalContact, GroupMember, Lead, LeadEvent, LeadStage, Lesson, Pipeline, Room, Student, User
 from app.models.crm import LeadSource
 from app.models.learning import LessonStatus, StudentStatus
-from app.modules.crm.service import create_lead, find_by_phone, get_lead_scoped, lead_filter
+from app.modules.crm.service import (
+    create_lead, find_by_phone, find_client_by_phone, get_lead_scoped, lead_filter, merge_into_student,
+)
+from app.modules.students.scope import get_student_scoped
 from app.modules.students.router import add_guardian, upsert_portal_user
 from app.modules.students.schemas import GuardianIn
 from app.services import crm as crm_svc
@@ -102,6 +105,7 @@ class LeadCard(BaseModel):
     waiting_min: int | None = None
     channel: str | None = None
     conversation_id: int | None = None
+    existing_student: dict | None = None  # a student (or a student's parent) already has this phone
 
 
 class EventOut(ORM):
@@ -111,6 +115,16 @@ class EventOut(ORM):
     text: str | None
     actor_id: int | None
     meta: dict
+
+
+async def _card(db: DB, actor: Actor, lead: Lead) -> LeadCard:
+    """One card, with a hint when the lead's phone already belongs to a student of the school."""
+    c = (await _cards(db, actor, [lead]))[0]
+    if lead.student_id is None and lead.archived_at is None:
+        s = await find_client_by_phone(db, lead.phone) or await find_client_by_phone(db, lead.parent_phone)
+        if s:
+            c.existing_student = {"id": s.id, "full_name": s.full_name}
+    return c
 
 
 def _phone(actor: Actor, phone: str | None) -> str | None:
@@ -306,7 +320,7 @@ async def lead_card(lead_id: int, db: DB, actor: Actor = require("crm", "view"))
     lead = await get_lead_scoped(db, actor, lead_id)
     events = await db.scalars(select(LeadEvent).where(LeadEvent.lead_id == lead.id).order_by(LeadEvent.id.desc()).limit(200))
     attempts = await db.scalars(select(Attempt).where(Attempt.lead_id == lead.id).order_by(Attempt.id.desc()))
-    return {"lead": (await _cards(db, actor, [lead]))[0].model_dump(),
+    return {"lead": (await _card(db, actor, lead)).model_dump(),
             "events": [EventOut.model_validate(e).model_dump() for e in events],
             "tests": [{"id": a.id, "score": a.score, "level_id": a.recommended_level_id, "at": a.finished_at} for a in attempts]}
 
@@ -327,7 +341,7 @@ async def patch_lead(lead_id: int, body: LeadPatch, db: DB, actor: Actor = requi
     await write_audit(db, actor_id=actor.id, action="lead.update", entity="lead", entity_id=lead.id, branch_id=lead.branch_id,
                       ip=actor.ip, before=b, after=a)
     await db.commit()
-    return (await _cards(db, actor, [lead]))[0]
+    return await _card(db, actor, lead)
 
 
 class StageIn(In):
@@ -443,6 +457,24 @@ async def convert(lead_id: int, body: ConvertIn, db: DB, actor: Actor = require(
                      meta={"student_id": s.id}))
     await write_audit(db, actor_id=actor.id, action="lead.convert", entity="lead", entity_id=lead.id, branch_id=lead.branch_id,
                       ip=actor.ip, after={"student_id": s.id})
+    await db.commit()
+    return {"student_id": s.id}
+
+
+class LinkStudentIn(In):
+    student_id: int
+
+
+@router.post("/leads/{lead_id}/link-student")
+async def link_student(lead_id: int, body: LinkStudentIn, db: DB, actor: Actor = require("crm", "edit")) -> dict:
+    """«Существующий ученик»: the lead is a student who wrote from Instagram/WhatsApp. No second card is made."""
+    lead = await get_lead_scoped(db, actor, lead_id, "edit")
+    if lead.student_id:
+        raise conflict("По этому лиду уже создана карточка ученика")
+    s = await get_student_scoped(db, actor, body.student_id)
+    await merge_into_student(db, lead, s, actor.id)
+    await write_audit(db, actor_id=actor.id, action="lead.link_student", entity="lead", entity_id=lead.id,
+                      branch_id=lead.branch_id, ip=actor.ip, after={"student_id": s.id})
     await db.commit()
     return {"student_id": s.id}
 

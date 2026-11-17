@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { UiAvatar, UiButton, UiChip, UiEmptyState, UiIcon, UiSegmented, UiSkeleton } from '@/components/ui'
 import TemplateModal from '@/components/chat/TemplateModal.vue'
+import LinkStudentModal from '@/components/crm/LinkStudentModal.vue'
 import { inboxApi, type Channel, type Conversation, type InboxMessage } from '@/api/inbox'
 import { ApiError } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
@@ -39,6 +40,8 @@ const hasMore = ref(false)
 const text = ref('')
 const sending = ref(false)
 const tplOpen = ref(false)
+const linkOpen = ref(false)
+const linking = ref(false)
 const msgsEl = ref<HTMLElement | null>(null)
 const { onScroll, toBottom, keepPosition } = useAutoScroll(msgsEl)
 
@@ -52,7 +55,7 @@ const chanOptions = computed(() => [
   { value: 'whatsapp' as const, label: 'WhatsApp' },
 ])
 const ch = (c: Conversation) => (c.channel === 'instagram' ? 'ig' : 'wa')
-const nameOf = (c: Conversation) => c.lead?.full_name ?? c.contact.name ?? (c.contact.username ? `@${c.contact.username}` : c.contact.phone ? formatPhone(c.contact.phone) : t('inbox.unknown'))
+const nameOf = (c: Conversation) => c.student?.full_name ?? c.lead?.full_name ?? c.contact.name ?? (c.contact.username ? `@${c.contact.username}` : c.contact.phone ? formatPhone(c.contact.phone) : t('inbox.unknown'))
 const stageLabel = (c: Conversation) => (c.lead?.stage_code && te(`crm.stage.${c.lead.stage_code}`) ? t(`crm.stage.${c.lead.stage_code}`) : c.lead?.stage ?? '')
 
 async function loadList() {
@@ -141,6 +144,20 @@ function onKey(e: KeyboardEvent) {
   if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
     e.preventDefault()
     send()
+  }
+}
+
+async function linkStudent(studentId: number) {
+  const c = conv.value
+  if (!c) return
+  linking.value = true
+  try {
+    conv.value = await inboxApi.linkStudent(c.id, studentId)
+    toast.ok(t('nv.link.done'))
+    linkOpen.value = false
+    loadList()
+  } finally {
+    linking.value = false
   }
 }
 
@@ -249,11 +266,12 @@ import { safeUrl } from '@/utils/url'
     <aside v-if="conv" class="ib-lead">
       <div style="display: flex; gap: 12px; align-items: center">
         <UiAvatar :name="nameOf(conv)" size="lg" />
-        <div><b style="font-size: 15px">{{ nameOf(conv) }}</b><div v-if="conv.lead" class="muted" style="font-size: 12.5px">{{ t('crm.leadN', { n: conv.lead.id }) }}</div></div>
+        <div><b style="font-size: 15px">{{ nameOf(conv) }}</b><div v-if="conv.lead" class="muted" style="font-size: 12.5px">{{ t('crm.leadN', { n: conv.lead.id }) }}</div><div v-else-if="conv.student" class="muted" style="font-size: 12.5px">{{ t('nv.link.student') }}</div></div>
       </div>
       <div style="display: grid; gap: 8px; margin-top: 14px">
         <UiButton v-if="conv.lead && auth.can('crm.view')" variant="primary" block icon="crm" :to="{ path: '/crm', query: { lead: conv.lead.id } }">{{ t('inbox.openLead') }}</UiButton>
         <UiButton v-if="conv.contact.student_id && auth.can('students.view')" block icon="user" :to="{ name: 'student', params: { id: conv.contact.student_id } }">{{ t('crm.openStudent') }}</UiButton>
+        <UiButton v-if="!conv.contact.student_id && canReply && auth.can('students.view')" block icon="user" @click="linkOpen = true">{{ t('nv.link.btn') }}</UiButton>
       </div>
       <h4>{{ t('crm.data') }}</h4>
       <dl class="kv">
@@ -266,5 +284,6 @@ import { safeUrl } from '@/utils/url'
       </dl>
     </aside>
   </div>
+  <LinkStudentModal v-model:open="linkOpen" :busy="linking" @confirm="linkStudent" />
   <TemplateModal v-model:open="tplOpen" :conversation="conv" @sent="pushMessage" />
 </template>

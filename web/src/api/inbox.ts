@@ -14,6 +14,7 @@ export interface Conversation {
   in_window: boolean
   contact: { id: number; name: string | null; username: string | null; phone: string | null; student_id: number | null }
   lead: { id: number; full_name: string; stage: string | null; stage_code: string | null; source: string } | null
+  student: { id: number; full_name: string } | null
 }
 
 export interface InboxMessage {
@@ -44,6 +45,7 @@ export const inboxApi = {
   reply: (id: number, text: string) => http.post<InboxMessage>(`/inbox/conversations/${id}/messages`, { text }, { silent: true }),
   template: (id: number, code: string, variables: Record<string, string>, locale: 'ru' | 'kk') =>
     http.post<InboxMessage>(`/inbox/conversations/${id}/template`, { code, variables, locale }),
+  linkStudent: (id: number, student_id: number) => http.post<Conversation>(`/inbox/conversations/${id}/link-student`, { student_id }),
   patch: (id: number, body: { status?: 'open' | 'closed'; assignee_id?: number | null; branch_id?: number | null }) =>
     http.patch<Conversation>(`/inbox/conversations/${id}`, body),
 }

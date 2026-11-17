@@ -60,6 +60,7 @@ export interface Lead {
   waiting_min: number | null
   channel: string | null
   conversation_id: number | null
+  existing_student?: { id: number; full_name: string } | null
 }
 
 export interface BoardColumn {
@@ -137,6 +138,7 @@ export const crmApi = {
     http.post<LeadEvent>(`/crm/leads/${id}/events`, body),
   trial: (id: number, lesson_id: number, notify = true) => http.post<Lead>(`/crm/leads/${id}/trial`, { lesson_id, notify }),
   convert: (id: number) => http.post<{ student_id: number }>(`/crm/leads/${id}/convert`, { create_account: true }),
+  linkStudent: (id: number, student_id: number) => http.post<{ student_id: number }>(`/crm/leads/${id}/link-student`, { student_id }),
   archive: (id: number) => http.post<null>(`/crm/leads/${id}/archive`),
   analytics: (p: { date_from?: string; date_to?: string; branch_id?: number | null }) =>
     http.get<Analytics>(`/crm/analytics${qs(p)}`),

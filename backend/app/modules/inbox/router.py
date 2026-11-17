@@ -16,7 +16,9 @@ from app.core.permissions import NETWORK, OWN
 from app.core.ratelimit import client_ip, hit
 from app.core.schemas import In, ORM
 from app.core.security import mask_phone
-from app.models import Conversation, ExternalContact, ExternalMessage, Lead, LeadStage, MessageTemplate
+from app.models import Conversation, ExternalContact, ExternalMessage, Lead, LeadStage, MessageTemplate, Student
+from app.modules.crm.service import merge_into_student
+from app.modules.students.scope import get_student_scoped
 from app.modules.inbox.service import comment_to_answer, handle_meta_payload, in_window
 from app.services import meta
 from app.services.clock import now
@@ -67,6 +69,7 @@ class ConversationOut(BaseModel):
     in_window: bool
     contact: dict
     lead: dict | None
+    student: dict | None = None
 
 
 class MessageOut(ORM):
@@ -94,7 +97,9 @@ async def _out(db: DB, actor: Actor, conv: Conversation) -> ConversationOut:
     lead = await db.get(Lead, c.lead_id) if c.lead_id else None
     stage = await db.get(LeadStage, lead.stage_id) if lead else None
     show = actor.can("students", "view_contacts")
+    student = await db.get(Student, c.student_id) if c.student_id else None
     return ConversationOut(
+        student={"id": student.id, "full_name": student.full_name} if student else None,
         id=conv.id, channel=conv.channel, branch_id=conv.branch_id, assignee_id=conv.assignee_id, unread=conv.unread,
         status=conv.status, last_message_at=conv.last_message_at.isoformat() if conv.last_message_at else None,
         last_preview=conv.last_preview, in_window=in_window(conv),
@@ -240,6 +245,29 @@ class ConvPatch(In):
     assignee_id: int | None = None
     status: str | None = Field(default=None, pattern="^(open|closed)$")
     branch_id: int | None = None
+
+
+class LinkStudentIn(In):
+    student_id: int
+
+
+@router.post("/inbox/conversations/{conv_id}/link-student", response_model=ConversationOut)
+async def link_student(conv_id: int, body: LinkStudentIn, db: DB, actor: Actor = require("inbox", "reply")) -> ConversationOut:
+    """The person in the chat is an existing student: the chat goes to the student's card, the auto-made lead to the archive."""
+    conv = await _get(db, actor, conv_id, "reply")
+    contact = await db.get(ExternalContact, conv.contact_id)
+    s = await get_student_scoped(db, actor, body.student_id)
+    lead = await db.get(Lead, contact.lead_id) if contact.lead_id else None
+    if lead and lead.student_id:
+        raise conflict("По этому лиду уже создана карточка ученика")
+    if lead:
+        await merge_into_student(db, lead, s, actor.id)
+    else:
+        contact.student_id, conv.branch_id = s.id, s.branch_id
+    await write_audit(db, actor_id=actor.id, action="inbox.link_student", entity="conversation", entity_id=conv.id,
+                      branch_id=conv.branch_id, ip=actor.ip, after={"student_id": s.id})
+    await db.commit()
+    return await _out(db, actor, conv)
 
 
 @router.patch("/inbox/conversations/{conv_id}", response_model=ConversationOut)

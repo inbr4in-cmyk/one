@@ -4,8 +4,9 @@ import { useSourceLabel } from '@/composables/useSourceLabel'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import { UiAvatar, UiButton, UiChip, UiDrawer, UiIcon, UiPrompt, UiSegmented, UiSelect, UiSkeleton, UiTextarea } from '@/components/ui'
+import { UiAvatar, UiButton, UiChip, UiDrawer, UiIcon, UiInput, UiPrompt, UiSegmented, UiSelect, UiSkeleton, UiTextarea } from '@/components/ui'
 import LevelTag from '@/components/students/LevelTag.vue'
+import LinkStudentModal from './LinkStudentModal.vue'
 import { crmApi, type Lead, type LeadDetails, type Pipeline, type Stage } from '@/api/crm'
 import { academicsApi, type Lesson } from '@/api/academics'
 import { useAuthStore } from '@/stores/auth'
@@ -34,6 +35,8 @@ const trialOpen = ref(false)
 const lessons = ref<Lesson[] | null>(null)
 const lostPrompt = ref<Stage | null>(null)
 const archivePrompt = ref(false)
+const linkOpen = ref(false)
+const phone = ref('')
 
 const open = computed({ get: () => props.leadId !== null, set: (v) => !v && emit('close') })
 const lead = computed(() => d.value?.lead ?? null)
@@ -147,6 +150,34 @@ async function convert() {
   }
 }
 
+async function savePhone() {
+  const l = lead.value
+  if (!l || phone.value.trim().length < 5) return
+  busy.value = true
+  try {
+    updated(await crmApi.patch(l.id, { phone: phone.value.trim() }))
+    phone.value = ''
+  } finally {
+    busy.value = false
+  }
+}
+
+async function linkStudent(studentId: number) {
+  const l = lead.value
+  if (!l) return
+  busy.value = true
+  try {
+    await crmApi.linkStudent(l.id, studentId)
+    toast.ok(t('nv.link.done'))
+    linkOpen.value = false
+    emit('removed', l.id)
+    emit('close')
+    router.push({ name: 'student', params: { id: studentId } })
+  } finally {
+    busy.value = false
+  }
+}
+
 async function toggleHot() {
   const l = lead.value
   if (!l) return
@@ -190,6 +221,12 @@ const eventOptions = computed(() => (['call', 'note', 'meeting'] as const).map((
         <UiButton v-if="lead.conversation_id && auth.can('inbox.view')" icon="inbox" block :to="`/inbox/${lead.conversation_id}`">{{ t('crm.openDialog') }}</UiButton>
         <UiButton v-if="lead.student_id && auth.can('students.view')" icon="user" block :to="{ name: 'student', params: { id: lead.student_id } }">{{ t('crm.openStudent') }}</UiButton>
         <UiButton v-else-if="!lead.student_id && auth.can('students.create')" icon="users" block :loading="busy" @click="convert">{{ t('crm.convert') }}</UiButton>
+        <UiButton v-if="canEdit && !lead.student_id && auth.can('students.view')" icon="user" block @click="linkOpen = true">{{ t('nv.link.btn') }}</UiButton>
+      </div>
+      <div v-if="lead.existing_student && !lead.student_id" class="alert info">
+        <UiIcon name="alert" />
+        <div class="grow"><span>{{ t('nv.link.match', { name: lead.existing_student.full_name }) }}</span></div>
+        <UiButton v-if="canEdit" size="sm" variant="navy" @click="linkOpen = true">{{ t('nv.link.do') }}</UiButton>
       </div>
 
       <Transition name="fade">
@@ -223,6 +260,10 @@ const eventOptions = computed(() => (['call', 'note', 'meeting'] as const).map((
         <dt>{{ t('branch.label') }}</dt><dd>{{ refs.branchName(lead.branch_id) }}</dd>
         <template v-if="lead.trial_at"><dt>{{ t('crm.trial') }}</dt><dd class="num">{{ dayLabel(lead.trial_at, loc) }} · {{ hm(lead.trial_at, loc) }}</dd></template>
       </dl>
+      <form v-if="canEdit && !lead.phone && !lead.student_id" style="display: flex; gap: 8px; align-items: end" @submit.prevent="savePhone">
+        <div class="grow"><UiInput v-model="phone" type="tel" :label="t('nv.link.phonePh')" placeholder="+7" /></div>
+        <UiButton type="submit" size="sm" variant="navy" :loading="busy" :disabled="phone.trim().length < 5">{{ t('common.save') }}</UiButton>
+      </form>
       <p v-if="lead.notes" class="m0 pre muted">{{ lead.notes }}</p>
 
       <template v-if="canEdit">
@@ -245,5 +286,6 @@ const eventOptions = computed(() => (['call', 'note', 'meeting'] as const).map((
     </div>
   </UiDrawer>
   <UiPrompt :open="lostPrompt !== null" :title="t('crm.lostTitle')" :text="t('crm.lostText')" :label="t('crm.lostReason')" reason required :confirm-label="t('crm.markLost')" danger :busy="busy" @update:open="(v) => !v && (lostPrompt = null)" @confirm="confirmLost" />
+  <LinkStudentModal v-model:open="linkOpen" :busy="busy" :preset="lead?.existing_student ?? null" @confirm="linkStudent" />
   <UiPrompt :open="archivePrompt" :title="t('crm.archive')" :text="t('crm.archiveText')" :confirm-label="t('crm.archive')" danger :busy="busy" @update:open="(v) => (archivePrompt = v)" @confirm="archive" />
 </template>

@@ -48,6 +48,21 @@ async def find_client_by_phone(db: AsyncSession, phone: str | None) -> Student |
                            .join(User, User.id == StudentGuardian.user_id).where(User.phone == phone))
 
 
+async def merge_into_student(db: AsyncSession, lead: Lead, student: Student, actor_id: int | None) -> None:
+    """The person behind the lead turned out to be an existing student (or a student's parent): the lead goes to the
+    archive with a note, and its Instagram/WhatsApp chats now belong to the student's card. Nothing is deleted."""
+    from app.models import Conversation, ExternalContact
+
+    for c in await db.scalars(select(ExternalContact).where(ExternalContact.lead_id == lead.id)):
+        c.lead_id, c.student_id = None, student.id
+        for conv in await db.scalars(select(Conversation).where(Conversation.contact_id == c.id)):
+            conv.branch_id = student.branch_id
+    t = now()
+    lead.archived_at = lead.last_activity_at = t
+    db.add(LeadEvent(lead_id=lead.id, at=t, kind="note", text=f"Это ученик школы: {student.full_name}. Лид объединён с его карточкой",
+                     actor_id=actor_id, meta={"student_id": student.id}))
+
+
 async def default_branch_id(db: AsyncSession) -> int:
     return await db.scalar(select(Branch.id).where(Branch.archived_at.is_(None)).order_by(Branch.id))
 

@@ -234,3 +234,36 @@ async def test_instagram_name_comes_from_the_profile(client, db, owner_h, monkey
     await client.post("/api/webhooks/meta", content=body, headers=h)
     names = {c["lead"]["full_name"] for c in (await client.get("/api/inbox/conversations", headers=owner_h)).json()}
     assert names == {"Айгерим Сатова"}
+
+
+async def test_existing_student_writes_from_instagram_and_is_linked(client, db, owner_h, monkeypatch):
+    from app.services import meta
+
+    async def nobody(user_id):
+        return None, None
+
+    monkeypatch.setattr(meta, "ig_profile", nobody)
+    bid = await branch_id(db, YANGI)
+    sid = (await client.post("/api/students", headers=owner_h, json={"full_name": "Дана Ученица", "phone": "+77015550011",
+                                                                    "branch_id": bid})).json()["id"]
+    body, h = signed(ig_payload("17841400000000055", "ig.s1", "Во сколько урок?"))
+    await client.post("/api/webhooks/meta", content=body, headers=h)
+    conv = (await client.get("/api/inbox/conversations", headers=owner_h)).json()[0]
+    lead_id = conv["lead"]["id"]
+    # the manager types the phone into the lead: the platform says it is a student
+    r = await client.patch(f"/api/crm/leads/{lead_id}", headers=owner_h, json={"phone": "+7 701 555 00 11"})
+    assert r.json()["existing_student"] == {"id": sid, "full_name": "Дана Ученица"}
+    r = await client.post(f"/api/crm/leads/{lead_id}/link-student", headers=owner_h, json={"student_id": sid})
+    assert r.status_code == 200 and r.json() == {"student_id": sid}
+    conv = (await client.get(f"/api/inbox/conversations/{conv['id']}", headers=owner_h)).json()
+    assert conv["lead"] is None and conv["student"] == {"id": sid, "full_name": "Дана Ученица"}
+    assert (await db.get(Lead, lead_id)).archived_at is not None
+    body, h = signed(ig_payload("17841400000000055", "ig.s2", "Спасибо"))  # the next message makes no new lead
+    await client.post("/api/webhooks/meta", content=body, headers=h)
+    assert await db.scalar(select(func.count()).select_from(Lead)) == 1
+    # straight from the chat, without a phone
+    body, h = signed(ig_payload("17841400000000056", "ig.s3", "Здравствуйте"))
+    await client.post("/api/webhooks/meta", content=body, headers=h)
+    other = next(c for c in (await client.get("/api/inbox/conversations", headers=owner_h)).json() if c["lead"])
+    r = await client.post(f"/api/inbox/conversations/{other['id']}/link-student", headers=owner_h, json={"student_id": sid})
+    assert r.status_code == 200 and r.json()["lead"] is None and r.json()["student"]["id"] == sid
