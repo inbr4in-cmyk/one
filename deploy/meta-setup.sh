@@ -27,10 +27,17 @@ ask APP_SECRET "App Secret (Settings > Basic, hidden)" 1
 ask TOKEN      "Permanent system user token (hidden)" 1
 ask PHONE_ID   "WhatsApp Phone number ID" 0
 ask WABA_ID    "WhatsApp Business Account ID" 0
-echo "   Instagram, way 1 (login with Instagram, no Facebook Page needed):"
-ask IG_SECRET  "Instagram app secret (use case Instagram > API setup with Instagram login, hidden; Enter = skip)" 1
-ask IG_TOKEN   "Instagram access token IGAA... (same page, Generate token; hidden; Enter = skip)" 1
-echo "   Instagram, way 2 (through a Facebook Page; skip if you used way 1):"
+echo "   Instagram, way 1 (token from the app page: use case Instagram > block 2 > Generate token):"
+ask IG_TOKEN   "Instagram access token (hidden; Enter = skip)" 1
+IG_ID=""; IG_SECRET=""
+if [ -n "$IG_TOKEN" ]; then
+  if [[ "$IG_TOKEN" == IG* ]]; then
+    ask IG_SECRET "Instagram app secret (top of the same page, hidden; Enter = skip)" 1
+  else
+    ask IG_ID "Instagram account ID (the digits under the account name in block 2)" 0
+  fi
+fi
+echo "   Instagram, way 2 (through a Facebook Page; Enter = skip if you used way 1):"
 ask PAGE_ID    "Facebook Page ID linked to Instagram (Enter = skip)" 0
 ask OTP_TPL    "Approved WhatsApp Authentication template for login codes, e.g. oe_login_code (Enter = skip)" 0
 read -rp "Are the notification templates oe_absence, oe_payment... approved in WhatsApp Manager? [y/N]: " TPL_OK
@@ -61,11 +68,18 @@ fi
 
 IG_FINAL="$PAGE_TOKEN"
 if [ -n "$IG_TOKEN" ]; then
-  ig() { printf 'header = "Authorization: Bearer %s"\n' "$IG_TOKEN" | curl -sS -K - -X "$1" "https://graph.instagram.com/$GV/$2"; }
-  IG_NAME=$(ig GET "me?fields=username" | field username)
-  echo "Instagram account: $IG_NAME"
-  echo "Subscribe Instagram account to messages and comments: $(ig POST "me/subscribed_apps?subscribed_fields=messages,comments" | field success)"
-  IG_FINAL="$IG_TOKEN"; PAGE_ID=""
+  # A token that starts with IG belongs to "Instagram login" (graph.instagram.com, /me). Any other token comes from
+  # "Unified login": graph.facebook.com, and the account is addressed by its id.
+  if [[ "$IG_TOKEN" == IG* ]]; then IG_HOST=graph.instagram.com; IG_WHO=me; else IG_HOST=graph.facebook.com; IG_WHO="$IG_ID"; fi
+  ig() { printf 'header = "Authorization: Bearer %s"\n' "$IG_TOKEN" | curl -sS -K - -X "$1" "https://$IG_HOST/$GV/$2"; }
+  if [ -z "$IG_WHO" ]; then
+    echo "Instagram account ID is needed for this kind of token: nothing saved for Instagram. Run the script again."
+  else
+    echo "Token kind: $([[ "$IG_TOKEN" == IG* ]] && echo 'Instagram login' || echo 'Unified login') ($IG_HOST)"
+    echo "Instagram account: $(ig GET "$IG_WHO?fields=username" | field username)"
+    echo "Subscribe Instagram account to messages and comments: $(ig POST "$IG_WHO/subscribed_apps?subscribed_fields=messages,comments" | field success)"
+    IG_FINAL="$IG_TOKEN"; PAGE_ID="$IG_ID"
+  fi
 fi
 
 cp -p "$ENV" "$ENV.bak-$(date +%Y%m%d-%H%M%S)"

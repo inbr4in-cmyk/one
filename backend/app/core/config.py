@@ -35,7 +35,8 @@ class Settings(BaseSettings):
     ig_access_token: str = ""
     # «Instagram API with Instagram login»: its webhooks are signed with the Instagram app secret, not the Meta one.
     ig_app_secret: str = ""
-    # Facebook Page linked to the school's Instagram: replies go to /{page}/messages instead of /me/messages.
+    # Who sends: the Facebook Page linked to the school's Instagram, or with a «Unified login» token the Instagram
+    # account id itself. Replies go to /{id}/messages. Instagram-login tokens (IG...) use /me/messages.
     ig_page_id: str = ""
     # Approved WhatsApp Authentication template for login codes (Meta name). Empty = plain text (24 h window only).
     wa_otp_template: str = ""
