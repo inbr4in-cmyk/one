@@ -3,6 +3,9 @@
 import hashlib
 import hmac
 import logging
+import os
+import time
+from pathlib import Path
 
 import httpx
 
@@ -22,11 +25,62 @@ def _ig_graph(token: str) -> str:
 
 
 def verify_signature(body: bytes, header: str | None) -> bool:
-    """X-Hub-Signature-256: sha256=<hmac of the raw body with the app secret>."""
+    """X-Hub-Signature-256: sha256=<hmac of the raw body with the app secret>. Instagram-login webhooks are signed
+    with the Instagram app secret, the rest with the Meta app secret: either one is accepted."""
     if not header or not header.startswith("sha256="):
         return False
-    expected = hmac.new(get_settings().meta_app_secret.encode(), body, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(expected, header.removeprefix("sha256="))
+    got, s = header.removeprefix("sha256="), get_settings()
+    for secret in (s.meta_app_secret, s.ig_app_secret):
+        if secret and hmac.compare_digest(hmac.new(secret.encode(), body, hashlib.sha256).hexdigest(), got):
+            return True
+    return False
+
+
+# An Instagram-login token lives 60 days and is renewed by the nightly job. The renewed token is kept in a file
+# readable only by the service user (the env file belongs to root); a token typed in again by the owner replaces it.
+def _ig_token_file() -> Path:
+    return Path(get_settings().storage_dir) / ".ig_token"
+
+
+def ig_token() -> str:
+    env = get_settings().ig_access_token
+    try:
+        saved = _ig_token_file().read_text().strip().split("\n")
+    except OSError:
+        return env
+    # line 1: fingerprint of the env token it was renewed from, line 2: the renewed token
+    if len(saved) == 2 and saved[0] == hashlib.sha256(env.encode()).hexdigest() and saved[1]:
+        return saved[1]
+    return env
+
+
+async def ig_refresh(min_age_days: int = 7) -> str:
+    """Renews the Instagram-login token. Returns what happened, never the token."""
+    token = ig_token()
+    if not token.startswith("IG"):
+        return "not an Instagram-login token"
+    f = _ig_token_file()
+    if f.exists() and time.time() - f.stat().st_mtime < min_age_days * 86400:
+        return "fresh"
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.get("https://graph.instagram.com/refresh_access_token",
+                                 params={"grant_type": "ig_refresh_token", "access_token": token})
+        data = r.json()
+    except (httpx.HTTPError, ValueError) as e:
+        log.warning("Instagram token renewal failed: %s", str(e)[:200])
+        return "failed"
+    new = data.get("access_token") if isinstance(data, dict) else None
+    if r.status_code >= 400 or not isinstance(new, str) or not new:
+        log.warning("Instagram token renewal refused: %s", str((data.get("error") or {}).get("message", r.status_code))[:200])
+        return "refused"
+    f.parent.mkdir(parents=True, exist_ok=True)
+    tmp = f.with_suffix(".tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as out:
+        out.write(hashlib.sha256(get_settings().ig_access_token.encode()).hexdigest() + "\n" + new + "\n")
+    os.replace(tmp, f)
+    return "renewed"
 
 
 class SendResult:
@@ -121,7 +175,8 @@ async def wa_send_auth_code(to_phone: str, name: str, locale: str, code: str) ->
 async def ig_send_text(recipient_id: str, text: str, human_agent: bool = False) -> SendResult:
     """human_agent: Instagram allows a person (not a bot) to answer up to 7 days after the client's message."""
     s = get_settings()
-    if not s.ig_access_token:
+    token = ig_token()
+    if not token:
         if s.is_prod:
             return SendResult(False, error="Instagram не подключён")
         log.info("IG (dev, not sent) -> %s", recipient_id[-4:])
@@ -129,5 +184,5 @@ async def ig_send_text(recipient_id: str, text: str, human_agent: bool = False) 
     payload: dict = {"recipient": {"id": recipient_id}, "message": {"text": text}}
     if human_agent:
         payload |= {"messaging_type": "MESSAGE_TAG", "tag": "HUMAN_AGENT"}
-    sender = s.ig_page_id if s.ig_page_id and not s.ig_access_token.startswith("IG") else "me"
-    return await _post(f"{_ig_graph(s.ig_access_token)}/{sender}/messages", s.ig_access_token, payload)
+    sender = s.ig_page_id if s.ig_page_id and not token.startswith("IG") else "me"
+    return await _post(f"{_ig_graph(token)}/{sender}/messages", token, payload)

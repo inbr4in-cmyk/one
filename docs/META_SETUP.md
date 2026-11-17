@@ -16,6 +16,16 @@
 Instagram школы должен быть профессиональным (бизнес) и привязан к этой странице Facebook.
 ID Instagram-аккаунта и токен страницы скрипт получит сам.
 
+### Instagram без страницы Facebook (вход через Instagram)
+
+Сценарий «Управление сообщениями и контентом в Instagram» → «Настройка API со входом через Instagram»:
+1. блок 3 «Настройте Webhooks»: Callback URL `https://english.inbrain.kz/api/webhooks/meta`, Verify token с сервера, поле `messages`;
+2. блок 2 «Сгенерируйте маркеры доступа»: добавить Instagram школы (аккаунту нужна роль тестировщика Instagram в «Роли»), «Сгенерировать маркер»;
+3. вверху страницы взять «Секрет приложения Instagram»;
+4. в скрипте ответить на вопросы «Instagram app secret» и «Instagram access token», остальное пропустить Enter.
+
+Ключ живёт 60 дней, платформа продлевает его сама каждую ночь (`OE_IG_APP_SECRET`, `OE_IG_ACCESS_TOKEN`).
+
 ## 2. Запустить скрипт на сервере
 
 В PowerShell на своём компьютере:

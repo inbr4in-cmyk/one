@@ -284,3 +284,26 @@ async def test_transfer_and_leave_with_past_date(db, client, owner_h):
     assert t.status == "done"
     await db.refresh(new)
     assert new.left_on is None  # «остаётся»: back in the group
+
+
+# ---------- 17.11: Instagram API with Instagram login ----------
+async def test_instagram_login_secret_and_renewed_token(tmp_path, monkeypatch):
+    import hashlib
+    import hmac
+
+    from app.core.config import get_settings
+    from app.services import meta
+
+    s = get_settings()
+    monkeypatch.setattr(s, "ig_app_secret", "ig-secret-0123456789")
+    monkeypatch.setattr(s, "ig_access_token", "IGAAold")
+    monkeypatch.setattr(s, "storage_dir", str(tmp_path))
+    body = b'{"object":"instagram"}'
+    sign = lambda secret: "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+    assert meta.verify_signature(body, sign("ig-secret-0123456789")) and meta.verify_signature(body, sign(s.meta_app_secret))
+    assert not meta.verify_signature(body, sign("someone-else")) and not meta.verify_signature(body, None)
+    assert meta.ig_token() == "IGAAold"
+    (tmp_path / ".ig_token").write_text(hashlib.sha256(b"IGAAold").hexdigest() + "\nIGAAnew\n")
+    assert meta.ig_token() == "IGAAnew" and await meta.ig_refresh() == "fresh"
+    monkeypatch.setattr(s, "ig_access_token", "IGAAtyped-again")  # the owner entered a new token: the saved one is stale
+    assert meta.ig_token() == "IGAAtyped-again"

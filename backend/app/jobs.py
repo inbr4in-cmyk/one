@@ -313,6 +313,8 @@ async def nightly(db: AsyncSession) -> dict:
     out["coins"] = await auto_coins(db)
     from app.services.payroll import accrue_salaries
     out["salaries"] = await accrue_salaries(db)
+    from app.services import meta
+    out["instagram_token"] = await meta.ig_refresh()
     await db.commit()
     return out
 
