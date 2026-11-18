@@ -30,9 +30,11 @@ const sourceOptions = computed(() => {
   return [{ value: '', label: '—' }, ...list]
 })
 const canStatus = computed(() => ['active', 'waiting', 'finished', 'left'].includes(props.student.status))
+/** `groups` is the whole history: only a membership that is still open counts as «в группе». */
+const inGroup = computed(() => props.student.groups.some((g) => !g.left_on || g.left_on > todayIso()))
 /** «Ждёт группу» and «Заморозка» are in the list only for a student without a group (in a group: the freeze button). */
 const statusOptions = computed(() => (['active', 'waiting', 'frozen', 'finished', 'left'] as const)
-  .filter((v) => (v !== 'waiting' && v !== 'frozen') || props.student.status === v || !props.student.groups.length)
+  .filter((v) => (v !== 'waiting' && v !== 'frozen') || props.student.status === v || !inGroup.value)
   .map((v) => ({ value: v, label: t(`students.status.${v}`) })))
 /** «Заморозка» picked in the status list: the same freeze as the button, with its dates. */
 const freezing = computed(() => canStatus.value && form.status === 'frozen')
