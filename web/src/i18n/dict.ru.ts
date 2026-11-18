@@ -47,6 +47,8 @@ export default {
     editRoom: 'Кабинет',
     room: 'Кабинет',
     roomPh: 'Каб. 5',
+    roomRate: 'Ставка учителя за урок в этом кабинете, ₸',
+    roomRateChip: 'ставка {n}',
     capacity: 'Мест',
     equipment: 'Оборудование',
     equipmentPh: 'Проектор, доска',

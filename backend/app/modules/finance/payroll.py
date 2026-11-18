@@ -93,27 +93,29 @@ async def sheet(db: DB, actor: Actor = require("payroll", "view"), period: str |
 
 
 LESSON_SECTIONS = (("group", "Групповые уроки"), ("duo", "Дуэт"), ("individual", "Индивидуальные уроки"),
-                   ("support", "Support-уроки"), ("club", "Открытые уроки"))
+                   ("support", "Support-уроки"), ("club", "Открытые уроки"), ("room", "Уроки в кабинете с особой ставкой"))
 
 
 async def breakdown(db: DB, user_id: int, period: str, extra_filter: list) -> dict:
     """How one person's pay for the month is made up: lessons by format at the rate (ставка), the extra for
     students above the threshold separately (KPI), then everything else (оклад, премии, удержания…)."""
-    from app.models import Group
+    from app.models import Group, Room
     from app.services.clock import local
     from app.services.values import rate
 
     rows = (await db.execute(
-        select(Accrual, Lesson, Group.kind).outerjoin(Lesson, (Accrual.ref_type == "lesson") & (Lesson.id == Accrual.ref_id))
-        .outerjoin(Group, Group.id == Lesson.group_id)
+        select(Accrual, Lesson, Group.kind, Room.teacher_rate).outerjoin(Lesson, (Accrual.ref_type == "lesson") & (Lesson.id == Accrual.ref_id))
+        .outerjoin(Group, Group.id == Lesson.group_id).outerjoin(Room, Room.id == Lesson.room_id)
         .where(Accrual.user_id == user_id, Accrual.period == period, *extra_filter).order_by(Accrual.id))).all()
     lessons = {k: {"key": k, "title": t, "count": 0, "amount": 0} for k, t in LESSON_SECTIONS}
     kpi = {"key": "kpi", "title": "KPI: доплата за учеников", "count": 0, "amount": 0}
     other: dict[str, dict] = {}
     bases: dict = {}
-    for a, lesson, gkind in rows:
+    for a, lesson, gkind, room_rate in rows:
         if a.kind == "lesson" and lesson is not None:
             kind = "support" if lesson.is_support else (gkind or "group") if lesson.group_id else "individual"
+            if room_rate and kind in ("group", "duo", "individual") and a.amount == room_rate:
+                kind = "room"
             sec = lessons.get(kind) or lessons["group"]
             sec["count"] += 1
             if kind == "group":
@@ -134,7 +136,7 @@ async def breakdown(db: DB, user_id: int, period: str, extra_filter: list) -> di
     rate_rows = [x for x in lessons.values() if x["count"]]
     return {"lessons": rate_rows, "lessons_total": sum(x["amount"] for x in rate_rows),
             "lessons_count": sum(x["count"] for x in rate_rows), "kpi": kpi,
-            "other": list(other.values()), "total": sum(a.amount for a, _, _ in rows)}
+            "other": list(other.values()), "total": sum(r[0].amount for r in rows)}
 
 
 @router.get("/payroll/breakdown")

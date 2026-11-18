@@ -140,16 +140,18 @@ async function loadRooms() {
 const roomModal = ref(false)
 const roomId = ref<number | null>(null)
 const roomBranch = ref(0)
-const rf = reactive({ name: '', capacity: '12', equipment: '', status: 'active' as Room['status'] })
+const rf = reactive({ name: '', capacity: '12', equipment: '', status: 'active' as Room['status'], rate: '' })
+/** The special pay of a room is set by the network owner only. */
+const canRoomRate = computed(() => auth.can('branches.edit', 'network'))
 const statusOptions = computed(() => (['active', 'repair'] as const).map((v) => ({ value: v, label: t(`dict.roomStatus.${v}`) })))
 function openRoom(branchId: number, r: Room | null) {
   roomBranch.value = branchId
   roomId.value = r?.id ?? null
-  Object.assign(rf, r ? { name: r.name, capacity: String(r.capacity), equipment: r.equipment ?? '', status: r.status } : { name: '', capacity: '12', equipment: '', status: 'active' })
+  Object.assign(rf, r ? { name: r.name, capacity: String(r.capacity), equipment: r.equipment ?? '', status: r.status, rate: r.teacher_rate ? String(r.teacher_rate) : '' } : { name: '', capacity: '12', equipment: '', status: 'active', rate: '' })
   roomModal.value = true
 }
 async function saveRoom() {
-  const body = { name: rf.name.trim(), capacity: Math.round(Number(rf.capacity)), equipment: rf.equipment.trim() || null, status: rf.status }
+  const body = { name: rf.name.trim(), capacity: Math.round(Number(rf.capacity)), equipment: rf.equipment.trim() || null, status: rf.status, ...(canRoomRate.value ? { teacher_rate: Math.max(0, Math.round(Number(rf.rate) || 0)) || null } : {}) }
   if (!body.name || !(body.capacity >= 1)) return toast.error(t('dict.roomInvalid'))
   busy.value = true
   try {
@@ -415,14 +417,14 @@ watch(tab, loadTab)
           <thead><tr><th>{{ t('dict.room') }}</th><th class="r">{{ t('dict.capacity') }}</th><th>{{ t('dict.equipment') }}</th><th>{{ t('dict.status') }}</th><th class="r"><span class="sr">{{ t('books.actions') }}</span></th></tr></thead>
           <tbody>
             <tr v-for="r in roomsBy?.[b.id] ?? []" :key="r.id">
-              <td><b>{{ r.name }}</b></td>
+              <td><b>{{ r.name }}</b><span v-if="r.teacher_rate" class="chip xs" style="margin-left: 8px">{{ t('dict.roomRateChip', { n: money(r.teacher_rate, loc) }) }}</span></td>
               <td class="r num">{{ r.capacity }}</td>
               <td class="muted">{{ r.equipment || '—' }}</td>
               <td><span class="chip xs" :class="{ red: r.status === 'repair' }">{{ t(`dict.roomStatus.${r.status}`) }}</span></td>
               <td class="r">
                 <div class="row-acts nowrap">
                   <UiButton size="sm" variant="ghost" icon="edit" :aria-label="`${t('common.edit')}: ${r.name}`" @click="openRoom(b.id, r)" />
-                  <UiButton size="sm" variant="ghost" icon="archive" :aria-label="`${t('dict.archive')}: ${r.name}`" @click="confirm = { kind: 'rooms', id: r.id, name: r.name }" />
+                  <UiButton v-if="!r.teacher_rate" size="sm" variant="ghost" icon="archive" :aria-label="`${t('dict.archive')}: ${r.name}`" @click="confirm = { kind: 'rooms', id: r.id, name: r.name }" />
                 </div>
               </td>
             </tr>
@@ -489,6 +491,7 @@ watch(tab, loadTab)
       </div>
       <UiInput v-model="rf.equipment" :label="t('dict.equipment')" :placeholder="t('dict.equipmentPh')" :maxlength="255" />
       <UiField :label="t('dict.status')"><UiSelect v-model="rf.status" :options="statusOptions" :label="t('dict.status')" block /></UiField>
+      <UiInput v-if="canRoomRate" v-model="rf.rate" type="number" inputmode="numeric" :min="0" :label="t('dict.roomRate')" />
     </form>
     <template #footer="{ close }">
       <UiButton @click="close">{{ t('common.cancel') }}</UiButton>

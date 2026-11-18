@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, String
+from sqlalchemy import Integer, Boolean, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import ArchiveMixin, Base, IdMixin, TimestampMixin
@@ -24,6 +24,9 @@ class Room(IdMixin, TimestampMixin, ArchiveMixin, Base):
     equipment: Mapped[StrN]
     # active | repair
     status: Mapped[str] = mapped_column(String(16), default="active")
+    # Fixed teacher pay for any group/duo/individual lesson held here (no per-student extra). Such a room
+    # cannot be deleted.
+    teacher_rate: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class Level(IdMixin, TimestampMixin, ArchiveMixin, Base):

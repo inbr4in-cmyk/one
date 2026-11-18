@@ -47,6 +47,8 @@ export default {
     editRoom: 'Кабинет',
     room: 'Кабинет',
     roomPh: '5-каб.',
+    roomRate: 'Осы кабинеттегі сабақ үшін мұғалім мөлшерлемесі, ₸',
+    roomRateChip: 'мөлшерлеме {n}',
     capacity: 'Орын',
     equipment: 'Жабдық',
     equipmentPh: 'Проектор, тақта',

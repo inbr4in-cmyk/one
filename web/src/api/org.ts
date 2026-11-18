@@ -16,6 +16,8 @@ export interface Room {
   capacity: number
   equipment: string | null
   status: 'active' | 'repair'
+  /** fixed teacher pay for a lesson in this room; such a room cannot be deleted */
+  teacher_rate?: number | null
 }
 
 export type BranchIn = Omit<Branch, 'id'>

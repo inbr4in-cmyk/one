@@ -6,7 +6,7 @@ from sqlalchemy import func, select
 
 from app.core.audit import diff, snapshot, write_audit
 from app.core.deps import DB, Actor, CurrentActor, require, require_staff
-from app.core.errors import bad_request, forbidden, not_found
+from app.core.errors import bad_request, conflict, forbidden, not_found
 from app.core.permissions import NETWORK
 from app.core.schemas import In, ORM
 from app.models import Branch, Group, Level, Role, Room, User, UserBranch, UserRole
@@ -38,6 +38,8 @@ class RoomIn(In):
     capacity: int = Field(ge=1, le=200)
     equipment: str | None = Field(default=None, max_length=255)
     status: str = Field(default="active", pattern="^(active|repair)$")
+    # only the network owner sets it; left out = unchanged
+    teacher_rate: int | None = Field(default=None, ge=0, le=1_000_000)
 
 
 class RoomOut(ORM):
@@ -47,6 +49,7 @@ class RoomOut(ORM):
     capacity: int
     equipment: str | None
     status: str
+    teacher_rate: int | None = None
     archived_at: datetime | None
 
 
@@ -126,7 +129,11 @@ async def create_room(branch_id: int, body: RoomIn, db: DB, actor: Actor = requi
     actor.ensure_branch("branches", "create", branch_id)
     if await db.get(Branch, branch_id) is None:
         raise not_found("Филиал")
-    r = Room(branch_id=branch_id, **body.model_dump())
+    data = body.model_dump()
+    if actor.scope("branches", "create") != NETWORK:
+        data.pop("teacher_rate")
+    data["teacher_rate"] = data.get("teacher_rate") or None
+    r = Room(branch_id=branch_id, **data)
     db.add(r)
     await db.flush()
     await write_audit(db, actor_id=actor.id, action="room.create", entity="room", entity_id=r.id, branch_id=branch_id,
@@ -142,7 +149,12 @@ async def update_room(room_id: int, body: RoomIn, db: DB, actor: Actor = require
         raise not_found("Кабинет")
     actor.ensure_branch("branches", "edit", r.branch_id)
     before = snapshot(r)
-    for k, v in body.model_dump().items():
+    data = body.model_dump()
+    if "teacher_rate" not in body.model_fields_set or actor.scope("branches", "edit") != NETWORK:
+        data.pop("teacher_rate")  # the special pay of a room is the network owner's decision
+    else:
+        data["teacher_rate"] = data["teacher_rate"] or None
+    for k, v in data.items():
         setattr(r, k, v)
     bb, aa = diff(before, snapshot(r))
     await write_audit(db, actor_id=actor.id, action="room.update", entity="room", entity_id=r.id, branch_id=r.branch_id,
@@ -157,6 +169,8 @@ async def archive_room(room_id: int, db: DB, actor: Actor = require("branches", 
     if r is None:
         raise not_found("Кабинет")
     actor.ensure_branch("branches", "archive", r.branch_id)
+    if r.teacher_rate:
+        raise conflict("У кабинета особая ставка учителя, удалить его нельзя")
     r.archived_at = datetime.now(UTC)
     await write_audit(db, actor_id=actor.id, action="room.archive", entity="room", entity_id=r.id, branch_id=r.branch_id, ip=actor.ip)
     await db.commit()

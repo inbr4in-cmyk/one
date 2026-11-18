@@ -180,3 +180,37 @@ async def test_waiting_for_a_group_status(client, db, owner_h):
     assert (await client.get(f"/api/students/{s['id']}", headers=owner_h)).json()["status"] == "active"
     r = await client.patch(f"/api/students/{s['id']}", headers=owner_h, json={"status": "waiting"})
     assert r.status_code == 400 and "есть группа" in r.json()["detail"]
+
+
+async def test_room_with_its_own_teacher_pay_is_flat_and_cannot_be_deleted(client, db, owner_h):
+    from app.models import Accrual
+    from tests.test_core_learning import _lesson_now, _setup, _student
+
+    bid, teacher, room, g = await _setup(db, client, owner_h)
+    await db.refresh(room)
+    body = {"name": room.name, "capacity": room.capacity, "equipment": None, "status": "active"}
+    room_id = room.id
+    # a branch admin cannot set the special pay: his save leaves it as it was
+    admin = await make_staff(db, "branch_admin", [YANGI], "+77030000555")
+    ah = await login(client, admin.phone)
+    r = await client.patch(f"/api/rooms/{room_id}", headers=ah, json={**body, "teacher_rate": 9000})
+    assert r.status_code == 200 and r.json()["teacher_rate"] is None
+    r = await client.patch(f"/api/rooms/{room_id}", headers=owner_h, json={**body, "teacher_rate": 3500})
+    assert r.status_code == 200 and r.json()["teacher_rate"] == 3500
+    await db.refresh(room)  # the test shares one session with the app
+    assert (await client.patch(f"/api/rooms/{room_id}", headers=ah, json=body)).json()["teacher_rate"] == 3500
+    # nobody deletes such a room
+    for h in (ah, owner_h):
+        assert (await client.post(f"/api/rooms/{room_id}/archive", headers=h, json={})).status_code == 409
+    ids = []
+    for i in range(8):
+        s = await _student(db, client, owner_h, bid, f"Шу {i}", f"+7705111330{i}")
+        await client.post(f"/api/groups/{g['id']}/members", headers=owner_h, json={"student_id": s["id"]})
+        ids.append(s["id"])
+    lesson = await _lesson_now(db, g, teacher, room)
+    th = await login(client, teacher.phone)
+    r = await client.put(f"/api/lessons/{lesson.id}/attendance", headers=th,
+                         json={"marks": [{"student_id": i, "status": "present"} for i in ids]})
+    assert r.status_code == 200, r.text
+    acc = await db.scalar(select(Accrual).where(Accrual.kind == "lesson", Accrual.ref_id == lesson.id))
+    assert acc.amount == 3500  # 8 students, still no extra for the 6th–8th
