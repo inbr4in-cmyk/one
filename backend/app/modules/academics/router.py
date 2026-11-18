@@ -22,6 +22,7 @@ from app.models import (
     UserBranch,
     Lesson,
     LessonRating,
+    LessonStudent,
     Room,
     ScheduleRule,
     Student,
@@ -457,6 +458,8 @@ class LessonOut(ORM):
     teacher_name: str | None = None
     room_name: str | None = None
     trials: int = 0
+    # support lesson: who it is for
+    students: list[str] = []
 
 
 def lesson_filter(actor: Actor):
@@ -482,9 +485,17 @@ async def _lesson_outs(db: DB, lessons: list[Lesson]) -> list[LessonOut]:
     lids = [x.id for x in lessons]
     trials = dict((await db.execute(select(Lead.trial_lesson_id, func.count()).where(Lead.trial_lesson_id.in_(lids))
                                     .group_by(Lead.trial_lesson_id))).all()) if lids else {}
+    sup: dict[int, list[str]] = {}
+    sup_ids = [x.id for x in lessons if x.is_support]
+    if sup_ids:
+        for lid, name in (await db.execute(select(LessonStudent.lesson_id, Student.full_name)
+                                           .join(Student, Student.id == LessonStudent.student_id)
+                                           .where(LessonStudent.lesson_id.in_(sup_ids)).order_by(Student.full_name))).all():
+            sup.setdefault(lid, []).append(name)
     out = []
     for x in lessons:
         o = LessonOut.model_validate(x)
+        o.students = sup.get(x.id, [])
         o.group_name = gn.get(x.group_id) if x.group_id else "Индивидуально"
         o.kind = "support" if x.is_support else gk.get(x.group_id, "group") if x.group_id else "individual"
         o.teacher_name = un.get(x.actual_teacher_id or x.teacher_id)
@@ -535,8 +546,9 @@ class LessonIn(In):
     starts_at: datetime
     ends_at: datetime
     topic: str | None = Field(default=None, max_length=255)
-    # Support lesson: no group and no student, just a teacher, a room and a topic
+    # Support lesson: a make-up lesson of a teacher with a few picked students (or none), no group
     support: bool = False
+    student_ids: list[int] = Field(default_factory=list, max_length=20)
 
 
 @router.post("/lessons", response_model=LessonOut, status_code=201)
@@ -556,8 +568,7 @@ async def create_lesson(body: LessonIn, db: DB, actor: Actor = require("schedule
         s = await get_student_scoped(db, actor, body.student_id)
         level_id = s.level_id
     elif body.support:
-        if not (body.topic or "").strip():
-            raise bad_request("Напишите тему support-урока")
+        support_students = [await get_student_scoped(db, actor, sid) for sid in dict.fromkeys(body.student_ids)]
     else:
         raise bad_request("Укажите группу или ученика")
     if c := await sched.conflicts(db, room_id=room.id, teacher_id=body.teacher_id, starts_at=body.starts_at, ends_at=body.ends_at):
@@ -570,6 +581,9 @@ async def create_lesson(body: LessonIn, db: DB, actor: Actor = require("schedule
         await db.flush()
     except IntegrityError:
         raise conflict("Кабинет или учитель заняты в это время") from None
+    if lesson.is_support:
+        for s in support_students:
+            db.add(LessonStudent(lesson_id=lesson.id, student_id=s.id))
     await write_audit(db, actor_id=actor.id, action="lesson.create", entity="lesson", entity_id=lesson.id,
                       branch_id=lesson.branch_id, ip=actor.ip)
     await db.commit()
@@ -703,7 +717,7 @@ async def substitute(lesson_id: int, body: SubstituteIn, db: DB, actor: Actor = 
                 if x.status in (AttendanceStatus.PRESENT, AttendanceStatus.LATE) and (x.student_id or trial_counts))
         await accrue_lesson(db, teacher_id=lesson.actual_teacher_id or lesson.teacher_id, lesson_id=lesson.id, n=n,
                             on=local(lesson.starts_at).date(), branch_id=lesson.branch_id,
-                            group_name=group.name if group else f"Support «{lesson.topic}»" if lesson.is_support else "индивидуально",
+                            group_name=group.name if group else ("Support" + (f" «{lesson.topic}»" if lesson.topic else "")) if lesson.is_support else "индивидуально",
                             actor_id=actor.id, kind="support" if lesson.is_support else group.kind if group else "individual")
     await write_audit(db, actor_id=actor.id, action="lesson.substitute", entity="lesson", entity_id=lesson.id,
                       branch_id=lesson.branch_id, ip=actor.ip, before={"actual_teacher_id": before},
@@ -765,6 +779,9 @@ async def roster(lesson_id: int, db: DB, actor: Actor = require("attendance", "v
             select(Student).join(GroupMember, GroupMember.student_id == Student.id)
             .where(GroupMember.group_id == lesson.group_id, GroupMember.joined_on <= d,
                    or_(GroupMember.left_on.is_(None), GroupMember.left_on > d)).order_by(Student.full_name)))
+    elif lesson.is_support:
+        students = list(await db.scalars(select(Student).join(LessonStudent, LessonStudent.student_id == Student.id)
+                                         .where(LessonStudent.lesson_id == lesson.id).order_by(Student.full_name)))
     else:
         students = [await db.get(Student, lesson.student_id)] if lesson.student_id else []
     seen = set()
@@ -865,8 +882,8 @@ async def mark(lesson_id: int, body: MarksIn, db: DB, actor: Actor = require("at
         a.status, a.grade, a.comment, a.marked_by = m.status, m.grade, m.comment, actor.id
         if m.student_id:
             s = await db.get(Student, m.student_id)
-            if await is_frozen_on(db, s.id, loc.date()):
-                want = False  # ТЗ 5.3: frozen students are not charged
+            if lesson.is_support or await is_frozen_on(db, s.id, loc.date()):
+                want = False  # a support (make-up) lesson is free; ТЗ 5.3: frozen students are not charged
             else:
                 want = _charged(m.status, charge_absent, charge_late)
             star_delta = m.stars - a.stars
@@ -880,7 +897,7 @@ async def mark(lesson_id: int, body: MarksIn, db: DB, actor: Actor = require("at
             if m.status in (AttendanceStatus.PRESENT, AttendanceStatus.LATE):
                 s.last_visit_at = max(s.last_visit_at or lesson.starts_at, lesson.starts_at)
                 await award_auto(db, s.id, "attendance", ("lesson", lesson.id), "Посещение урока")
-            if old_status != m.status:
+            if old_status != m.status and not lesson.is_support:
                 variables = {"time": f"{loc:%H:%M}", "group": group.name if group else ""}
                 if m.status == AttendanceStatus.ABSENT:
                     await notify_guardians(db, s, "absence", variables, ref=("attendance", lesson.id))
@@ -912,7 +929,7 @@ async def mark(lesson_id: int, body: MarksIn, db: DB, actor: Actor = require("at
         lesson.topic = body.topic
     await accrue_lesson(db, teacher_id=lesson.actual_teacher_id or lesson.teacher_id, lesson_id=lesson.id, n=n,
                         on=loc.date(), branch_id=lesson.branch_id,
-                        group_name=group.name if group else f"Support «{lesson.topic}»" if lesson.is_support else "индивидуально",
+                        group_name=group.name if group else ("Support" + (f" «{lesson.topic}»" if lesson.topic else "")) if lesson.is_support else "индивидуально",
                         actor_id=actor.id, kind="support" if lesson.is_support else group.kind if group else "individual")
     await write_audit(db, actor_id=actor.id, action="attendance.mark" if first_mark and not needs_reason else "attendance.fix",
                       entity="lesson", entity_id=lesson.id, branch_id=lesson.branch_id, ip=actor.ip,

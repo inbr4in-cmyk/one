@@ -87,6 +87,8 @@ export interface Lesson {
   teacher_name: string | null
   room_name: string | null
   trials: number
+  /** support lesson: names of the students it is for */
+  students?: string[]
 }
 
 export type AttendanceStatus = 'present' | 'late' | 'absent' | 'excused'
@@ -179,7 +181,7 @@ export const academicsApi = {
     http.post<{ rule_id: number; created: number; replaced: number }>(`/schedule-rules/${ruleId}/change`, body, { silent: true }),
   endRule: (ruleId: number) => http.delete(`/schedule-rules/${ruleId}`),
   lessons: (q: LessonQuery) => http.get<Lesson[]>(`/lessons${qs({ ...q })}`),
-  createLesson: (body: { group_id?: number | null; student_id?: number | null; teacher_id: number; room_id: number; starts_at: string; ends_at: string; topic?: string | null; support?: boolean }) =>
+  createLesson: (body: { group_id?: number | null; student_id?: number | null; teacher_id: number; room_id: number; starts_at: string; ends_at: string; topic?: string | null; support?: boolean; student_ids?: number[] }) =>
     http.post<Lesson>('/lessons', body, { silent: true }),
   cancel: (id: number, reason: string) => http.post<Lesson>(`/lessons/${id}/cancel`, { reason }),
   backfill: (body: { date_from: string; date_to: string; branch_id?: number | null; members_from_start: boolean }) =>

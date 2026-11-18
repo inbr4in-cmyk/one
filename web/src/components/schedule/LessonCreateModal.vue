@@ -8,10 +8,11 @@ import type { Room } from '@/api/org'
 import { ApiError } from '@/api/http'
 import { useRefsStore } from '@/stores/refs'
 import { useToastStore } from '@/stores/toast'
+import StudentPicker from '@/components/students/StudentPicker.vue'
 import type { TeacherOption } from '@/composables/useTeachers'
 import { isoDate, schoolNow, schoolIso } from '@/utils/dates'
 
-/** One-off lesson for a group (make-up, extra), or a support lesson (teacher + topic, no students).
+/** One-off lesson for a group (make-up, extra), or a support lesson (teacher + a few picked students).
  * The server refuses room/teacher conflicts with 409. */
 const props = defineProps<{ groups: Group[]; teachers: TeacherOption[]; date?: string | null; roomId?: number | null
   start?: string | null; end?: string | null; branchId?: number | null }>()
@@ -27,6 +28,9 @@ const branchOptions = computed(() => branches.options.filter((o) => o.id !== nul
 const supportBranch = ref(0)
 const form = reactive({ group_id: 0, teacher_id: 0, room_id: 0, date: '', start: '16:00', end: '17:30', topic: '' })
 const rooms = ref<Room[]>([])
+/** Support lesson: the students it is held for, found through the search box. */
+const picked = ref<{ id: number; full_name: string }[]>([])
+const picking = ref(false)
 const error = ref<string | null>(null)
 const busy = ref(false)
 
@@ -42,6 +46,8 @@ watch(open, (v) => {
     start: props.start ?? '16:00', end: props.end ?? '17:30', topic: '' })
   supportBranch.value = props.branchId ?? (branchOptions.value[0]?.value ?? 0)
   error.value = null
+  picked.value = []
+  picking.value = false
 })
 watch([mode, supportBranch], async () => {
   if (mode.value !== 'support' || !supportBranch.value) return
@@ -60,13 +66,12 @@ watch(group, async (g) => {
 
 async function submit() {
   const support = mode.value === 'support'
-  error.value = support && !form.teacher_id ? t('schedule.support.pickTeacher') : support && !form.topic.trim() ? t('schedule.support.topicRequired')
-    : !support && !form.group_id ? t('schedule.pickGroup') : form.end <= form.start ? t('groups.rule.badTime') : !form.room_id ? t('groups.rule.roomRequired') : null
+  error.value = support && !form.teacher_id ? t('schedule.support.pickTeacher')    : !support && !form.group_id ? t('schedule.pickGroup') : form.end <= form.start ? t('groups.rule.badTime') : !form.room_id ? t('groups.rule.roomRequired') : null
   if (error.value) return
   busy.value = true
   try {
     await academicsApi.createLesson({
-      ...(support ? { support: true } : { group_id: form.group_id }), teacher_id: form.teacher_id, room_id: form.room_id,
+      ...(support ? { support: true, student_ids: picked.value.map((s) => s.id) } : { group_id: form.group_id }), teacher_id: form.teacher_id, room_id: form.room_id,
       starts_at: schoolIso(form.date, form.start), ends_at: schoolIso(form.date, form.end),
       topic: form.topic.trim() || null,
     })
@@ -97,6 +102,14 @@ async function submit() {
         <UiField :label="t('groups.teacher')"><UiSelect v-model="form.teacher_id" :options="teacherOptions" :label="t('groups.teacher')" block :disabled="mode === 'group' && !group" /></UiField>
       </div>
       <UiInput v-model="form.topic" :label="t('schedule.topic')" />
+      <UiField v-if="mode === 'support'" :label="t('schedule.support.students')">
+        <div class="sup-list">
+          <span v-for="s in picked" :key="s.id" class="chip">{{ s.full_name }}
+            <button type="button" class="chip-x" :aria-label="`${t('common.remove')}: ${s.full_name}`" @click="picked = picked.filter((x) => x.id !== s.id)">×</button></span>
+          <UiButton v-if="!picking" size="sm" icon="plus" @click="picking = true">{{ t('schedule.support.addStudent') }}</UiButton>
+        </div>
+        <StudentPicker v-if="picking" :branch-id="supportBranch || null" :exclude="picked.map((s) => s.id)" @pick="(s) => picked.push({ id: s.id, full_name: s.full_name })" />
+      </UiField>
       <div v-if="error" class="alert red" role="alert"><UiIcon name="alert" /><div class="grow"><b>{{ error }}</b></div></div>
     </form>
     <template #footer="{ close }">
@@ -105,3 +118,8 @@ async function submit() {
     </template>
   </UiModal>
 </template>
+
+<style scoped>
+.sup-list { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 8px; }
+.chip-x { border: 0; background: none; cursor: pointer; padding: 0 0 0 4px; font-size: 15px; line-height: 1; color: inherit; }
+</style>

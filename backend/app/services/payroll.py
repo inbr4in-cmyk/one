@@ -120,8 +120,13 @@ async def accrue_lesson(db: AsyncSession, *, teacher_id: int, lesson_id: int, n:
     """Upsert the pay for one held lesson. If the attendance is corrected later the amount follows; once the
     period is approved, the difference goes into the next open period as a correction."""
     room_rate = await db.scalar(select(Room.teacher_rate).join(Lesson, Lesson.room_id == Room.id).where(Lesson.id == lesson_id))
-    if kind in ("support", "club"):
-        amount = await rate(db, f"teacher_{kind}_lesson", on)
+    if kind == "support":
+        # Support: paid by the length of the lesson, the rate is for 30 minutes (1000 → an hour is 2000).
+        les = await db.get(Lesson, lesson_id)
+        minutes = max(0, round((les.ends_at - les.starts_at).total_seconds() / 60))
+        amount = round(await rate(db, "teacher_support_lesson", on) * minutes / 30)
+    elif kind == "club":
+        amount = await rate(db, "teacher_club_lesson", on)
     elif room_rate:
         # A room with its own pay: the same fixed sum for a group, duo or individual lesson, no per-student extra.
         amount = room_rate

@@ -304,8 +304,7 @@ async def test_support_lesson_without_students_pays_teacher_rate(db, client, own
     bid, teacher, room, g = await _setup(db, client, owner_h)
     s = (now() - timedelta(minutes=5)).replace(microsecond=0)
     body = {"teacher_id": teacher.id, "room_id": room.id, "starts_at": s.isoformat(),
-            "ends_at": (s + timedelta(minutes=50)).isoformat(), "support": True}
-    assert (await client.post("/api/lessons", headers=owner_h, json=body)).status_code == 400  # topic required
+            "ends_at": (s + timedelta(minutes=30)).isoformat(), "support": True}
     r = await client.post("/api/lessons", headers=owner_h, json={**body, "topic": "Speaking club"})
     assert r.status_code == 201, r.text
     lesson = r.json()

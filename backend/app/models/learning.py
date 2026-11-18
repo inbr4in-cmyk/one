@@ -160,8 +160,18 @@ class Lesson(IdMixin, TimestampMixin, Base):
     moved_from_id: Mapped[int | None] = fk("lessons.id", nullable=True)
     attendance_marked_at: Mapped[DTN]
     topic: Mapped[StrN]
-    # Support lesson: a one-off lesson of a teacher without students (manager sets time, room, teacher, topic)
+    # Support lesson: a one-off make-up lesson of a teacher with a few picked students (lesson_students), or none
     is_support: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+
+
+class LessonStudent(IdMixin, Base):
+    """Students picked for a support lesson (a make-up lesson for those who missed classes)."""
+
+    __tablename__ = "lesson_students"
+    __table_args__ = (UniqueConstraint("lesson_id", "student_id"),)
+
+    lesson_id: Mapped[int] = fk("lessons.id")
+    student_id: Mapped[int] = fk("students.id")
 
 
 class AttendanceStatus:

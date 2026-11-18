@@ -27,6 +27,7 @@ from app.models.learning import (
     HomeworkSubmission,
     Lesson,
     LessonRating,
+    LessonStudent,
     ScheduleRule,
     Student,
     StudentGuardian,

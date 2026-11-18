@@ -214,3 +214,31 @@ async def test_room_with_its_own_teacher_pay_is_flat_and_cannot_be_deleted(clien
     assert r.status_code == 200, r.text
     acc = await db.scalar(select(Accrual).where(Accrual.kind == "lesson", Accrual.ref_id == lesson.id))
     assert acc.amount == 3500  # 8 students, still no extra for the 6th–8th
+
+
+async def test_support_lesson_with_picked_students_is_free_and_paid_by_its_length(client, db, owner_h):
+    from app.models import Accrual, Student
+    from app.services.clock import now
+    from tests.test_core_learning import _setup, _student
+
+    bid, teacher, room, g = await _setup(db, client, owner_h)
+    ids = [(await _student(db, client, owner_h, bid, f"Отработка {i}", f"+7705111440{i}"))["id"] for i in range(3)]
+    await client.post("/api/payments", headers=owner_h, json={"student_id": ids[0], "lessons": 12, "method": "kaspi"})
+    s = (now() - timedelta(minutes=5)).replace(microsecond=0)
+    r = await client.post("/api/lessons", headers=owner_h, json={
+        "teacher_id": teacher.id, "room_id": room.id, "starts_at": s.isoformat(), "ends_at": (s + timedelta(minutes=60)).isoformat(),
+        "support": True, "student_ids": ids})
+    assert r.status_code == 201, r.text
+    lesson = r.json()
+    assert lesson["kind"] == "support" and len(lesson["students"]) == 3
+    th = await login(client, teacher.phone)
+    sheet = (await client.get(f"/api/lessons/{lesson['id']}/attendance", headers=th)).json()
+    assert sorted(x["student_id"] for x in sheet["rows"]) == sorted(ids)
+    marks = [{"student_id": ids[0], "status": "present"}, {"student_id": ids[1], "status": "absent"}]
+    r = await client.put(f"/api/lessons/{lesson['id']}/attendance", headers=th, json={"marks": marks})
+    assert r.status_code == 200, r.text
+    s0 = await db.get(Student, ids[0])
+    await db.refresh(s0)
+    assert s0.lessons_left == 12  # a make-up lesson takes nothing from the balance
+    acc = await db.scalar(select(Accrual).where(Accrual.ref_type == "lesson", Accrual.ref_id == lesson["id"]))
+    assert acc.amount == 2000  # 1000 per 30 minutes

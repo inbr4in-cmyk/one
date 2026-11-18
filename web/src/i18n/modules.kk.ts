@@ -252,7 +252,7 @@ const modules: typeof ru = {
   },
   schedule: {
     addHere: 'Осында сабақ қосу',
-    support: { mode: 'Support-сабақ', hint: 'Оқушысыз сабақ: мұғалімді таңдап, тақырыпты жазыңыз. Мұғалімге support-сабақ мөлшерлемесі есептеледі.', topicRequired: 'Сабақ тақырыбын жазыңыз', pickTeacher: 'Мұғалімді таңдаңыз', branch: 'Филиал' },
+    support: { mode: 'Support-сабақ', hint: 'Оқушысыз сабақ: мұғалімді таңдап, тақырыпты жазыңыз. Мұғалімге support-сабақ мөлшерлемесі есептеледі.', topicRequired: 'Сабақ тақырыбын жазыңыз', pickTeacher: 'Мұғалімді таңдаңыз', branch: 'Филиал', students: 'Оқушылар', addStudent: 'Оқушы қосу' },
     lessonFor: 'Топ сабағы',
     backfill: {
       button: 'Өткен сабақтар',

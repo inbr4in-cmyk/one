@@ -251,7 +251,7 @@ const modules = {
   },
   schedule: {
     addHere: 'Добавить урок сюда',
-    support: { mode: 'Support-урок', hint: 'Урок без учеников: выберите учителя и напишите тему. Учителю начислится ставка за support-урок.', topicRequired: 'Напишите тему урока', pickTeacher: 'Выберите учителя', branch: 'Филиал' },
+    support: { mode: 'Support-урок', hint: 'Урок без учеников: выберите учителя и напишите тему. Учителю начислится ставка за support-урок.', topicRequired: 'Напишите тему урока', pickTeacher: 'Выберите учителя', branch: 'Филиал', students: 'Ученики', addStudent: 'Добавить ученика' },
     lessonFor: 'Урок группы',
     backfill: {
       button: 'Прошедшие уроки',
