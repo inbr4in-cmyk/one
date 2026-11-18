@@ -21,6 +21,8 @@ def lead_filter(actor: Actor, action: str = "view"):
         cond = or_(Lead.branch_id.in_(actor.branch_ids or {-1}), Lead.branch_id.is_(None))  # no branch yet: everyone's
     if actor.stage_hidden:
         cond = and_(cond, Lead.stage_id.notin_(actor.stage_hidden))
+    if actor.stage_own:
+        cond = and_(cond, or_(Lead.stage_id.notin_(actor.stage_own), Lead.owner_id == actor.id, Lead.assignee_id == actor.id))
     return cond
 
 

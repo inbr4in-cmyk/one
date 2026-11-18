@@ -32,6 +32,7 @@ class Actor:
     # Funnel stages the admin closed for this person (table «сотрудник × этап»): hidden, or view only.
     stage_hidden: set[int] = field(default_factory=set)
     stage_readonly: set[int] = field(default_factory=set)
+    stage_own: set[int] = field(default_factory=set)  # on these stages only the leads I own or am responsible for
 
     @property
     def id(self) -> int:
@@ -83,7 +84,7 @@ async def load_actor(db: AsyncSession, user: User, session_id: int, mfa: bool, i
 
         for stage_id, level in await db.execute(select(LeadStageAccess.stage_id, LeadStageAccess.level)
                                                 .where(LeadStageAccess.user_id == user.id)):
-            (actor.stage_hidden if level == "none" else actor.stage_readonly).add(stage_id)
+            {"none": actor.stage_hidden, "own": actor.stage_own}.get(level, actor.stage_readonly).add(stage_id)
     return actor
 
 

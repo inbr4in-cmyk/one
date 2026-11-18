@@ -54,6 +54,7 @@ async function set(userId: number, stageId: number, value: StageLevel) {
               <UiChip v-if="u.locked" small tone="ok">{{ t('nv.stageAccess.full') }}</UiChip>
               <select v-else class="inp perm-sel" :class="level(u.id, s.id)" :value="level(u.id, s.id)" :disabled="saving === `${u.id}:${s.id}`" :aria-label="`${u.full_name}: ${stageName(s)}`" @change="set(u.id, s.id, ($event.target as HTMLSelectElement).value as StageLevel)">
                 <option value="edit">{{ u.can_edit ? t('nv.stageAccess.edit') : t('nv.stageAccess.view') }}</option>
+                <option value="own">{{ t('nv.stageAccess.own') }}</option>
                 <option v-if="u.can_edit" value="view">{{ t('nv.stageAccess.view') }}</option>
                 <option value="none">{{ t('nv.stageAccess.none') }}</option>
               </select>
@@ -74,6 +75,7 @@ async function set(userId: number, stageId: number, value: StageLevel) {
 .sa tbody th { font-weight: 400; position: sticky; left: 0; background: var(--surface); min-width: 180px; white-space: normal }
 .sa tbody th span { display: block; font-size: 12px; color: var(--muted) }
 .sa select { min-width: 132px }
+.sa select.own { background: var(--info-bg); color: var(--info) }
 .sa select.view { background: var(--warn-bg); color: var(--warn) }
 .sa select.none { background: var(--red-100); color: var(--red-ink) }
 </style>

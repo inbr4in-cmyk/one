@@ -65,6 +65,7 @@ export default {
       save: 'Жазу',
     },
     stageAccess: {
+      own: 'Тек өзінікі',
       btn: 'Воронка кезеңдеріне рұқсат',
       title: 'Сату воронкасы: кім қай кезеңді көреді',
       staff: 'Қызметкер',
@@ -75,6 +76,7 @@ export default {
     },
     noBranch: 'Филиал таңдалмаған',
     pickBranch: 'Филиалды таңдаңыз',
+    changeAssignee: 'Өзгерту',
     fin: {
       refundsNet: 'Қайтарымдар {refunds} · таза түсім {net}',
       netRevenue: 'Таза түсім',

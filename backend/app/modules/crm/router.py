@@ -364,6 +364,10 @@ async def patch_lead(lead_id: int, body: LeadPatch, db: DB, actor: Actor = requi
     if branch := data.pop("branch_id", None):
         actor.ensure_branch("crm", "edit", branch)
         await set_branch(db, lead, branch, actor.id)
+    if data.get("assignee_id"):
+        who = await db.get(User, data["assignee_id"])
+        if who is None or who.kind != UserKind.STAFF or not who.is_active or who.archived_at is not None:
+            raise bad_request("Ответственным может быть только работающий сотрудник")
     for k in ("phone", "parent_phone"):
         if data.get(k):
             data[k] = normalize_phone(data[k])
@@ -539,7 +543,7 @@ async def archive_lead(lead_id: int, db: DB, actor: Actor = require("crm", "arch
 class StageAccessIn(In):
     user_id: int
     stage_id: int
-    level: str = Field(pattern="^(edit|view|none)$")
+    level: str = Field(pattern="^(edit|own|view|none)$")
 
 
 @router.get("/stage-access")

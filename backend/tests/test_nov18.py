@@ -19,6 +19,13 @@ async def test_lead_history_names_every_step(client, db, owner_h, owner):
     assert "Изменено: телефон" in texts and "Позвонил, думает" in texts
     assert all(e["actor_name"] == owner.full_name for e in card["events"])
     assert card["lead"]["assignee_name"] == owner.full_name
+    other = await make_staff(db, "sales", [YANGI], "+77080000779", "Новый Ответственный")
+    await db.commit()
+    r = await client.patch(f"/api/crm/leads/{lead['id']}", headers=owner_h, json={"assignee_id": other.id})
+    assert r.json()["assignee_name"] == "Новый Ответственный"
+    card = (await client.get(f"/api/crm/leads/{lead['id']}", headers=owner_h)).json()
+    assert card["events"][0]["text"] == "Ответственный: Новый Ответственный" and card["events"][0]["actor_name"] == owner.full_name
+    assert (await client.patch(f"/api/crm/leads/{lead['id']}", headers=owner_h, json={"assignee_id": 999999})).status_code == 400
 
 
 async def test_lead_can_be_dated_back_a_month_at_most(client, db, owner_h):
@@ -65,6 +72,14 @@ async def test_admin_closes_funnel_stages_per_person(client, db, owner_h):
     assert new.id not in {c["stage"]["id"] for c in cols}
     assert (await client.get(f"/api/crm/leads/{lead['id']}", headers=h)).status_code == 404
     assert new.id in {c["stage"]["id"] for c in (await client.get("/api/crm/board", headers=owner_h)).json()["columns"]}
+
+    # only own: other people's leads on that stage are not shown, own ones stay editable
+    other = (await client.post("/api/crm/leads", headers=owner_h, json={"full_name": "Чужой", "branch_id": bid})).json()
+    await client.put("/api/crm/stage-access", headers=owner_h, json={"user_id": sales.id, "stage_id": new.id, "level": "own"})
+    col = next(c for c in (await client.get("/api/crm/board", headers=h)).json()["columns"] if c["stage"]["id"] == new.id)
+    assert {x["id"] for x in col["leads"]} == {lead["id"]} and col["total"] == 1
+    assert (await client.get(f"/api/crm/leads/{other['id']}", headers=h)).status_code == 404
+    assert (await client.patch(f"/api/crm/leads/{lead['id']}", headers=h, json={"notes": "моё"})).status_code == 200
 
     # back to what the role gives
     await client.put("/api/crm/stage-access", headers=owner_h, json={"user_id": sales.id, "stage_id": new.id, "level": "edit"})

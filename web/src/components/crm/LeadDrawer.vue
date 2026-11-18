@@ -51,6 +51,7 @@ const channel = computed(() => (lead.value?.source === 'instagram' ? 'ig' : lead
 async function load(id: number) {
   d.value = null
   trialOpen.value = false
+  assigneeOpen.value = false
   try {
     d.value = await crmApi.get(id)
   } catch {
@@ -147,6 +148,24 @@ async function setBranch(id: number) {
   const l = lead.value
   if (!l || !id || id === l.branch_id) return
   updated(await crmApi.patch(l.id, { branch_id: id }))
+  await load(l.id)
+}
+
+const assigneeOpen = ref(false)
+const staffOptions = computed(() => [
+  ...(lead.value?.assignee_id ? [] : [{ value: 0, label: t('crm.unassigned') }]),
+  ...refs.staff.filter((u) => !u.roles || u.roles.some((r) => r !== 'teacher')).map((u) => ({ value: u.id, label: u.full_name })),
+])
+async function openAssignee() {
+  await refs.loadStaff()
+  assigneeOpen.value = true
+}
+async function setAssignee(id: number) {
+  const l = lead.value
+  assigneeOpen.value = false
+  if (!l || !id || id === l.assignee_id) return
+  updated(await crmApi.patch(l.id, { assignee_id: id }))
+  toast.ok(t('common.saved'))
   await load(l.id)
 }
 
@@ -249,7 +268,14 @@ const eventOptions = computed(() => (['call', 'note', 'meeting'] as const).map((
         <dt>{{ t('students.form.level') }}</dt>
         <dd><LevelTag v-if="lead.level_id" :id="lead.level_id" full /><UiChip v-else tone="warn" small>{{ t('crm.noTest') }}</UiChip><template v-if="lead.placement_score !== null"> · {{ t('crm.score', { n: lead.placement_score }) }}</template></dd>
         <dt>{{ t('crm.owner') }}</dt><dd>{{ lead.owner_name ?? t('crm.unassigned') }}</dd>
-        <template v-if="lead.assignee_name"><dt>{{ t('nv.assignee') }}</dt><dd>{{ lead.assignee_name }}</dd></template>
+        <dt>{{ t('nv.assignee') }}</dt>
+        <dd>
+          <UiSelect v-if="assigneeOpen" :model-value="lead.assignee_id ?? 0" :options="staffOptions" :label="t('nv.assignee')" size="sm" @update:model-value="setAssignee" />
+          <template v-else>
+            {{ lead.assignee_name ?? t('crm.unassigned') }}
+            <button v-if="canEdit" type="button" class="linkbtn" style="margin-left: 8px" @click="openAssignee">{{ t('nv.changeAssignee') }}</button>
+          </template>
+        </dd>
         <dt>{{ t('branch.label') }}</dt>
         <dd>
           <UiSelect v-if="canEdit && !lead.student_id" :model-value="lead.branch_id ?? 0" :options="branchOptions" :label="t('branch.label')" size="sm" @update:model-value="setBranch" />

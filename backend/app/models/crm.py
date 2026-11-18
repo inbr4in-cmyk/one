@@ -42,7 +42,8 @@ class LeadStage(IdMixin, TimestampMixin, ArchiveMixin, Base):
 
 class LeadStageAccess(IdMixin, Base):
     """The admin's table «сотрудник × этап воронки»: a row narrows what the person's role gives on that stage.
-    No row = as the role says. level: none (the stage and its leads are hidden) | view (read only)."""
+    No row = as the role says. level: none (the stage and its leads are hidden) | view (read only) |
+    own (only the leads the person owns or is responsible for)."""
 
     __tablename__ = "lead_stage_access"
     __table_args__ = (UniqueConstraint("user_id", "stage_id"),)

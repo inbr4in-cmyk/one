@@ -107,7 +107,7 @@ export interface LeadIn {
   contacted_on?: string | null
 }
 
-export type StageLevel = 'edit' | 'view' | 'none'
+export type StageLevel = 'edit' | 'own' | 'view' | 'none'
 export interface StageAccess {
   stages: { id: number; name: string; code: string }[]
   users: { id: number; full_name: string; roles: string[]; can_edit: boolean; locked: boolean }[]
@@ -143,7 +143,7 @@ export const crmApi = {
     http.get<Board>(`/crm/board${qs(p)}`),
   create: (body: LeadIn) => http.post<Lead>('/crm/leads', body),
   get: (id: number) => http.get<LeadDetails>(`/crm/leads/${id}`),
-  patch: (id: number, body: Partial<LeadIn> & { is_hot?: boolean; next_action_at?: string | null; branch_id?: number }) =>
+  patch: (id: number, body: Partial<LeadIn> & { is_hot?: boolean; next_action_at?: string | null; branch_id?: number; assignee_id?: number }) =>
     http.patch<Lead>(`/crm/leads/${id}`, body),
   stage: (id: number, stage_id: number, lost_reason?: string | null, silent = false) =>
     http.post<Lead>(`/crm/leads/${id}/stage`, { stage_id, lost_reason }, { silent }),

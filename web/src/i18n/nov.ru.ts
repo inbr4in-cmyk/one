@@ -66,6 +66,7 @@ export default {
       save: 'Записать',
     },
     stageAccess: {
+      own: 'Только свои',
       btn: 'Доступ к этапам воронки',
       title: 'Воронка продаж: кто какие этапы видит',
       staff: 'Сотрудник',
@@ -76,6 +77,7 @@ export default {
     },
     noBranch: 'Филиал не выбран',
     pickBranch: 'Выберите филиал',
+    changeAssignee: 'Изменить',
     fin: {
       refundsNet: 'Возвраты {refunds} · чистая выручка {net}',
       netRevenue: 'Чистая выручка',
