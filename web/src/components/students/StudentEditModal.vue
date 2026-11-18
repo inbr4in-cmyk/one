@@ -30,9 +30,9 @@ const sourceOptions = computed(() => {
   return [{ value: '', label: '—' }, ...list]
 })
 const canStatus = computed(() => ['active', 'waiting', 'finished', 'left'].includes(props.student.status))
-/** «Ждёт группу» is only for a student without a group. */
+/** «Ждёт группу» and «Заморозка» are in the list only for a student without a group (in a group: the freeze button). */
 const statusOptions = computed(() => (['active', 'waiting', 'frozen', 'finished', 'left'] as const)
-  .filter((v) => v !== 'waiting' || props.student.status === 'waiting' || !props.student.groups.length)
+  .filter((v) => (v !== 'waiting' && v !== 'frozen') || props.student.status === v || !props.student.groups.length)
   .map((v) => ({ value: v, label: t(`students.status.${v}`) })))
 /** «Заморозка» picked in the status list: the same freeze as the button, with its dates. */
 const freezing = computed(() => canStatus.value && form.status === 'frozen')
