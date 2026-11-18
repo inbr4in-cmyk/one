@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { UiButton, UiField, UiSegmented, UiSelect, UiSkeleton } from '@/components/ui'
+import { UiButton, UiField, UiInput, UiSegmented, UiSelect, UiSkeleton } from '@/components/ui'
 import { crmApi, type TrialSlot } from '@/api/crm'
 import { useTeachers } from '@/composables/useTeachers'
 import { academicsApi, type Group, type Lesson } from '@/api/academics'
@@ -17,6 +17,9 @@ const emit = defineEmits<{ pick: [Lesson]; individual: [{ teacher_id: number; br
 const { t, locale } = useI18n()
 const loc = computed(() => locale.value as Locale)
 const WEEKS = 5
+/** A trial can be entered late: the calendar also shows this many past weeks (a month back). */
+const BACK_WEEKS = 4
+const calStart = () => addDays(weekStart(schoolNow()), -BACK_WEEKS * 7)
 const mode = ref<'group' | 'individual'>('group')
 const modeOptions = computed(() => [{ value: 'group' as const, label: t('nv.trial.modeGroup') }, { value: 'individual' as const, label: t('nv.trial.modeIndividual') }])
 
@@ -55,6 +58,8 @@ const minutes = ref(60)
 const minuteOptions = computed(() => [30, 45, 60, 90].map((n) => ({ value: n, label: t('nv.trial.minutes', { n }) })))
 const days = computed(() => Array.from({ length: DAYS }, (_, i) => addDays(schoolNow(), i)))
 const day = ref('')
+const minDay = computed(() => isoDate(addDays(schoolNow(), -31)))
+const maxDay = computed(() => isoDate(addDays(schoolNow(), 60)))
 const slots = ref<TrialSlot[] | null>(null)
 const slot = ref<TrialSlot | null>(null)
 async function loadSlots() {
@@ -87,18 +92,18 @@ async function pickGroup(g: Group) {
   group.value = g
   lessons.value = null
   chosen.value = null
-  const start = weekStart(schoolNow())
-  const list = await academicsApi.lessons({ from: isoDate(start), to: isoDate(addDays(start, WEEKS * 7 - 1)), group_id: g.id }).catch(() => [])
+  const start = calStart()
+  const list = await academicsApi.lessons({ from: isoDate(start), to: isoDate(addDays(start, (BACK_WEEKS + WEEKS) * 7 - 1)), group_id: g.id }).catch(() => [])
   if (group.value?.id !== g.id) return
-  const now = nowMs()
-  lessons.value = list.filter((l) => l.status === 'planned' && new Date(l.starts_at).getTime() > now).sort((a, b) => a.starts_at.localeCompare(b.starts_at))
+  const oldest = nowMs() - 31 * 86400000
+  lessons.value = list.filter((l) => l.status !== 'cancelled' && new Date(l.starts_at).getTime() > oldest).sort((a, b) => a.starts_at.localeCompare(b.starts_at))
 }
 
-/** Five weeks from this Monday; each day carries the group's lessons that can still be booked. */
+/** Four past weeks and five from this Monday; each day carries the group's lessons that can be booked. */
 const weeks = computed(() => {
-  const start = weekStart(schoolNow())
+  const start = calStart()
   const today = schoolNow()
-  return Array.from({ length: WEEKS }, (_, w) => Array.from({ length: 7 }, (_, d) => {
+  return Array.from({ length: BACK_WEEKS + WEEKS }, (_, w) => Array.from({ length: 7 }, (_, d) => {
     const day = addDays(start, w * 7 + d)
     return { day, past: day < today && !sameDay(day, today), today: sameDay(day, today), lessons: (lessons.value ?? []).filter((l) => sameDay(toSchool(l.starts_at), day)) }
   }))
@@ -118,7 +123,7 @@ const weeks = computed(() => {
           <UiField :label="t('nv.trial.length')"><UiSelect v-model="minutes" :options="minuteOptions" :label="t('nv.trial.length')" block /></UiField>
         </div>
         <template v-if="iTeacher">
-          <b class="tp-h">{{ t('nv.trial.day') }}</b>
+          <UiInput v-model="day" type="date" :min="minDay" :max="maxDay" :label="t('nv.trial.day')" />
           <div class="tp-days">
             <button v-for="d in days" :key="isoDate(d)" type="button" class="tp-dayb" :class="{ sel: day === isoDate(d) }" :aria-pressed="day === isoDate(d)" @click="day = isoDate(d)">
               <span>{{ weekdayShort((d.getDay() + 6) % 7, loc) }}</span><b class="num">{{ d.getDate() }}</b>
@@ -185,7 +190,8 @@ const weeks = computed(() => {
 .tp-wd { font-size: 11px; text-align: center; color: var(--muted); text-transform: capitalize }
 .tp-day { min-height: 52px; border: 1px solid var(--line); border-radius: 8px; padding: 3px; display: flex; flex-direction: column; gap: 3px; align-items: stretch; font-size: 11.5px; background: var(--surface) }
 .tp-day > span { text-align: right; color: var(--muted); padding-right: 2px }
-.tp-day.past { opacity: .45 }
+.tp-day.past:not(.has) { opacity: .45 }
+.tp-day.past .tp-slot:not(.sel) { background: var(--line); color: inherit }
 .tp-day.today > span { color: var(--red-ink); font-weight: 700 }
 .tp-slot { border: 0; border-radius: 6px; padding: 4px 0; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; background: var(--navy-100); color: var(--accent-ink) }
 .tp-slot.wide { padding: 7px 12px; font-size: 13px }

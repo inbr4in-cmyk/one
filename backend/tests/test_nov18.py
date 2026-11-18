@@ -277,3 +277,37 @@ async def test_individual_trial_in_a_free_window_of_the_teacher(client, db, owne
     assert lesson.status == "cancelled"
     sheet = (await client.get(f"/api/lessons/{r.json()['trial_lesson_id']}/attendance", headers=owner_h)).json()
     assert [x["lead_id"] for x in sheet["rows"]] == [lead["id"]]
+
+
+async def test_trial_can_be_entered_late_into_a_past_lesson(client, db, owner_h):
+    from app.models import Accrual, Lesson
+    from app.services.clock import now
+    from tests.test_core_learning import _setup
+
+    bid, teacher, room, g = await _setup(db, client, owner_h)
+    start = now().replace(microsecond=0) - timedelta(days=5)
+    old = Lesson(branch_id=bid, group_id=g["id"], level_id=g["level_id"], teacher_id=teacher.id, room_id=room.id,
+                 starts_at=start, ends_at=start + timedelta(minutes=90))
+    ancient = Lesson(branch_id=bid, group_id=g["id"], level_id=g["level_id"], teacher_id=teacher.id, room_id=room.id,
+                     starts_at=start - timedelta(days=40), ends_at=start - timedelta(days=40) + timedelta(minutes=90))
+    db.add_all([old, ancient])
+    await db.commit()
+    lead = (await client.post("/api/crm/leads", headers=owner_h, json={"full_name": "Старый Лид", "branch_id": bid})).json()
+    assert (await client.post(f"/api/crm/leads/{lead['id']}/trial", headers=owner_h, json={"lesson_id": ancient.id})).status_code == 400
+    r = await client.post(f"/api/crm/leads/{lead['id']}/trial", headers=owner_h, json={"lesson_id": old.id})
+    assert r.status_code == 200, r.text
+    # the visit is marked today, with a reason since the lesson day has passed
+    r = await client.put(f"/api/lessons/{old.id}/attendance", headers=owner_h,
+                         json={"marks": [{"lead_id": lead["id"], "status": "present"}], "reason": "Пробный внесён задним числом"})
+    assert r.status_code == 200, r.text
+    card = (await client.get(f"/api/crm/leads/{lead['id']}", headers=owner_h)).json()
+    assert any(e["text"] == "Пришёл на пробный урок" for e in card["events"])
+    # an individual trial in a past window of the teacher
+    day = today() - timedelta(days=3)
+    slots = (await client.get(f"/api/crm/trial-slots?teacher_id={teacher.id}&branch_id={bid}&day={day.isoformat()}&minutes=30",
+                              headers=owner_h)).json()
+    assert slots
+    lead2 = (await client.post("/api/crm/leads", headers=owner_h, json={"full_name": "Ещё Старый", "branch_id": bid})).json()
+    r = await client.post(f"/api/crm/leads/{lead2['id']}/trial-individual", headers=owner_h, json={
+        "teacher_id": teacher.id, "branch_id": bid, "starts_at": slots[0]["starts_at"], "minutes": 30, "notify": False})
+    assert r.status_code == 200, r.text

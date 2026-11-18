@@ -460,7 +460,7 @@ async def _book_trial(db: DB, actor: Actor, lead: Lead, lesson: Lesson, notify: 
                          actor_id=actor.id, meta={"lesson_id": lesson.id}))
     await crm_svc.move(db, lead, st, actor.id, f"Записан на пробный {loc:%d.%m %H:%M}"
                        + (" (индивидуально)" if lesson.is_trial else ""))
-    if notify and (lead.phone or lead.parent_phone):
+    if notify and lesson.starts_at > now() and (lead.phone or lead.parent_phone):
         await send_whatsapp_text(db, lead.parent_phone or lead.phone,
                                  f"Здравствуйте! {lead.full_name} записан(а) на пробный урок {loc:%d.%m} в {loc:%H:%M}. "
                                  f"Ждём вас в One English!", template_code="trial_booked", ref=("lead", lead.id))
@@ -481,14 +481,15 @@ async def book_trial(lead_id: int, body: TrialIn, db: DB, actor: Actor = require
     """ТЗ 9.2: book the trial right into a group lesson (room capacity checked)."""
     lead = await get_lead_scoped(db, actor, lead_id, "edit")
     lesson = await db.get(Lesson, body.lesson_id)
-    if lesson is None or lesson.status != LessonStatus.PLANNED or lesson.starts_at < now():
-        raise bad_request("Выберите предстоящий урок")
+    # A trial can be entered late (old leads typed in by hand): a lesson up to a month back, held or not.
+    if lesson is None or lesson.status == LessonStatus.CANCELLED or lesson.starts_at < now() - timedelta(days=BACKDATE_DAYS):
+        raise bad_request("Выберите урок не старше месяца")
     await _trial_branch(db, actor, lead, lesson.branch_id)
     room = await db.get(Room, lesson.room_id)
     members = await db.scalar(select(func.count()).select_from(GroupMember).where(
         GroupMember.group_id == lesson.group_id, GroupMember.left_on.is_(None))) if lesson.group_id else 1
     trials = await db.scalar(select(func.count()).select_from(Lead).where(Lead.trial_lesson_id == lesson.id, Lead.id != lead.id))
-    if room and members + trials + 1 > room.capacity:
+    if room and lesson.starts_at > now() and members + trials + 1 > room.capacity:  # a past lesson has already been held
         raise conflict(f"В кабинете нет мест: {members + trials}/{room.capacity}")
     await _book_trial(db, actor, lead, lesson, body.notify)
     await db.commit()
@@ -520,7 +521,7 @@ async def _free_slots(db: DB, teacher_id: int, branch_id: int, day: date, minute
     out: list[SlotOut] = []
     s = at_local(day, DAY_FROM)
     last = at_local(day, DAY_TO)
-    t = now()
+    t = now() - timedelta(days=BACKDATE_DAYS)  # a past window is offered too: the trial may be entered late
     while s + timedelta(minutes=minutes) <= last:
         e = s + timedelta(minutes=minutes)
         if s > t and not any(b[3] == teacher_id and b[0] < e and b[1] > s for b in busy):
@@ -535,7 +536,7 @@ async def _free_slots(db: DB, teacher_id: int, branch_id: int, day: date, minute
 @router.get("/trial-slots", response_model=list[SlotOut])
 async def trial_slots(teacher_id: int, branch_id: int, day: date, db: DB, minutes: int = Query(default=60, ge=30, le=120),
                       actor: Actor = require("crm", "edit")) -> list[SlotOut]:
-    if day < today() or day > today() + timedelta(days=60):
+    if day < today() - timedelta(days=BACKDATE_DAYS) or day > today() + timedelta(days=60):
         return []
     return await _free_slots(db, teacher_id, branch_id, day, minutes)
 
