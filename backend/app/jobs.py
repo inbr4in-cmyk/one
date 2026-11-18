@@ -26,6 +26,7 @@ from app.models.learning import LessonStatus, StudentStatus
 from app.modules.academics.schedule import extend_all
 from app.modules.crm.service import create_lead, crm_people
 from app.services.clock import at_local, end_of_local_day, local, now, period_of, today
+from app.services import bookpay
 from app.services.coins import award_auto
 from app.services.messaging import notify_user, retry_failed
 from app.services.values import setting
@@ -376,4 +377,6 @@ if __name__ == "__main__":
     else:
         print(asyncio.run(_run({"minutely": minutely, "nightly": nightly, "leave-followups": leave_followups,
                                  "close-left-members": close_left_members,
-                                 "instagram-names": instagram_names}[cmd])))
+                                 "instagram-names": instagram_names,
+                                 "book-lessons-preview": lambda db: bookpay.restore_lessons(db, commit=False),
+                                 "book-lessons-fix": lambda db: bookpay.restore_lessons(db, commit=True)}[cmd])))

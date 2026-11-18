@@ -11,11 +11,16 @@ from app.core.errors import bad_request, conflict, forbidden, not_found
 from app.core.permissions import NETWORK
 from app.core.schemas import In, ORM
 from app.core.security import mask_phone, normalize_phone
-from app.models import Attempt, Conversation, ExternalContact, GroupMember, Lead, LeadEvent, LeadStage, Lesson, Pipeline, Room, Student, User
+from app.models import (
+    Attempt, Conversation, ExternalContact, GroupMember, Lead, LeadEvent, LeadStage, LeadStageAccess, Lesson, Pipeline, Room,
+    Student, User,
+)
+from app.models.identity import Role, RolePermission, UserKind, UserRole
 from app.models.crm import LeadSource
 from app.models.learning import LessonStatus, StudentStatus
 from app.modules.crm.service import (
     create_lead, find_by_phone, find_client_by_phone, get_lead_scoped, lead_filter, merge_into_student,
+    stage_editable,
 )
 from app.modules.students.scope import get_student_scoped
 from app.modules.students.router import add_guardian, upsert_portal_user
@@ -26,6 +31,7 @@ from app.services.messaging import send_whatsapp_text
 from app.services.values import setting
 
 router = APIRouter(prefix="/crm", tags=["crm"])
+BACKDATE_DAYS = 31  # how far back a lead may be dated when it is entered later
 
 
 class StageOut(ORM):
@@ -60,6 +66,7 @@ class LeadIn(In):
     notes: str | None = Field(default=None, max_length=4000)
     next_action_at: datetime | None = None
     assignee_id: int | None = None
+    contacted_on: date | None = None  # the day the person got in touch, if the card is entered later
 
 
 class LeadPatch(In):
@@ -73,6 +80,10 @@ class LeadPatch(In):
     next_action_at: datetime | None = None
     assignee_id: int | None = None
     is_hot: bool | None = None
+
+
+PATCH_TITLES = {"full_name": "имя", "phone": "телефон", "age": "возраст", "parent_name": "родитель",
+                "parent_phone": "телефон родителя", "level_id": "уровень", "notes": "заметка", "next_action_at": "следующий шаг"}
 
 
 class LeadCard(BaseModel):
@@ -106,6 +117,8 @@ class LeadCard(BaseModel):
     channel: str | None = None
     conversation_id: int | None = None
     existing_student: dict | None = None  # a student (or a student's parent) already has this phone
+    can_edit: bool = True  # False: the admin left this funnel stage to me for viewing only
+    assignee_name: str | None = None
 
 
 class EventOut(ORM):
@@ -114,6 +127,7 @@ class EventOut(ORM):
     kind: str
     text: str | None
     actor_id: int | None
+    actor_name: str | None = None
     meta: dict
 
 
@@ -135,7 +149,8 @@ async def _cards(db: DB, actor: Actor, leads: list[Lead]) -> list[LeadCard]:
     if not leads:
         return []
     stages = {s.id: s for s in await db.scalars(select(LeadStage))}
-    owners = dict((await db.execute(select(User.id, User.full_name).where(User.id.in_({x.owner_id for x in leads if x.owner_id})))).all())
+    owners = dict((await db.execute(select(User.id, User.full_name).where(
+        User.id.in_({x.owner_id for x in leads if x.owner_id} | {x.assignee_id for x in leads if x.assignee_id})))).all())
     conv_rows = (await db.execute(
         select(Conversation.id, Conversation.channel, Conversation.last_inbound_at, Conversation.unread, ExternalContact.lead_id)
         .join(ExternalContact, ExternalContact.id == Conversation.contact_id)
@@ -152,6 +167,8 @@ async def _cards(db: DB, actor: Actor, leads: list[Lead]) -> list[LeadCard]:
         c = LeadCard(**{k: getattr(x, k) for k in LeadCard.model_fields if hasattr(x, k)})
         c.phone, c.parent_phone = _phone(actor, x.phone), _phone(actor, x.parent_phone)
         c.owner_name = owners.get(x.owner_id)
+        c.assignee_name = owners.get(x.assignee_id)
+        c.can_edit = stage_editable(actor, x.stage_id)
         c.trial_at = trial_at.get(x.trial_lesson_id)
         conv = by_lead.get(x.id)
         if conv:
@@ -286,6 +303,8 @@ async def board(db: DB, actor: Actor = require("crm", "view"), pipeline: str = "
                                    .order_by(LeadStage.order)))
     cols = []
     for st in stages:
+        if st.id in actor.stage_hidden:
+            continue
         s2 = stmt.where(Lead.stage_id == st.id)
         if st.is_won or st.is_lost:
             s2 = s2.where(Lead.stage_changed_at >= now() - timedelta(days=30))
@@ -304,7 +323,9 @@ async def new_lead(body: LeadIn, db: DB, actor: Actor = require("crm", "create")
     phone = normalize_phone(body.phone) if body.phone else None
     if dup := await find_by_phone(db, phone):
         raise conflict(f"Лид с этим телефоном уже есть: #{dup.id} {dup.full_name}")
-    lead = await create_lead(db, full_name=body.full_name, phone=phone, branch_id=body.branch_id, source=body.source,
+    if body.contacted_on and not (today() - timedelta(days=BACKDATE_DAYS) <= body.contacted_on <= today()):
+        raise bad_request(f"Дата обращения — сегодня или не раньше чем {BACKDATE_DAYS} день назад")
+    lead = await create_lead(db, contacted_on=body.contacted_on, full_name=body.full_name, phone=phone, branch_id=body.branch_id, source=body.source,
                              owner_id=actor.id, assignee_id=body.assignee_id or actor.id, age=body.age,
                              parent_name=body.parent_name,
                              parent_phone=normalize_phone(body.parent_phone) if body.parent_phone else None,
@@ -320,8 +341,16 @@ async def lead_card(lead_id: int, db: DB, actor: Actor = require("crm", "view"))
     lead = await get_lead_scoped(db, actor, lead_id)
     events = await db.scalars(select(LeadEvent).where(LeadEvent.lead_id == lead.id).order_by(LeadEvent.id.desc()).limit(200))
     attempts = await db.scalars(select(Attempt).where(Attempt.lead_id == lead.id).order_by(Attempt.id.desc()))
+    events = list(events)
+    names = dict((await db.execute(select(User.id, User.full_name).where(
+        User.id.in_({e.actor_id for e in events if e.actor_id})))).all())
+    out = []
+    for e in events:
+        o = EventOut.model_validate(e)
+        o.actor_name = names.get(e.actor_id)
+        out.append(o.model_dump())
     return {"lead": (await _card(db, actor, lead)).model_dump(),
-            "events": [EventOut.model_validate(e).model_dump() for e in events],
+            "events": out,
             "tests": [{"id": a.id, "score": a.score, "level_id": a.recommended_level_id, "at": a.finished_at} for a in attempts]}
 
 
@@ -338,6 +367,13 @@ async def patch_lead(lead_id: int, body: LeadPatch, db: DB, actor: Actor = requi
         setattr(lead, k, v)
     lead.last_activity_at = now()
     b, a = diff(before, snapshot(lead, fields))
+    changed = [title for k, title in PATCH_TITLES.items() if k in a]
+    if "assignee_id" in a:
+        who = await db.get(User, lead.assignee_id) if lead.assignee_id else None
+        db.add(LeadEvent(lead_id=lead.id, at=now(), kind="note", text=f"Ответственный: {who.full_name if who else 'не назначен'}",
+                         actor_id=actor.id, meta={"assignee_id": lead.assignee_id}))
+    if changed:
+        db.add(LeadEvent(lead_id=lead.id, at=now(), kind="note", text="Изменено: " + ", ".join(changed), actor_id=actor.id, meta={}))
     await write_audit(db, actor_id=actor.id, action="lead.update", entity="lead", entity_id=lead.id, branch_id=lead.branch_id,
                       ip=actor.ip, before=b, after=a)
     await db.commit()
@@ -416,7 +452,10 @@ async def book_trial(lead_id: int, body: TrialIn, db: DB, actor: Actor = require
     lead.trial_lesson_id = lesson.id
     st = await crm_svc.stage_by_code(db, "main", "trial_booked")
     loc = local(lesson.starts_at)
-    await crm_svc.move(db, lead, st, actor.id, f"Пробный {loc:%d.%m %H:%M}")
+    if lead.stage_id == st.id:  # re-booked: the stage stays, the history still shows who moved the trial and where
+        db.add(LeadEvent(lead_id=lead.id, at=now(), kind="trial", text=f"Пробный перенесён на {loc:%d.%m %H:%M}",
+                         actor_id=actor.id, meta={"lesson_id": lesson.id}))
+    await crm_svc.move(db, lead, st, actor.id, f"Записан на пробный {loc:%d.%m %H:%M}")
     if body.notify and (lead.phone or lead.parent_phone):
         await send_whatsapp_text(db, lead.parent_phone or lead.phone,
                                  f"Здравствуйте! {lead.full_name} записан(а) на пробный урок {loc:%d.%m} в {loc:%H:%M}. "
@@ -483,7 +522,60 @@ async def link_student(lead_id: int, body: LinkStudentIn, db: DB, actor: Actor =
 async def archive_lead(lead_id: int, db: DB, actor: Actor = require("crm", "archive")) -> None:
     lead = await get_lead_scoped(db, actor, lead_id, "archive")
     lead.archived_at = now()
+    db.add(LeadEvent(lead_id=lead.id, at=now(), kind="note", text="Лид отправлен в архив", actor_id=actor.id, meta={}))
     await write_audit(db, actor_id=actor.id, action="lead.archive", entity="lead", entity_id=lead.id, branch_id=lead.branch_id, ip=actor.ip)
+    await db.commit()
+
+
+class StageAccessIn(In):
+    user_id: int
+    stage_id: int
+    level: str = Field(pattern="^(edit|view|none)$")
+
+
+@router.get("/stage-access")
+async def stage_access(db: DB, actor: Actor = require("roles", "manage")) -> dict:
+    """The table «сотрудник × этап воронки». A cell narrows what the role gives: edit (as the role says), view, none."""
+    stages = list(await db.scalars(select(LeadStage).join(Pipeline, Pipeline.id == LeadStage.pipeline_id)
+                                   .where(LeadStage.archived_at.is_(None), Pipeline.code == "main").order_by(LeadStage.order)))
+    rows = (await db.execute(
+        select(User.id, User.full_name, Role.name, RolePermission.module, RolePermission.action)
+        .join(UserRole, UserRole.user_id == User.id).join(Role, Role.id == UserRole.role_id)
+        .join(RolePermission, RolePermission.role_id == Role.id)
+        .where(User.kind == UserKind.STAFF, User.is_active.is_(True), User.archived_at.is_(None), Role.archived_at.is_(None),
+               ((RolePermission.module == "crm") & RolePermission.action.in_(("view", "edit")))
+               | ((RolePermission.module == "roles") & (RolePermission.action == "manage")))
+        .order_by(User.full_name))).all()
+    users: dict[int, dict] = {}
+    for uid, name, role, module, action in rows:
+        u = users.setdefault(uid, {"id": uid, "full_name": name, "roles": [], "view": False, "edit": False, "admin": False})
+        if role not in u["roles"]:
+            u["roles"].append(role)
+        u["admin" if module == "roles" else action] = True
+    cells = {f"{uid}:{sid}": level for uid, sid, level in await db.execute(
+        select(LeadStageAccess.user_id, LeadStageAccess.stage_id, LeadStageAccess.level))}
+    return {"stages": [{"id": s.id, "name": s.name, "code": s.code} for s in stages],
+            "users": [{"id": u["id"], "full_name": u["full_name"], "roles": u["roles"], "can_edit": u["edit"], "locked": u["admin"]}
+                      for u in users.values() if u["view"]],
+            "cells": cells}
+
+
+@router.put("/stage-access", status_code=204)
+async def set_stage_access(body: StageAccessIn, db: DB, actor: Actor = require("roles", "manage")) -> None:
+    user, stage = await db.get(User, body.user_id), await db.get(LeadStage, body.stage_id)
+    if user is None or user.kind != UserKind.STAFF or stage is None:
+        raise not_found("Сотрудник или этап")
+    row = await db.scalar(select(LeadStageAccess).where(LeadStageAccess.user_id == user.id, LeadStageAccess.stage_id == stage.id))
+    before = row.level if row else "edit"
+    if body.level == "edit":
+        if row:
+            await db.delete(row)
+    elif row:
+        row.level = body.level
+    else:
+        db.add(LeadStageAccess(user_id=user.id, stage_id=stage.id, level=body.level))
+    await write_audit(db, actor_id=actor.id, action="crm.stage_access", entity="user", entity_id=user.id, ip=actor.ip,
+                      before={"stage": stage.name, "level": before}, after={"stage": stage.name, "level": body.level})
     await db.commit()
 
 

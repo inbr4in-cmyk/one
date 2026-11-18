@@ -29,6 +29,9 @@ class Actor:
     grants: Grants = field(default_factory=Grants)
     branch_ids: set[int] = field(default_factory=set)
     role_codes: set[str] = field(default_factory=set)
+    # Funnel stages the admin closed for this person (table «сотрудник × этап»): hidden, or view only.
+    stage_hidden: set[int] = field(default_factory=set)
+    stage_readonly: set[int] = field(default_factory=set)
 
     @property
     def id(self) -> int:
@@ -75,6 +78,12 @@ async def load_actor(db: AsyncSession, user: User, session_id: int, mfa: bool, i
         actor.role_codes.add(role.code)
         for p in role.permissions:
             actor.grants.add(p.module, p.action, p.scope)
+    if actor.is_staff and actor.can("crm", "view") and not actor.can("roles", "manage"):
+        from app.models.crm import LeadStageAccess
+
+        for stage_id, level in await db.execute(select(LeadStageAccess.stage_id, LeadStageAccess.level)
+                                                .where(LeadStageAccess.user_id == user.id)):
+            (actor.stage_hidden if level == "none" else actor.stage_readonly).add(stage_id)
     return actor
 
 

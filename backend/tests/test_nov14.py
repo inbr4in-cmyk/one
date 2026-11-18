@@ -186,9 +186,38 @@ async def test_book_out_of_a_course_payment(db, client, owner_h):
     assert src.amount == 29500 and book.amount == 4000 and book.category == "book" and book.method == "kaspi"
     st = await db.get(Student, s["id"])
     await db.refresh(st)
-    # 4 000 = 500 from the money balance + 2 lessons (6 000) → 2 500 back on the money balance
-    assert st.lessons_left == 9 and st.money_balance == 2500 and src.lessons == 9
-    assert st.lessons_left * 3000 + st.money_balance == 29500
+    # Owner's rule 18.11: the book never takes paid lessons away. 11 lessons stay, each just costs less.
+    assert st.lessons_left == 11 and st.money_balance == 500 and src.lessons == 11
+    assert st.balance_lesson_price == (33000 - 4000) // 11 and src.lesson_price == 29500 // 11
+
+
+async def test_old_book_sales_get_their_lessons_back(db, client, owner_h):
+    from app.services import balance as bal
+    from app.services import bookpay
+
+    bid, teacher, room, g = await _setup(db, client, owner_h)
+    s = await _student(db, client, owner_h, bid)
+    p = (await client.post("/api/payments", headers=owner_h, json={"student_id": s["id"], "amount": 33500, "method": "kaspi"})).json()
+    st = await db.get(Student, s["id"])
+    await db.refresh(st)
+    src = await db.get(Payment, p["id"])
+    # the way it worked before: 4 000 = 500 of money + 2 lessons (6 000), 2 500 back as money
+    book = Payment(student_id=st.id, branch_id=bid, category="book", amount=4000, method="kaspi", paid_at=src.paid_at, received_by=src.received_by,
+                   note=f"Книга «SB» × 1 (из оплаты №{src.id})")
+    db.add(book)
+    await db.flush()
+    await bal.apply(db, st, "book", lessons=-2, money=2000, price=3000, ref=("payment", book.id), note="Книга из оплаты")
+    src.amount, src.lessons = 29500, 9
+    await db.commit()
+    preview = await bookpay.restore_lessons(db, commit=False)
+    assert preview["fixed"] == 1 and preview["rows"][0]["lessons_back"] == 2
+    await db.refresh(st)
+    assert st.lessons_left == 9  # a preview changes nothing
+    assert (await bookpay.restore_lessons(db, commit=True))["fixed"] == 1
+    await db.refresh(st)
+    await db.refresh(src)
+    assert st.lessons_left == 11 and st.money_balance == 500 and src.lessons == 11
+    assert (await bookpay.restore_lessons(db, commit=True))["fixed"] == 0  # safe to repeat
 
 
 async def test_pay_breakdown_and_finance_by_dates(db, client, owner_h):

@@ -61,6 +61,8 @@ export interface Lead {
   channel: string | null
   conversation_id: number | null
   existing_student?: { id: number; full_name: string } | null
+  can_edit?: boolean
+  assignee_name?: string | null
 }
 
 export interface BoardColumn {
@@ -80,6 +82,7 @@ export interface LeadEvent {
   kind: string
   text: string | null
   actor_id: number | null
+  actor_name?: string | null
   meta: Record<string, unknown>
 }
 
@@ -99,6 +102,15 @@ export interface LeadIn {
   parent_phone?: string | null
   level_id?: number | null
   notes?: string | null
+  /** YYYY-MM-DD: the day the person got in touch, up to 31 days back */
+  contacted_on?: string | null
+}
+
+export type StageLevel = 'edit' | 'view' | 'none'
+export interface StageAccess {
+  stages: { id: number; name: string; code: string }[]
+  users: { id: number; full_name: string; roles: string[]; can_edit: boolean; locked: boolean }[]
+  cells: Record<string, StageLevel>
 }
 
 export interface Funnel {
@@ -138,6 +150,8 @@ export const crmApi = {
     http.post<LeadEvent>(`/crm/leads/${id}/events`, body),
   trial: (id: number, lesson_id: number, notify = true) => http.post<Lead>(`/crm/leads/${id}/trial`, { lesson_id, notify }),
   convert: (id: number) => http.post<{ student_id: number }>(`/crm/leads/${id}/convert`, { create_account: true }),
+  stageAccess: () => http.get<StageAccess>('/crm/stage-access'),
+  setStageAccess: (user_id: number, stage_id: number, level: StageLevel) => http.put<null>('/crm/stage-access', { user_id, stage_id, level }, { silent: true }),
   linkStudent: (id: number, student_id: number) => http.post<{ student_id: number }>(`/crm/leads/${id}/link-student`, { student_id }),
   archive: (id: number) => http.post<null>(`/crm/leads/${id}/archive`),
   analytics: (p: { date_from?: string; date_to?: string; branch_id?: number | null }) =>

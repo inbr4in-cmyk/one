@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { UiButton, UiCard, UiChip, UiEmptyState, UiInput, UiPrompt, UiSkeleton } from '@/components/ui'
+import StageAccessTable from '@/components/crm/StageAccessTable.vue'
 import { adminApi, type PermissionCatalog, type Role } from '@/api/admin'
 import type { Scope } from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
@@ -107,12 +108,14 @@ async function archive() {
     busy.value = false
   }
 }
+const toFunnel = () => document.getElementById('funnel-access')?.scrollIntoView({ behavior: 'smooth' })
 </script>
 
 <template>
   <div class="ph">
     <div><h1>{{ t('nav.roles') }}</h1><p>{{ t('rolesPage.subtitle') }}</p></div>
     <span class="sp" />
+    <UiButton v-if="canManage && auth.can('crm.view')" icon="crm" @click="toFunnel">{{ t('nv.stageAccess.btn') }}</UiButton>
     <UiButton v-if="canManage" variant="primary" icon="plus" @click="pick('new')">{{ t('rolesPage.new') }}</UiButton>
   </div>
 
@@ -166,6 +169,8 @@ async function archive() {
     </UiCard>
     <UiEmptyState v-else icon="key" :title="t('rolesPage.pick')" />
   </div>
+
+  <div id="funnel-access"><StageAccessTable v-if="canManage && auth.can('crm.view')" /></div>
 
   <UiPrompt :open="archiving" :title="t('rolesPage.archiveTitle')" :text="role ? t('rolesPage.archiveText', { name: roleLabel(role), n: role.members }) : ''" :confirm-label="t('rolesPage.archive')" danger :busy="busy" @update:open="(v) => (archiving = v)" @confirm="archive" />
 </template>

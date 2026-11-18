@@ -1,12 +1,12 @@
-from sqlalchemy import or_, select, true
+from sqlalchemy import and_, or_, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import Actor
-from app.core.errors import not_found
+from app.core.errors import forbidden, not_found
 from app.core.permissions import NETWORK, OWN
 from app.models import Branch, Lead, LeadEvent, Pipeline, Student, StudentGuardian, User, UserBranch, UserRole
 from app.models.identity import RolePermission
-from app.services.clock import now
+from app.services.clock import at_local, local, now, today
 from app.services.crm import stage_by_code
 from app.services.messaging import notify_user
 
@@ -14,16 +14,26 @@ from app.services.messaging import notify_user
 def lead_filter(actor: Actor, action: str = "view"):
     scope = actor.scope("crm", action)
     if scope == NETWORK:
-        return true()
-    if scope == OWN:
-        return or_(Lead.owner_id == actor.id, Lead.assignee_id == actor.id)
-    return Lead.branch_id.in_(actor.branch_ids or {-1})
+        cond = true()
+    elif scope == OWN:
+        cond = or_(Lead.owner_id == actor.id, Lead.assignee_id == actor.id)
+    else:
+        cond = Lead.branch_id.in_(actor.branch_ids or {-1})
+    if actor.stage_hidden:
+        cond = and_(cond, Lead.stage_id.notin_(actor.stage_hidden))
+    return cond
+
+
+def stage_editable(actor: Actor, stage_id: int) -> bool:
+    return stage_id not in actor.stage_hidden and stage_id not in actor.stage_readonly
 
 
 async def get_lead_scoped(db: AsyncSession, actor: Actor, lead_id: int, action: str = "view") -> Lead:
     lead = await db.scalar(select(Lead).where(Lead.id == lead_id, lead_filter(actor, action)))
     if lead is None:
         raise not_found("Лид")
+    if action != "view" and not stage_editable(actor, lead.stage_id):
+        raise forbidden("Лиды на этом этапе вам доступны только для просмотра")
     return lead
 
 
@@ -82,14 +92,20 @@ async def crm_people(db: AsyncSession, branch_id: int, module: str = "inbox", ac
 
 async def create_lead(db: AsyncSession, *, full_name: str, phone: str | None, branch_id: int, source: str,
                       owner_id: int | None, assignee_id: int | None = None, pipeline: str = "main", stage: str = "new",
-                      notify: bool = True, **extra) -> Lead:
+                      notify: bool = True, contacted_on=None, **extra) -> Lead:
+    """contacted_on: the day the person really got in touch, when the card is entered later (it becomes the lead's
+    date in the funnel and reports; the history keeps who entered it and when)."""
     st = await stage_by_code(db, pipeline, stage)
     lead = Lead(full_name=full_name, phone=phone, branch_id=branch_id, pipeline_id=st.pipeline_id, stage_id=st.id,
                 stage_changed_at=now(), source=source, owner_id=owner_id, assignee_id=assignee_id or owner_id,
                 last_activity_at=now(), **extra)
     db.add(lead)
     await db.flush()
-    db.add(LeadEvent(lead_id=lead.id, at=now(), kind="created", text=f"Источник: {source}", actor_id=owner_id, meta={}))
+    note = ""
+    if contacted_on and contacted_on < today():
+        lead.created_at = at_local(contacted_on, local(now()).time().replace(microsecond=0))
+        note = f" · дата обращения {contacted_on:%d.%m.%Y}"
+    db.add(LeadEvent(lead_id=lead.id, at=now(), kind="created", text=f"Источник: {source}{note}", actor_id=owner_id, meta={}))
     if notify:
         targets = [assignee_id] if assignee_id else await crm_people(db, branch_id, "crm")
         for uid in targets:

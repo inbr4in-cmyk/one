@@ -237,7 +237,7 @@ class SaleIn(In):
     method: str = Field(default="cash", max_length=255)
     qty: int = Field(default=1, ge=1, le=20)
     # «Из оплаты»: no new money is taken. The book's price is moved out of the course payment the student already
-    # made: that payment gets smaller by it, and the lessons it bought are recounted.
+    # made: that payment gets smaller by it. The lessons it bought stay as they are, each just costs less.
     from_payment: bool = False
 
 
@@ -267,14 +267,8 @@ async def sell(body: SaleIn, db: DB, actor: Actor = require("books", "sell")) ->
     db.add(p)
     await db.flush()
     if src:
-        # Money on the balance goes first; what is missing is taken back from the paid lessons at their price.
-        price = bookpay.lesson_price(s, src)
-        from_money = min(max(s.money_balance, 0), amount)
-        lessons = -(-(amount - from_money) // price) if amount > from_money else 0
-        await bal.apply(db, s, "book", lessons=-lessons, money=lessons * price - amount, price=price, ref=("payment", p.id),
-                        actor_id=actor.id, note=f"Книга «{book.title}» из оплаты: {amount} тг")
-        src.amount -= amount
-        src.lessons = max(src.lessons - lessons, 0)
+        await bookpay.take(db, s, src, amount, ref=("payment", p.id), actor_id=actor.id,
+                           note=f"Книга «{book.title}» из оплаты: {amount} тг")
         src.note = f"{src.note + '; ' if src.note else ''}книга «{book.title}» −{amount} тг"[:255]
     m = BookMovement(at=now(), kind="sale", branch_id=s.branch_id, book_id=book.id, qty=body.qty, unit_price=book.sale_price,
                      student_id=s.id, payment_id=p.id, actor_id=actor.id)

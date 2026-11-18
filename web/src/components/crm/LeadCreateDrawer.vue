@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { addDays, isoDate, schoolNow, todayIso } from '@/utils/dates'
 import { UiButton, UiDrawer, UiField, UiInput, UiPhoneInput, UiSelect, UiTextarea } from '@/components/ui'
 import { crmApi, type Lead, type LeadSource } from '@/api/crm'
 import { useSourcesStore } from '@/stores/sources'
@@ -15,7 +16,7 @@ const { t } = useI18n()
 const branch = useBranchStore()
 const refs = useRefsStore()
 const toast = useToastStore()
-const form = reactive({ full_name: '', phone: '', branch_id: 0, source: 'sales' as LeadSource, age: '', parent_name: '', parent_phone: '', level_id: 0, notes: '' })
+const form = reactive({ full_name: '', phone: '', branch_id: 0, source: 'sales' as LeadSource, age: '', parent_name: '', parent_phone: '', level_id: 0, notes: '', contacted_on: '' })
 const errors = reactive<{ name: string | null; phone: string | null }>({ name: null, phone: null })
 const busy = ref(false)
 
@@ -28,7 +29,7 @@ const isChild = computed(() => Number(form.age) > 0 && Number(form.age) < 18)
 
 watch(open, (v) => {
   if (!v) return
-  Object.assign(form, { full_name: '', phone: '', branch_id: branch.filterId ?? branchOptions.value[0]?.value ?? 0, source: 'sales', age: '', parent_name: '', parent_phone: '', level_id: 0, notes: '' })
+  Object.assign(form, { full_name: '', phone: '', branch_id: branch.filterId ?? branchOptions.value[0]?.value ?? 0, source: 'sales', age: '', parent_name: '', parent_phone: '', level_id: 0, notes: '', contacted_on: todayIso() })
   errors.name = errors.phone = null
 })
 
@@ -42,6 +43,7 @@ async function submit() {
       full_name: form.full_name.trim(), phone: form.phone || null, branch_id: form.branch_id, source: form.source,
       age: Number(form.age) || null, parent_name: form.parent_name.trim() || null, parent_phone: form.parent_phone || null,
       level_id: form.level_id || null, notes: form.notes.trim() || null,
+      contacted_on: form.contacted_on && form.contacted_on !== todayIso() ? form.contacted_on : null,
     })
     toast.ok(t('crm.created'))
     emit('created', lead)
@@ -73,6 +75,7 @@ async function submit() {
           <UiPhoneInput v-model="form.parent_phone" :label="t('crm.parentPhone')" />
         </div>
       </Transition>
+      <UiInput v-model="form.contacted_on" type="date" :min="isoDate(addDays(schoolNow(), -31))" :max="todayIso()" :label="t('nv.leadDate')" />
       <UiTextarea v-model="form.notes" :label="t('students.form.notes')" :rows="2" />
     </form>
     <template #footer="{ close }">

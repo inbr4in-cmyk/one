@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { nowMs } from '@/utils/clock'
 import { useSourceLabel } from '@/composables/useSourceLabel'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -7,12 +6,13 @@ import { useRouter } from 'vue-router'
 import { UiAvatar, UiButton, UiChip, UiDrawer, UiIcon, UiInput, UiPrompt, UiSegmented, UiSelect, UiSkeleton, UiTextarea } from '@/components/ui'
 import LevelTag from '@/components/students/LevelTag.vue'
 import LinkStudentModal from './LinkStudentModal.vue'
+import TrialPicker from './TrialPicker.vue'
 import { crmApi, type Lead, type LeadDetails, type Pipeline, type Stage } from '@/api/crm'
-import { academicsApi, type Lesson } from '@/api/academics'
+import type { Lesson } from '@/api/academics'
 import { useAuthStore } from '@/stores/auth'
 import { useRefsStore } from '@/stores/refs'
 import { useToastStore } from '@/stores/toast'
-import { addDays, dayLabel, hm, isoDate, schoolNow } from '@/utils/dates'
+import { dayLabel, dmy, hm } from '@/utils/dates'
 import { relativeTime } from '@/utils/format'
 import { formatPhone } from '@/utils/phone'
 import type { Locale } from '@/i18n'
@@ -32,7 +32,6 @@ const eventKind = ref<'call' | 'note' | 'meeting'>('call')
 const eventText = ref('')
 const busy = ref(false)
 const trialOpen = ref(false)
-const lessons = ref<Lesson[] | null>(null)
 const lostPrompt = ref<Stage | null>(null)
 const archivePrompt = ref(false)
 const linkOpen = ref(false)
@@ -44,7 +43,7 @@ const stages = computed(() => [...(props.pipelines.find((p) => p.id === lead.val
 const stage = computed(() => stages.value.find((s) => s.id === lead.value?.stage_id))
 const steps = computed(() => stages.value.filter((s) => !s.is_lost))
 const curIdx = computed(() => steps.value.findIndex((s) => s.id === lead.value?.stage_id))
-const canEdit = computed(() => auth.can('crm.edit'))
+const canEdit = computed(() => auth.can('crm.edit') && lead.value?.can_edit !== false)
 const stageOptions = computed(() => stages.value.filter((s) => !s.is_won && s.code !== 'trial_done').map((s) => ({ value: s.id, label: stageName(s) })))
 const stageName = (s: Stage) => (te(`crm.stage.${s.code}`) ? t(`crm.stage.${s.code}`) : s.name)
 const channel = computed(() => (lead.value?.source === 'instagram' ? 'ig' : lead.value?.source === 'whatsapp' ? 'wa' : undefined))
@@ -110,18 +109,8 @@ async function confirmLost(reason: string) {
   }
 }
 
-async function openTrial() {
+function openTrial() {
   trialOpen.value = !trialOpen.value
-  if (!trialOpen.value || !lead.value) return
-  lessons.value = null
-  const now = new Date(nowMs())
-  const day = schoolNow()
-  const list = await academicsApi.lessons({ from: isoDate(day), to: isoDate(addDays(day, 14)), branch_id: lead.value.branch_id }).catch(() => [])
-  const lv = lead.value.level_id
-  lessons.value = list
-    .filter((l) => new Date(l.starts_at) > now && l.group_id)
-    .sort((a, b) => Number(b.level_id === lv) - Number(a.level_id === lv) || a.starts_at.localeCompare(b.starts_at))
-    .slice(0, 30)
 }
 async function bookTrial(lesson: Lesson) {
   const l = lead.value
@@ -230,15 +219,7 @@ const eventOptions = computed(() => (['call', 'note', 'meeting'] as const).map((
       </div>
 
       <Transition name="fade">
-        <div v-if="trialOpen" class="trial-pick">
-          <b>{{ t('crm.pickLesson') }}</b>
-          <UiSkeleton v-if="!lessons" :lines="3" />
-          <button v-for="l in lessons ?? []" :key="l.id" type="button" class="list-row pick" :disabled="busy" @click="bookTrial(l)">
-            <div class="grow"><b class="num">{{ dayLabel(l.starts_at, loc) }} · {{ hm(l.starts_at, loc) }}</b><span>{{ l.group_name }} · {{ l.room_name }} · {{ l.teacher_name }}</span></div>
-            <LevelTag :id="l.level_id" />
-          </button>
-          <p v-if="lessons && !lessons.length" class="muted m0">{{ t('crm.noLessons') }}</p>
-        </div>
+        <TrialPicker v-if="trialOpen" :branch-id="lead.branch_id" :busy="busy" @pick="bookTrial" />
       </Transition>
 
       <h4 class="sec-h">{{ t('crm.stageLabel') }}</h4>
@@ -257,6 +238,7 @@ const eventOptions = computed(() => (['call', 'note', 'meeting'] as const).map((
         <dt>{{ t('students.form.level') }}</dt>
         <dd><LevelTag v-if="lead.level_id" :id="lead.level_id" full /><UiChip v-else tone="warn" small>{{ t('crm.noTest') }}</UiChip><template v-if="lead.placement_score !== null"> · {{ t('crm.score', { n: lead.placement_score }) }}</template></dd>
         <dt>{{ t('crm.owner') }}</dt><dd>{{ lead.owner_name ?? t('crm.unassigned') }}</dd>
+        <template v-if="lead.assignee_name"><dt>{{ t('nv.assignee') }}</dt><dd>{{ lead.assignee_name }}</dd></template>
         <dt>{{ t('branch.label') }}</dt><dd>{{ refs.branchName(lead.branch_id) }}</dd>
         <template v-if="lead.trial_at"><dt>{{ t('crm.trial') }}</dt><dd class="num">{{ dayLabel(lead.trial_at, loc) }} · {{ hm(lead.trial_at, loc) }}</dd></template>
       </dl>
@@ -279,7 +261,7 @@ const eventOptions = computed(() => (['call', 'note', 'meeting'] as const).map((
       <ul class="tl">
         <li v-for="e in d?.events ?? []" :key="e.id">
           <UiIcon :name="EVENT_ICONS[e.kind] ?? 'note'" :size="16" />
-          <div>{{ e.text ?? (te(`crm.event.${e.kind}`) ? t(`crm.event.${e.kind}`) : e.kind) }}<span>{{ relativeTime(e.at, loc) }}</span></div>
+          <div>{{ e.text ?? (te(`crm.event.${e.kind}`) ? t(`crm.event.${e.kind}`) : e.kind) }}<span>{{ e.actor_name ?? t('nv.byClient') }} · {{ dmy(e.at, loc) }} {{ hm(e.at, loc) }}</span></div>
         </li>
       </ul>
       <UiButton v-if="auth.can('crm.archive')" size="sm" variant="ghost" danger icon="archive" @click="archivePrompt = true">{{ t('crm.archive') }}</UiButton>

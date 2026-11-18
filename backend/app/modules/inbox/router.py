@@ -16,7 +16,7 @@ from app.core.permissions import NETWORK, OWN
 from app.core.ratelimit import client_ip, hit
 from app.core.schemas import In, ORM
 from app.core.security import mask_phone
-from app.models import Conversation, ExternalContact, ExternalMessage, Lead, LeadStage, MessageTemplate, Student
+from app.models import Conversation, ExternalContact, ExternalMessage, Lead, LeadEvent, LeadStage, MessageTemplate, Student
 from app.modules.crm.service import merge_into_student
 from app.modules.students.scope import get_student_scoped
 from app.modules.inbox.service import comment_to_answer, handle_meta_payload, in_window
@@ -178,6 +178,8 @@ async def _send(db: DB, actor: Actor, conv: Conversation, text: str, kind: str =
         lead = await db.get(Lead, contact.lead_id)
         if lead:
             lead.last_activity_at = now()
+            db.add(LeadEvent(lead_id=lead.id, at=now(), kind="message", actor_id=actor.id, meta={"channel": conv.channel, "out": True},
+                             text=("Ответ в WhatsApp: " if conv.channel == "whatsapp" else "Ответ в Instagram: ") + text[:200]))
             if lead.owner_id is None:
                 lead.owner_id = actor.id  # first responder brought the lead in (KPI basis)
             if lead.assignee_id is None:

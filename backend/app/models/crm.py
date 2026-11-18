@@ -40,6 +40,18 @@ class LeadStage(IdMixin, TimestampMixin, ArchiveMixin, Base):
     stale_after_hours: Mapped[IntN]
 
 
+class LeadStageAccess(IdMixin, Base):
+    """The admin's table «сотрудник × этап воронки»: a row narrows what the person's role gives on that stage.
+    No row = as the role says. level: none (the stage and its leads are hidden) | view (read only)."""
+
+    __tablename__ = "lead_stage_access"
+    __table_args__ = (UniqueConstraint("user_id", "stage_id"),)
+
+    user_id: Mapped[int] = fk("users.id")
+    stage_id: Mapped[int] = fk("lead_stages.id")
+    level: Mapped[str] = mapped_column(String(8))
+
+
 class Lead(IdMixin, TimestampMixin, ArchiveMixin, Base):
     __tablename__ = "leads"
     # QA H-15: one open lead per phone in a branch, even under parallel requests. A lead stops counting once it is

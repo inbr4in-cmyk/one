@@ -11,7 +11,9 @@ from app.models.compliance import (
     OutboundMessage,
     Setting,
 )
-from app.models.crm import Conversation, ExternalContact, ExternalMessage, Lead, LeadEvent, LeadStage, Pipeline
+from app.models.crm import (
+    Conversation, ExternalContact, ExternalMessage, Lead, LeadEvent, LeadStage, LeadStageAccess, Pipeline,
+)
 from app.models.finance import Expense, ExpenseCategory, Payment, Refund, SubscriptionPackage
 from app.models.imports import ImportRef
 from app.models.identity import AuthSession, Role, RolePermission, User, UserBranch, UserRole
