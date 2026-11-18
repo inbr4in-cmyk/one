@@ -243,8 +243,8 @@ async def add_member(group_id: int, body: MemberIn, db: DB, actor: Actor = requi
         raise conflict(f"В группе нет мест ({cnt}/{g.capacity})")
     db.add(GroupMember(group_id=g.id, student_id=s.id, joined_on=today()))
     s.level_id = g.level_id
-    if s.status in (StudentStatus.LEAD, StudentStatus.TRIAL):
-        s.status = StudentStatus.ACTIVE
+    if s.status in (StudentStatus.LEAD, StudentStatus.TRIAL, StudentStatus.WAITING):
+        s.status = StudentStatus.ACTIVE  # got a group: no longer «ждёт группу»
     await chats.sync_student_in_group_chat(db, g, s, True)
     await write_audit(db, actor_id=actor.id, action="group.member_add", entity="group", entity_id=g.id,
                       branch_id=g.branch_id, ip=actor.ip, after={"student_id": s.id})

@@ -98,9 +98,7 @@ async def test_b5_freeze_rules_and_nightly_end(db, client, owner_h):
     st = await _student(db, client, owner_h, y)
     d = today()
     body = {"starts_on": str(d), "ends_on": str(d + timedelta(days=7))}
-    r = await client.post(f"/api/students/{st['id']}/freeze", headers=owner_h, json=body)
-    assert r.status_code == 400 and "предоплате" in r.json()["detail"]  # rules p.362: a month prepaid
-    await _pay(client, owner_h, st["id"], 12)
+    # owner, 18.11.2026: a freeze needs neither a payment nor a group
     r = await client.post(f"/api/students/{st['id']}/freeze", headers=owner_h,
                           json={"starts_on": "2020-01-01", "ends_on": "2020-01-08"})
     assert r.status_code == 400 and "не раньше" in r.json()["detail"]
@@ -111,7 +109,7 @@ async def test_b5_freeze_rules_and_nightly_end(db, client, owner_h):
     f.starts_on, f.ends_on = d - timedelta(days=8), d - timedelta(days=1)
     await db.flush()
     out = await jobs.sync_freezes(db)
-    assert out["unfrozen"] == 1 and (await db.get(Student, st["id"])).status == "active"
+    assert out["unfrozen"] == 1 and (await db.get(Student, st["id"])).status == "waiting"  # back, and not in a group
     # A freeze that starts in the future switches the status on its first day.
     f.starts_on, f.ends_on, f.ended_early_on = d, d + timedelta(days=5), None
     await db.flush()
@@ -127,7 +125,7 @@ async def test_b5_unfreeze_allowed_while_frozen_even_after_end(db, client, owner
                   created_by=await _owner_id(db)))
     await db.flush()
     r = await client.post(f"/api/students/{st['id']}/unfreeze", headers=owner_h)
-    assert r.status_code == 200 and r.json()["status"] == "active"
+    assert r.status_code == 200 and r.json()["status"] == "waiting"  # no group yet
     assert (await client.post(f"/api/students/{st['id']}/unfreeze", headers=owner_h)).status_code == 400
 
 

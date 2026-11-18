@@ -61,6 +61,7 @@ const modules = {
       active: 'Учится',
       trial: 'Пробный',
       lead: 'Лид',
+      waiting: 'Ждёт группу',
       frozen: 'Заморозка',
       finished: 'Закончил',
       left: 'Ушёл',

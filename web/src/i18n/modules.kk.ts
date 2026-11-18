@@ -62,6 +62,7 @@ const modules: typeof ru = {
       active: 'Оқиды',
       trial: 'Сынақ',
       lead: 'Лид',
+      waiting: 'Топ күтуде',
       frozen: 'Тоқтатылған',
       finished: 'Бітірді',
       left: 'Кетті',

@@ -315,7 +315,9 @@ async def update_student(student_id: int, body: StudentPatch, db: DB, actor: Act
                     + (f"\nКомментарий сотрудника: {reason}" if reason else ""), actor.id)
                 await write_audit(db, actor_id=actor.id, action="student.leave_request", entity="student", entity_id=s.id,
                                   branch_id=s.branch_id, ip=actor.ip, note=reason)
-    elif data.get("status") in (StudentStatus.ACTIVE, StudentStatus.FINISHED) and s.status == StudentStatus.LEFT:
+    if data.get("status") == StudentStatus.WAITING and s.status != StudentStatus.WAITING and await _in_group(db, s.id):
+        raise bad_request("У ученика есть группа. Статус «Ждёт группу» ставится только ученику без группы")
+    if data.get("status") in (StudentStatus.ACTIVE, StudentStatus.FINISHED, StudentStatus.WAITING) and s.status == StudentStatus.LEFT:
         if data["status"] == StudentStatus.ACTIVE and s.left_at:
             await retention.rejoin_groups(db, s, local(s.left_at).date())
         s.left_at = None
@@ -649,6 +651,8 @@ async def transfer(student_id: int, body: TransferIn, db: DB, actor: Actor = req
             returned = await _refund_absences(db, s, on, actor, "перевод", current[1].id)
         await chats.sync_student_in_group_chat(db, current[1], s, False)
     db.add(GroupMember(group_id=to_group.id, student_id=s.id, joined_on=on))
+    if s.status == StudentStatus.WAITING:
+        s.status = StudentStatus.ACTIVE
     await chats.sync_student_in_group_chat(db, to_group, s, True)
     s.level_id = new_level.id
     if to_group.branch_id != s.branch_id:
@@ -662,6 +666,11 @@ async def transfer(student_id: int, body: TransferIn, db: DB, actor: Actor = req
     return await card(db, s, actor)
 
 
+async def _in_group(db, student_id: int) -> bool:
+    return await db.scalar(select(GroupMember.id).where(GroupMember.student_id == student_id,
+                                                         GroupMember.left_on.is_(None)).limit(1)) is not None
+
+
 # ---------- freezes ----------
 FREEZE_BACKDATE_DAYS = 31
 
@@ -673,15 +682,16 @@ def _current_freeze(student_id: int, d: date):
 
 @router.post("/{student_id}/freeze", response_model=StudentOut)
 async def freeze(student_id: int, body: FreezeIn, db: DB, actor: Actor = require("students", "transfer")) -> StudentOut:
-    """Rules p.362: by request, at most a month per course, and only with a month prepaid. ends_on is the first day back."""
+    """By request, at most a month per course. No payment and no group are needed (owner, 18.11.2026). ends_on is
+    the first day back."""
     s = await get_student_scoped(db, actor, student_id, "students", "transfer", lock=True)
     d = today()
     if body.starts_on < d - timedelta(days=FREEZE_BACKDATE_DAYS):
         raise bad_request(f"Заморозку можно оформить не раньше чем {FREEZE_BACKDATE_DAYS} дней назад")
     if body.ends_on <= body.starts_on:
         raise bad_request("Дата окончания должна быть позже начала")
-    if s.status not in (StudentStatus.ACTIVE,):
-        raise bad_request("Заморозить можно только ученика со статусом «учится»")
+    if s.status not in StudentStatus.FREEZABLE:
+        raise bad_request("Заморозить нельзя: ученик ушёл, закончил курс или уже заморожен")
     max_days = int(await setting(db, "freeze_max_days") or 31)
     if (body.ends_on - body.starts_on).days > max_days:
         raise bad_request(f"Заморозка не дольше {max_days} дней")
@@ -696,15 +706,11 @@ async def freeze(student_id: int, body: FreezeIn, db: DB, actor: Actor = require
                                                                           Freeze.created_at >= s.created_at))
     if used >= max_count and not actor.is_owner:
         raise forbidden(f"Лимит заморозок за курс: {max_count}")
-    # «При условии предоплаты за месяц»: a month of lessons must already be paid and waiting on the balance.
     # A freeze entered late: lessons already taken from the balance on the frozen days come back.
     late = (await db.execute(
         select(Attendance, Lesson.starts_at).join(Lesson, Lesson.id == Attendance.lesson_id)
         .where(Attendance.student_id == s.id, Attendance.charged.is_(True), Attendance.status.not_in(("present", "late")),
                Lesson.starts_at >= at_local(body.starts_on, time(0)), Lesson.starts_at < at_local(body.ends_on, time(0))))).all()
-    prepaid = int(await setting(db, "freeze_prepaid_lessons") or 0)
-    if s.lessons_left + len(late) < prepaid:
-        raise bad_request(f"Заморозка — только при предоплате за месяц: нужно {prepaid} ур. на балансе, сейчас {s.lessons_left + len(late)}")
     f = Freeze(student_id=s.id, starts_on=body.starts_on, ends_on=body.ends_on, reason=body.reason, created_by=actor.id)
     db.add(f)
     if body.starts_on <= d < body.ends_on:
@@ -734,7 +740,7 @@ async def unfreeze(student_id: int, db: DB, actor: Actor = require("students", "
     if f is not None:
         f.ended_early_on = max(d, f.starts_on)  # a future freeze is cancelled: zero days long
     if s.status == StudentStatus.FROZEN:
-        s.status = StudentStatus.ACTIVE
+        s.status = StudentStatus.ACTIVE if await _in_group(db, s.id) else StudentStatus.WAITING
     await write_audit(db, actor_id=actor.id, action="student.unfreeze", entity="student", entity_id=s.id,
                       branch_id=s.branch_id, ip=actor.ip, after={"freeze_id": f.id if f else None})
     await db.commit()

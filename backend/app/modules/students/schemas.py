@@ -40,7 +40,7 @@ class StudentPatch(In):
     contract_no: str | None = Field(default=None, max_length=64)
     contract_date: date | None = None
     # manual status: studying / finished the course / left (freezes have their own flow)
-    status: str | None = Field(default=None, pattern="^(active|finished|left)$")
+    status: str | None = Field(default=None, pattern="^(active|finished|left|waiting)$")
     # With status «left»: why (the methodist's decision needs it; other staff may add what they know).
     leave_reason: str | None = Field(default=None, max_length=500)
     return_note: str | None = Field(default=None, max_length=500)

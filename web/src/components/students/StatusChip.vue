@@ -6,7 +6,7 @@ import type { StudentStatus } from '@/api/students'
 defineProps<{ status: StudentStatus; small?: boolean }>()
 const { t } = useI18n()
 const TONE: Record<StudentStatus, 'ok' | 'warn' | 'red' | 'info' | undefined> = {
-  active: 'ok', trial: 'info', lead: 'info', frozen: 'warn', finished: undefined, left: 'red',
+  active: 'ok', trial: 'info', lead: 'info', frozen: 'warn', waiting: 'warn', finished: undefined, left: 'red',
 }
 </script>
 

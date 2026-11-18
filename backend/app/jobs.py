@@ -245,7 +245,7 @@ async def sync_freezes(db: AsyncSession) -> dict:
     running = and_(Freeze.student_id == Student.id, Freeze.starts_on <= d,
                    func.coalesce(Freeze.ended_early_on, Freeze.ends_on) > d)
     out = {"frozen": 0, "unfrozen": 0}
-    for s in await db.scalars(select(Student).where(Student.archived_at.is_(None), Student.status == StudentStatus.ACTIVE,
+    for s in await db.scalars(select(Student).where(Student.archived_at.is_(None), Student.status.in_(StudentStatus.FREEZABLE),
                                                     exists().where(running)).with_for_update(skip_locked=True)):
         s.status = StudentStatus.FROZEN
         await write_audit(db, actor_id=None, action="student.freeze_started", entity="student", entity_id=s.id,
@@ -253,7 +253,8 @@ async def sync_freezes(db: AsyncSession) -> dict:
         out["frozen"] += 1
     for s in await db.scalars(select(Student).where(Student.status == StudentStatus.FROZEN, ~exists().where(running))
                               .with_for_update(skip_locked=True)):
-        s.status = StudentStatus.ACTIVE
+        in_group = await db.scalar(select(GroupMember.id).where(GroupMember.student_id == s.id, GroupMember.left_on.is_(None)).limit(1))
+        s.status = StudentStatus.ACTIVE if in_group else StudentStatus.WAITING
         await write_audit(db, actor_id=None, action="student.freeze_ended", entity="student", entity_id=s.id,
                           branch_id=s.branch_id, note="Заморозка закончилась")
         out["unfrozen"] += 1

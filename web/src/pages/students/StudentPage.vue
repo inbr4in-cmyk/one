@@ -212,7 +212,7 @@ const canRefund = (p: Payment) => auth.can('payments.refund') && p.refunded < p.
           <UiButton v-if="auth.can('students.edit')" icon="edit" @click="modal = 'edit'">{{ t('students.edit.action') }}</UiButton>
           <UiButton v-if="auth.can('chats.use') && s.user_id" icon="chat" @click="message">{{ t('students.message') }}</UiButton>
           <UiButton v-if="auth.can('students.transfer') && s.status !== 'frozen'" icon="arrow" @click="modal = 'transfer'">{{ t('students.transfer.action') }}</UiButton>
-          <UiButton v-if="auth.can('students.transfer') && s.status === 'active'" icon="clock" @click="modal = 'freeze'">{{ t('students.freeze.action') }}</UiButton>
+          <UiButton v-if="auth.can('students.transfer') && ['active', 'waiting', 'lead', 'trial'].includes(s.status)" icon="clock" @click="modal = 'freeze'">{{ t('students.freeze.action') }}</UiButton>
           <UiButton v-if="auth.can('students.transfer') && s.status === 'frozen'" icon="play" @click="modal = 'unfreeze'">{{ t('students.unfreeze') }}</UiButton>
           <UiButton v-if="auth.can('payments.create')" icon="card" @click="modal = 'package'">{{ t('payments.sellPackage') }}</UiButton>
           <UiButton v-if="auth.can('payments.create')" variant="primary" icon="wallet" @click="modal = 'pay'">{{ t('payments.take') }}</UiButton>

@@ -15,7 +15,10 @@ class StudentStatus:
     FROZEN = "frozen"
     FINISHED = "finished"
     LEFT = "left"
-    ALL = (LEAD, TRIAL, ACTIVE, FROZEN, FINISHED, LEFT)
+    WAITING = "waiting"  # «ждёт группу»: a student who is not in any group yet (set by staff, never with a group)
+    ALL = (LEAD, TRIAL, ACTIVE, FROZEN, FINISHED, LEFT, WAITING)
+    # who may be put on a freeze: studying, or not in a group yet (no payment and no group needed — owner, 18.11.2026)
+    FREEZABLE = (ACTIVE, WAITING, LEAD, TRIAL)
 
 
 class Student(IdMixin, TimestampMixin, ArchiveMixin, Base):

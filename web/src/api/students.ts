@@ -1,8 +1,8 @@
 import { http, qs } from './http'
 import type { Page } from './org'
 
-export type StudentStatus = 'lead' | 'trial' | 'active' | 'frozen' | 'finished' | 'left'
-export const STUDENT_STATUSES: StudentStatus[] = ['active', 'trial', 'lead', 'frozen', 'finished', 'left']
+export type StudentStatus = 'lead' | 'trial' | 'active' | 'waiting' | 'frozen' | 'finished' | 'left'
+export const STUDENT_STATUSES: StudentStatus[] = ['active', 'waiting', 'trial', 'lead', 'frozen', 'finished', 'left']
 
 export interface StudentListItem {
   id: number
@@ -155,7 +155,7 @@ export const studentsApi = {
   list: (f: StudentFilters) => http.get<Page<StudentListItem>>(`/students${qs({ ...f })}`),
   get: (id: number) => http.get<Student>(`/students/${id}`),
   create: (body: StudentIn) => http.post<Student>('/students', body),
-  update: (id: number, body: Partial<StudentIn> & { status?: 'active' | 'finished' | 'left'; leave_reason?: string | null; return_note?: string | null; left_on?: string | null; return_on?: string | null }) => http.patch<Student>(`/students/${id}`, body),
+  update: (id: number, body: Partial<StudentIn> & { status?: 'active' | 'waiting' | 'finished' | 'left'; leave_reason?: string | null; return_note?: string | null; left_on?: string | null; return_on?: string | null }) => http.patch<Student>(`/students/${id}`, body),
   leaveDecision: (id: number, body: { left: boolean; reason: string; return_note?: string | null; left_on?: string | null; return_on?: string | null }) =>
     http.post<Student>(`/students/${id}/leave-decision`, body, { silent: true }),
   addGuardian: (id: number, g: GuardianIn) => http.post<Student>(`/students/${id}/guardians`, g),

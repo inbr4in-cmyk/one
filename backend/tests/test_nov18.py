@@ -159,3 +159,24 @@ async def test_schedule_change_keeps_the_old_one_and_never_leaves_a_group_empty(
     cut = at_local(day, dt.time(0))
     for l in await db.scalars(select(Lesson).where(Lesson.group_id == g["id"], Lesson.status == "planned")):
         assert (l.rule_id == rule_id) == (l.starts_at < cut)
+
+
+async def test_waiting_for_a_group_status(client, db, owner_h):
+    from tests.test_core_learning import _setup, _student
+
+    bid, teacher, room, g = await _setup(db, client, owner_h)
+    s = await _student(db, client, owner_h, bid)
+    r = await client.patch(f"/api/students/{s['id']}", headers=owner_h, json={"status": "waiting"})
+    assert r.status_code == 200 and r.json()["status"] == "waiting"
+    # a freeze works without a payment and without a group, and ends back in «ждёт группу»
+    r = await client.post(f"/api/students/{s['id']}/freeze", headers=owner_h,
+                          json={"starts_on": str(today()), "ends_on": str(today() + timedelta(days=7))})
+    assert r.status_code == 200 and r.json()["status"] == "frozen"
+    r = await client.post(f"/api/students/{s['id']}/unfreeze", headers=owner_h)
+    assert r.json()["status"] == "waiting"
+    # joins a group → studies; with a group the status cannot be set
+    r = await client.post(f"/api/groups/{g['id']}/members", headers=owner_h, json={"student_id": s["id"]})
+    assert r.status_code in (200, 201), r.text
+    assert (await client.get(f"/api/students/{s['id']}", headers=owner_h)).json()["status"] == "active"
+    r = await client.patch(f"/api/students/{s['id']}", headers=owner_h, json={"status": "waiting"})
+    assert r.status_code == 400 and "есть группа" in r.json()["detail"]
