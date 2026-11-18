@@ -57,6 +57,7 @@ export default {
     },
     leadDate: 'Дата обращения',
     assignee: 'Ответственный',
+    leadOwner: 'Менеджер',
     byClient: 'Клиент',
     trial: {
       teacher: 'Учитель',
@@ -64,6 +65,14 @@ export default {
       groups: 'Группы учителя',
       calendar: 'Расписание группы {group}',
       save: 'Записать',
+      mode: 'Формат пробного',
+      modeGroup: 'Группа',
+      modeIndividual: 'Индивидуально',
+      length: 'Длительность',
+      minutes: '{n} минут',
+      day: 'День',
+      free: 'Свободные окна учителя',
+      noFree: 'В этот день свободных окон нет',
     },
     stageAccess: {
       own: 'Только свои',

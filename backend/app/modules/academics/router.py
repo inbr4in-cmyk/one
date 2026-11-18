@@ -496,7 +496,7 @@ async def _lesson_outs(db: DB, lessons: list[Lesson]) -> list[LessonOut]:
     for x in lessons:
         o = LessonOut.model_validate(x)
         o.students = sup.get(x.id, [])
-        o.group_name = gn.get(x.group_id) if x.group_id else "Индивидуально"
+        o.group_name = gn.get(x.group_id) if x.group_id else "Пробный урок" if x.is_trial else "Индивидуально"
         o.kind = "support" if x.is_support else gk.get(x.group_id, "group") if x.group_id else "individual"
         o.teacher_name = un.get(x.actual_teacher_id or x.teacher_id)
         o.room_name = rn.get(x.room_id)

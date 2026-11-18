@@ -1,8 +1,9 @@
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 
 from app.core.query import icontains
 from app.core.audit import diff, snapshot, write_audit
@@ -13,7 +14,7 @@ from app.core.schemas import In, ORM
 from app.core.security import mask_phone, normalize_phone
 from app.models import (
     Attempt, Conversation, ExternalContact, GroupMember, Lead, LeadEvent, LeadStage, LeadStageAccess, Lesson, Pipeline, Room,
-    Student, User,
+    Student, User, UserBranch,
 )
 from app.models.identity import Role, RolePermission, UserKind, UserRole
 from app.models.crm import LeadSource
@@ -26,7 +27,7 @@ from app.modules.students.scope import get_student_scoped
 from app.modules.students.router import add_guardian, upsert_portal_user
 from app.modules.students.schemas import GuardianIn
 from app.services import crm as crm_svc
-from app.services.clock import local, local_range, now, today
+from app.services.clock import at_local, local, local_range, now, today
 from app.services.messaging import send_whatsapp_text
 from app.services.values import setting
 
@@ -442,6 +443,39 @@ class TrialIn(In):
     notify: bool = True
 
 
+async def _book_trial(db: DB, actor: Actor, lead: Lead, lesson: Lesson, notify: bool) -> None:
+    """Put the lead on this lesson as a trial visitor: stage, history, the WhatsApp note."""
+    old_id = lead.trial_lesson_id
+    lead.trial_lesson_id = lesson.id
+    if old_id and old_id != lesson.id:
+        # an individual trial made just for this lead and now moved: its old slot is released
+        old = await db.get(Lesson, old_id)
+        others = await db.scalar(select(func.count()).select_from(Lead).where(Lead.trial_lesson_id == old_id, Lead.id != lead.id))
+        if (old is not None and old.is_trial and old.status == LessonStatus.PLANNED and not others):
+            old.status, old.cancel_reason = LessonStatus.CANCELLED, "Пробный перенесён"
+    st = await crm_svc.stage_by_code(db, "main", "trial_booked")
+    loc = local(lesson.starts_at)
+    if lead.stage_id == st.id:  # re-booked: the stage stays, the history still shows who moved the trial and where
+        db.add(LeadEvent(lead_id=lead.id, at=now(), kind="trial", text=f"Пробный перенесён на {loc:%d.%m %H:%M}",
+                         actor_id=actor.id, meta={"lesson_id": lesson.id}))
+    await crm_svc.move(db, lead, st, actor.id, f"Записан на пробный {loc:%d.%m %H:%M}"
+                       + (" (индивидуально)" if lesson.is_trial else ""))
+    if notify and (lead.phone or lead.parent_phone):
+        await send_whatsapp_text(db, lead.parent_phone or lead.phone,
+                                 f"Здравствуйте! {lead.full_name} записан(а) на пробный урок {loc:%d.%m} в {loc:%H:%M}. "
+                                 f"Ждём вас в One English!", template_code="trial_booked", ref=("lead", lead.id))
+    await write_audit(db, actor_id=actor.id, action="lead.trial", entity="lead", entity_id=lead.id, branch_id=lead.branch_id,
+                      ip=actor.ip, after={"lesson_id": lesson.id})
+
+
+async def _trial_branch(db: DB, actor: Actor, lead: Lead, branch_id: int) -> None:
+    if lead.branch_id is None or (branch_id != lead.branch_id and actor.scope("crm", "edit") == NETWORK):
+        actor.ensure_branch("crm", "edit", branch_id)
+        await set_branch(db, lead, branch_id, actor.id)  # the trial decides the branch
+    elif branch_id != lead.branch_id:
+        raise forbidden("Урок другого филиала")
+
+
 @router.post("/leads/{lead_id}/trial", response_model=LeadCard)
 async def book_trial(lead_id: int, body: TrialIn, db: DB, actor: Actor = require("crm", "edit")) -> LeadCard:
     """ТЗ 9.2: book the trial right into a group lesson (room capacity checked)."""
@@ -449,30 +483,94 @@ async def book_trial(lead_id: int, body: TrialIn, db: DB, actor: Actor = require
     lesson = await db.get(Lesson, body.lesson_id)
     if lesson is None or lesson.status != LessonStatus.PLANNED or lesson.starts_at < now():
         raise bad_request("Выберите предстоящий урок")
-    if lead.branch_id is None or (lesson.branch_id != lead.branch_id and actor.scope("crm", "edit") == NETWORK):
-        actor.ensure_branch("crm", "edit", lesson.branch_id)
-        await set_branch(db, lead, lesson.branch_id, actor.id)  # the trial decides the branch
-    elif lesson.branch_id != lead.branch_id:
-        raise forbidden("Урок другого филиала")
+    await _trial_branch(db, actor, lead, lesson.branch_id)
     room = await db.get(Room, lesson.room_id)
     members = await db.scalar(select(func.count()).select_from(GroupMember).where(
         GroupMember.group_id == lesson.group_id, GroupMember.left_on.is_(None))) if lesson.group_id else 1
     trials = await db.scalar(select(func.count()).select_from(Lead).where(Lead.trial_lesson_id == lesson.id, Lead.id != lead.id))
     if room and members + trials + 1 > room.capacity:
         raise conflict(f"В кабинете нет мест: {members + trials}/{room.capacity}")
-    lead.trial_lesson_id = lesson.id
-    st = await crm_svc.stage_by_code(db, "main", "trial_booked")
-    loc = local(lesson.starts_at)
-    if lead.stage_id == st.id:  # re-booked: the stage stays, the history still shows who moved the trial and where
-        db.add(LeadEvent(lead_id=lead.id, at=now(), kind="trial", text=f"Пробный перенесён на {loc:%d.%m %H:%M}",
-                         actor_id=actor.id, meta={"lesson_id": lesson.id}))
-    await crm_svc.move(db, lead, st, actor.id, f"Записан на пробный {loc:%d.%m %H:%M}")
-    if body.notify and (lead.phone or lead.parent_phone):
-        await send_whatsapp_text(db, lead.parent_phone or lead.phone,
-                                 f"Здравствуйте! {lead.full_name} записан(а) на пробный урок {loc:%d.%m} в {loc:%H:%M}. "
-                                 f"Ждём вас в One English!", template_code="trial_booked", ref=("lead", lead.id))
-    await write_audit(db, actor_id=actor.id, action="lead.trial", entity="lead", entity_id=lead.id, branch_id=lead.branch_id,
-                      ip=actor.ip, after={"lesson_id": lesson.id})
+    await _book_trial(db, actor, lead, lesson, body.notify)
+    await db.commit()
+    return (await _cards(db, actor, [lead]))[0]
+
+
+# ---------- individual trial: the teacher's free windows ----------
+SLOT_STEP = 30  # minutes between the offered start times
+DAY_FROM, DAY_TO = time(8, 0), time(21, 0)  # windows are offered inside these hours
+
+
+class SlotOut(BaseModel):
+    starts_at: datetime
+    ends_at: datetime
+    room_id: int
+    room_name: str
+
+
+async def _free_slots(db: DB, teacher_id: int, branch_id: int, day: date, minutes: int) -> list[SlotOut]:
+    """Start times on that day when the teacher has no lesson and the branch has a free room."""
+    d0 = at_local(day, time(0))
+    d1 = d0 + timedelta(days=1)
+    rooms = list(await db.scalars(select(Room).where(Room.branch_id == branch_id, Room.archived_at.is_(None),
+                                                    Room.status == "active").order_by(Room.name)))
+    rooms.sort(key=lambda r: bool(r.teacher_rate))  # a room with its own teacher pay is offered last
+    busy = (await db.execute(select(Lesson.starts_at, Lesson.ends_at, Lesson.room_id,
+                                    func.coalesce(Lesson.actual_teacher_id, Lesson.teacher_id))
+                             .where(Lesson.status != LessonStatus.CANCELLED, Lesson.starts_at < d1, Lesson.ends_at > d0))).all()
+    out: list[SlotOut] = []
+    s = at_local(day, DAY_FROM)
+    last = at_local(day, DAY_TO)
+    t = now()
+    while s + timedelta(minutes=minutes) <= last:
+        e = s + timedelta(minutes=minutes)
+        if s > t and not any(b[3] == teacher_id and b[0] < e and b[1] > s for b in busy):
+            taken = {b[2] for b in busy if b[0] < e and b[1] > s}
+            room = next((r for r in rooms if r.id not in taken), None)
+            if room is not None:
+                out.append(SlotOut(starts_at=s, ends_at=e, room_id=room.id, room_name=room.name))
+        s += timedelta(minutes=SLOT_STEP)
+    return out
+
+
+@router.get("/trial-slots", response_model=list[SlotOut])
+async def trial_slots(teacher_id: int, branch_id: int, day: date, db: DB, minutes: int = Query(default=60, ge=30, le=120),
+                      actor: Actor = require("crm", "edit")) -> list[SlotOut]:
+    if day < today() or day > today() + timedelta(days=60):
+        return []
+    return await _free_slots(db, teacher_id, branch_id, day, minutes)
+
+
+class TrialIndividualIn(In):
+    teacher_id: int
+    branch_id: int
+    starts_at: datetime
+    minutes: int = Field(default=60, ge=30, le=120)
+    notify: bool = True
+
+
+@router.post("/leads/{lead_id}/trial-individual", response_model=LeadCard)
+async def book_individual_trial(lead_id: int, body: TrialIndividualIn, db: DB, actor: Actor = require("crm", "edit")) -> LeadCard:
+    """An individual trial: a new lesson of the teacher in one of his free windows, with a free room of the branch."""
+    lead = await get_lead_scoped(db, actor, lead_id, "edit")
+    teacher = await db.get(User, body.teacher_id)
+    if teacher is None or teacher.kind != UserKind.STAFF or not teacher.is_active or teacher.archived_at is not None:
+        raise bad_request("Учитель не найден")
+    if not await db.scalar(select(UserBranch.id).where(UserBranch.user_id == teacher.id, UserBranch.branch_id == body.branch_id)):
+        raise bad_request("Учитель не работает в этом филиале")
+    await _trial_branch(db, actor, lead, body.branch_id)
+    day = local(body.starts_at).date()
+    slot = next((x for x in await _free_slots(db, teacher.id, body.branch_id, day, body.minutes)
+                 if x.starts_at == body.starts_at), None)
+    if slot is None:
+        raise conflict("Это время уже занято. Выберите другое окно")
+    lesson = Lesson(branch_id=body.branch_id, teacher_id=teacher.id, room_id=slot.room_id, starts_at=slot.starts_at,
+                    ends_at=slot.ends_at, topic=f"Пробный: {lead.full_name}", is_trial=True)
+    db.add(lesson)
+    try:
+        await db.flush()
+    except IntegrityError:
+        raise conflict("Это время уже занято. Выберите другое окно") from None
+    await _book_trial(db, actor, lead, lesson, body.notify)
     await db.commit()
     return (await _cards(db, actor, [lead]))[0]
 

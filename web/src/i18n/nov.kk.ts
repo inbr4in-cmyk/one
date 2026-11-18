@@ -56,6 +56,7 @@ export default {
     },
     leadDate: 'Өтініш күні',
     assignee: 'Жауапты',
+    leadOwner: 'Менеджер',
     byClient: 'Клиент',
     trial: {
       teacher: 'Мұғалім',
@@ -63,6 +64,14 @@ export default {
       groups: 'Мұғалімнің топтары',
       calendar: '{group} тобының кестесі',
       save: 'Жазу',
+      mode: 'Сынақ форматы',
+      modeGroup: 'Топ',
+      modeIndividual: 'Жеке',
+      length: 'Ұзақтығы',
+      minutes: '{n} минут',
+      day: 'Күн',
+      free: 'Мұғалімнің бос уақыттары',
+      noFree: 'Бұл күні бос уақыт жоқ',
     },
     stageAccess: {
       own: 'Тек өзінікі',

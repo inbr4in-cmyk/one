@@ -242,3 +242,38 @@ async def test_support_lesson_with_picked_students_is_free_and_paid_by_its_lengt
     assert s0.lessons_left == 12  # a make-up lesson takes nothing from the balance
     acc = await db.scalar(select(Accrual).where(Accrual.ref_type == "lesson", Accrual.ref_id == lesson["id"]))
     assert acc.amount == 2000  # 1000 per 30 minutes
+
+
+async def test_individual_trial_in_a_free_window_of_the_teacher(client, db, owner_h):
+    from app.models import Lesson
+    from tests.test_core_learning import _setup
+
+    bid, teacher, room, g = await _setup(db, client, owner_h)
+    day = today() + timedelta(days=2)
+    # the teacher has a group lesson 16:00–17:30 that day
+    await client.post(f"/api/groups/{g['id']}/schedule", headers=owner_h, json={
+        "weekdays": [day.weekday()], "start_time": "16:00", "end_time": "17:30", "room_id": room.id, "valid_from": today().isoformat()})
+    q = f"/api/crm/trial-slots?teacher_id={teacher.id}&branch_id={bid}&day={day.isoformat()}&minutes=60"
+    slots = (await client.get(q, headers=owner_h)).json()
+    starts = [local(__import__("datetime").datetime.fromisoformat(x["starts_at"])).strftime("%H:%M") for x in slots]
+    assert "15:00" in starts and "17:30" in starts
+    assert not {"15:30", "16:00", "16:30", "17:00"} & set(starts)  # would overlap his lesson
+    lead = (await client.post("/api/crm/leads", headers=owner_h, json={"full_name": "Индив Пробный", "branch_id": bid})).json()
+    pick = slots[starts.index("15:00")]
+    body = {"teacher_id": teacher.id, "branch_id": bid, "starts_at": pick["starts_at"], "minutes": 60, "notify": False}
+    r = await client.post(f"/api/crm/leads/{lead['id']}/trial-individual", headers=owner_h, json=body)
+    assert r.status_code == 200, r.text
+    lid = r.json()["trial_lesson_id"]
+    lesson = await db.get(Lesson, lid)
+    assert lesson.is_trial and lesson.group_id is None and lesson.teacher_id == teacher.id
+    # the window is gone now: a second lead cannot take it
+    lead2 = (await client.post("/api/crm/leads", headers=owner_h, json={"full_name": "Второй", "branch_id": bid})).json()
+    assert (await client.post(f"/api/crm/leads/{lead2['id']}/trial-individual", headers=owner_h, json=body)).status_code == 409
+    # moving the trial releases the old window
+    pick2 = slots[starts.index("17:30")]
+    r = await client.post(f"/api/crm/leads/{lead['id']}/trial-individual", headers=owner_h, json={**body, "starts_at": pick2["starts_at"]})
+    assert r.status_code == 200, r.text
+    await db.refresh(lesson)
+    assert lesson.status == "cancelled"
+    sheet = (await client.get(f"/api/lessons/{r.json()['trial_lesson_id']}/attendance", headers=owner_h)).json()
+    assert [x["lead_id"] for x in sheet["rows"]] == [lead["id"]]

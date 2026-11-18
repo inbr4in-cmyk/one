@@ -162,6 +162,8 @@ class Lesson(IdMixin, TimestampMixin, Base):
     topic: Mapped[StrN]
     # Support lesson: a one-off make-up lesson of a teacher with a few picked students (lesson_students), or none
     is_support: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # Individual trial lesson created for a lead from the CRM (the lead is its trial visitor)
+    is_trial: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
 
 class LessonStudent(IdMixin, Base):

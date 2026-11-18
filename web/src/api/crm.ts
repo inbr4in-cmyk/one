@@ -133,6 +133,14 @@ export interface Analytics {
   lost_reasons: Record<string, number>
 }
 
+/** A free window of a teacher for an individual trial (the room is picked by the server). */
+export interface TrialSlot {
+  starts_at: string
+  ends_at: string
+  room_id: number
+  room_name: string
+}
+
 export const crmApi = {
   pipelines: () => http.get<Pipeline[]>('/crm/pipelines'),
   addStage: (pipelineId: number, body: StageIn) => http.post<Stage>(`/crm/pipelines/${pipelineId}/stages`, body),
@@ -149,6 +157,10 @@ export const crmApi = {
     http.post<Lead>(`/crm/leads/${id}/stage`, { stage_id, lost_reason }, { silent }),
   event: (id: number, body: { kind: 'call' | 'note' | 'meeting'; text: string; result?: string | null }) =>
     http.post<LeadEvent>(`/crm/leads/${id}/events`, body),
+  trialSlots: (teacher_id: number, branch_id: number, day: string, minutes: number) =>
+    http.get<TrialSlot[]>(`/crm/trial-slots${qs({ teacher_id, branch_id, day, minutes })}`),
+  trialIndividual: (id: number, body: { teacher_id: number; branch_id: number; starts_at: string; minutes: number }) =>
+    http.post<Lead>(`/crm/leads/${id}/trial-individual`, body),
   trial: (id: number, lesson_id: number, notify = true) => http.post<Lead>(`/crm/leads/${id}/trial`, { lesson_id, notify }),
   convert: (id: number) => http.post<{ student_id: number }>(`/crm/leads/${id}/convert`, { create_account: true }),
   stageAccess: () => http.get<StageAccess>('/crm/stage-access'),

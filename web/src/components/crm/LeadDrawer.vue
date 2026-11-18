@@ -127,6 +127,20 @@ async function bookTrial(lesson: Lesson) {
   }
 }
 
+async function bookIndividual(body: { teacher_id: number; branch_id: number; starts_at: string; minutes: number }) {
+  const l = lead.value
+  if (!l) return
+  busy.value = true
+  try {
+    updated(await crmApi.trialIndividual(l.id, body))
+    toast.ok(t('crm.trialBooked', { when: `${dayLabel(body.starts_at, loc.value)} ${hm(body.starts_at, loc.value)}` }))
+    trialOpen.value = false
+    await load(l.id)
+  } finally {
+    busy.value = false
+  }
+}
+
 async function convert() {
   const l = lead.value
   if (!l) return
@@ -249,7 +263,7 @@ const eventOptions = computed(() => (['call', 'note', 'meeting'] as const).map((
       </div>
 
       <Transition name="fade">
-        <TrialPicker v-if="trialOpen" :branch-id="lead.branch_id" :busy="busy" @pick="bookTrial" />
+        <TrialPicker v-if="trialOpen" :branch-id="lead.branch_id" :busy="busy" @pick="bookTrial" @individual="bookIndividual" />
       </Transition>
 
       <h4 class="sec-h">{{ t('crm.stageLabel') }}</h4>
@@ -267,7 +281,7 @@ const eventOptions = computed(() => (['call', 'note', 'meeting'] as const).map((
         <template v-if="lead.parent_name"><dt>{{ t('crm.parent') }}</dt><dd>{{ lead.parent_name }}<template v-if="lead.parent_phone"> · {{ formatPhone(lead.parent_phone) }}</template></dd></template>
         <dt>{{ t('students.form.level') }}</dt>
         <dd><LevelTag v-if="lead.level_id" :id="lead.level_id" full /><UiChip v-else tone="warn" small>{{ t('crm.noTest') }}</UiChip><template v-if="lead.placement_score !== null"> · {{ t('crm.score', { n: lead.placement_score }) }}</template></dd>
-        <dt>{{ t('crm.owner') }}</dt><dd>{{ lead.owner_name ?? t('crm.unassigned') }}</dd>
+        <dt>{{ t('nv.leadOwner') }}</dt><dd>{{ lead.owner_name ?? t('crm.unassigned') }}</dd>
         <dt>{{ t('nv.assignee') }}</dt>
         <dd>
           <UiSelect v-if="assigneeOpen" :model-value="lead.assignee_id ?? 0" :options="staffOptions" :label="t('nv.assignee')" size="sm" @update:model-value="setAssignee" />
