@@ -77,6 +77,14 @@ export default {
     noBranch: 'Филиал таңдалмаған',
     pickBranch: 'Филиалды таңдаңыз',
     changeAssignee: 'Өзгерту',
+    sched: {
+      change: 'Кестені өзгерту',
+      from: 'Жаңа кесте мына күннен',
+      changed: 'Кесте өзгертілді, жаңа сабақтар: {n}',
+      until: '{d} дейін',
+      since: '{d} бастап',
+      old: 'Ескі',
+    },
     fin: {
       refundsNet: 'Қайтарымдар {refunds} · таза түсім {net}',
       netRevenue: 'Таза түсім',

@@ -34,7 +34,7 @@ from app.modules.students.router import is_frozen_on
 from app.modules.students.scope import get_student_scoped
 from app.services import balance as bal
 from app.services import chats, crm, retention
-from app.services.clock import end_of_local_day, local, now, today
+from app.services.clock import at_local, end_of_local_day, local, now, today
 from app.services.coins import award_auto
 from app.services.messaging import notify_guardians
 from app.services.payroll import accrue_lesson
@@ -83,6 +83,7 @@ class GroupOut(ORM):
     members: int = 0
     teacher_name: str | None = None
     schedule: list[dict] = []
+    old_schedule: list[dict] = []
 
 
 def group_filter(actor: Actor, action: str = "view"):
@@ -100,9 +101,16 @@ async def _group_out(db: DB, g: Group) -> GroupOut:
                                                                                       GroupMember.left_on.is_(None)))
     t = await db.get(User, g.teacher_id)
     o.teacher_name = t.full_name if t else None
-    o.schedule = [{"id": r.id, "weekdays": r.weekdays, "start": r.start_time.strftime("%H:%M"), "end": r.end_time.strftime("%H:%M"),
-                   "room_id": r.room_id} for r in await db.scalars(select(ScheduleRule).where(
-                       ScheduleRule.group_id == g.id, ScheduleRule.archived_at.is_(None)))]
+    d = today()
+    for r in await db.scalars(select(ScheduleRule).where(ScheduleRule.group_id == g.id).order_by(ScheduleRule.valid_from, ScheduleRule.id)):
+        row = {"id": r.id, "weekdays": r.weekdays, "start": r.start_time.strftime("%H:%M"), "end": r.end_time.strftime("%H:%M"),
+               "room_id": r.room_id, "valid_from": r.valid_from.isoformat(), "valid_to": r.valid_to.isoformat() if r.valid_to else None}
+        # A schedule that has ended (or was replaced) stays on the group's page as «старое».
+        if r.archived_at is not None or (r.valid_to is not None and r.valid_to < d):
+            o.old_schedule.append(row)
+        else:
+            o.schedule.append(row)
+    o.old_schedule = o.old_schedule[-5:]
     return o
 
 
@@ -343,6 +351,74 @@ async def backfill_lessons(body: BackfillIn, db: DB, actor: Actor = require("stu
                              "groups": len(groups), "members_moved": members})
     await db.commit()
     return {"created": created, "groups": len(groups), "members": members, "conflicts": problems}
+
+
+class RuleChangeIn(In):
+    weekdays: list[int] = Field(min_length=1, max_length=7)
+    start_time: time
+    end_time: time
+    room_id: int
+    valid_from: date  # the first day of the new schedule
+
+    @model_validator(mode="after")
+    def _check(self):
+        if self.end_time <= self.start_time:
+            raise ValueError("Время окончания должно быть позже начала")
+        if any(d < 0 or d > 6 for d in self.weekdays):
+            raise ValueError("Дни недели 0–6")
+        return self
+
+
+@router.post("/schedule-rules/{rule_id}/change")
+async def change_rule(rule_id: int, body: RuleChangeIn, db: DB, actor: Actor = require("students", "archive")) -> dict:
+    """«Изменить расписание» (admin and branch admin only): from `valid_from` the group studies by the new schedule.
+    The old one is kept as «старое» with its end date; held lessons and their attendance are not touched; the old
+    schedule's lessons from that day on are replaced by the new ones. All or nothing: if any new lesson meets a busy
+    room or teacher, nothing is changed and the conflicts are listed, so a group is never left without a schedule."""
+    old = await db.get(ScheduleRule, rule_id)
+    if old is None:
+        raise not_found("Расписание")
+    g = await _get_group(db, actor, old.group_id)
+    actor.ensure_branch("students", "archive", g.branch_id)
+    if old.archived_at is not None or (old.valid_to is not None and old.valid_to < today()):
+        raise bad_request("Это расписание уже завершено")
+    if not (today() <= body.valid_from <= today() + timedelta(days=60)):
+        raise bad_request("Новое расписание начинается сегодня или позже, не дальше чем через 2 месяца")
+    if old.valid_to is not None and body.valid_from > old.valid_to:
+        raise bad_request("Дата позже окончания текущего расписания")
+    room = await db.get(Room, body.room_id)
+    if room is None or room.branch_id != g.branch_id or room.archived_at:
+        raise bad_request("Кабинет не найден в филиале группы")
+    if room.status != "active":
+        raise bad_request("Кабинет на ремонте")
+    if room.capacity < g.capacity and g.kind != "club":
+        raise bad_request(f"Вместимость кабинета {room.capacity} меньше размера группы {g.capacity}")
+    start = at_local(body.valid_from, time(0))
+    replaced = 0
+    for lesson in await db.scalars(select(Lesson).where(
+            Lesson.rule_id == old.id, Lesson.starts_at >= start, Lesson.starts_at > now(),
+            Lesson.status == LessonStatus.PLANNED, Lesson.attendance_marked_at.is_(None))):
+        lesson.status, lesson.cancel_reason = LessonStatus.CANCELLED, "Расписание изменено"
+        replaced += 1
+    old.valid_to = body.valid_from - timedelta(days=1)
+    if old.valid_to < old.valid_from:
+        old.archived_at = now()  # replaced before it ever started
+    await db.flush()
+    rule = ScheduleRule(group_id=g.id, weekdays=sorted(set(body.weekdays)), start_time=body.start_time, end_time=body.end_time,
+                        room_id=room.id, teacher_id=g.teacher_id, valid_from=body.valid_from, valid_to=None)
+    db.add(rule)
+    await db.flush()
+    created, problems = await sched.generate(db, rule, g)
+    if problems:
+        await db.rollback()
+        raise conflict("Расписание не изменено, есть пересечения: " + "; ".join(problems[:3])
+                       + (f" и ещё {len(problems) - 3}" if len(problems) > 3 else ""))
+    await write_audit(db, actor_id=actor.id, action="schedule.rule_change", entity="group", entity_id=g.id, branch_id=g.branch_id,
+                      ip=actor.ip, before={"rule_id": old.id, "weekdays": old.weekdays, "time": f"{old.start_time}-{old.end_time}"},
+                      after={"rule_id": rule.id, "weekdays": rule.weekdays, "time": f"{body.start_time}-{body.end_time}",
+                             "from": str(body.valid_from), "lessons": created, "replaced": replaced})
+    await db.commit()
+    return {"rule_id": rule.id, "created": created, "replaced": replaced}
 
 
 @router.delete("/schedule-rules/{rule_id}", status_code=204)

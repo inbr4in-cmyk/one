@@ -1,6 +1,6 @@
 from datetime import timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.models import Lead, LeadStage
 from app.services.clock import local, today
@@ -114,3 +114,48 @@ async def test_instagram_lead_has_no_branch_until_staff_pick_it(client, db, owne
     assert (await client.get(f"/api/inbox/conversations/{conv['id']}", headers=h)).json()["branch_id"] == bid
     events = (await client.get(f"/api/crm/leads/{lead_id}", headers=h)).json()["events"]
     assert any(e["text"] == f"Филиал: {YANGI}" and e["actor_name"] == "Менеджер филиала" for e in events)
+
+
+async def test_schedule_change_keeps_the_old_one_and_never_leaves_a_group_empty(client, db, owner_h):
+    from app.models import Lesson, Room
+    from app.services.clock import at_local
+    from tests.test_core_learning import _setup
+    from tests.conftest import level_id
+    import datetime as dt
+
+    bid, teacher, room, g = await _setup(db, client, owner_h)
+    r = await client.post(f"/api/groups/{g['id']}/schedule", headers=owner_h, json={
+        "weekdays": [0, 2, 4], "start_time": "16:00", "end_time": "17:30", "room_id": room.id, "valid_from": today().isoformat()})
+    rule_id, before = r.json()["rule_id"], r.json()["created"]
+    day = today() + timedelta(days=14)
+    # a teacher cannot change it: admin and branch admin only
+    h = await login(client, teacher.phone)
+    new = {"weekdays": [1, 3], "start_time": "18:00", "end_time": "19:30", "room_id": room.id, "valid_from": day.isoformat()}
+    assert (await client.post(f"/api/schedule-rules/{rule_id}/change", headers=h, json=new)).status_code == 403
+
+    # another group already sits in that room on the new days → nothing changes at all
+    other = (await client.post("/api/groups", headers=owner_h, json={
+        "name": "BUSY", "branch_id": bid, "level_id": await level_id(db, "ELE"), "teacher_id": teacher.id, "room_id": room.id,
+        "capacity": 12})).json()
+    await client.post(f"/api/groups/{other['id']}/schedule", headers=owner_h, json={
+        "weekdays": [1], "start_time": "18:30", "end_time": "19:30", "room_id": room.id, "valid_from": today().isoformat()})
+    r = await client.post(f"/api/schedule-rules/{rule_id}/change", headers=owner_h, json=new)
+    assert r.status_code == 409 and "не изменено" in r.json()["detail"]
+    grp = (await client.get(f"/api/groups/{g['id']}", headers=owner_h)).json()
+    assert [x["id"] for x in grp["schedule"]] == [rule_id] and grp["schedule"][0]["valid_to"] is None and grp["old_schedule"] == []
+    planned = select(func.count()).select_from(Lesson).where(Lesson.group_id == g["id"], Lesson.status == "planned")
+    assert await db.scalar(planned) == before
+
+    # free days: the old schedule ends the day before, its later lessons are replaced by the new ones
+    new["weekdays"] = [3, 5]
+    r = await client.post(f"/api/schedule-rules/{rule_id}/change", headers=owner_h, json=new)
+    assert r.status_code == 200, r.text
+    assert r.json()["created"] > 0 and r.json()["replaced"] > 0
+    grp = (await client.get(f"/api/groups/{g['id']}", headers=owner_h)).json()
+    assert len(grp["schedule"]) == 2  # the old one runs until the day before, the new one from that day
+    old, cur = grp["schedule"]
+    assert old["id"] == rule_id and old["valid_to"] == (day - timedelta(days=1)).isoformat()
+    assert cur["valid_from"] == day.isoformat() and cur["weekdays"] == [3, 5] and cur["start"] == "18:00"
+    cut = at_local(day, dt.time(0))
+    for l in await db.scalars(select(Lesson).where(Lesson.group_id == g["id"], Lesson.status == "planned")):
+        assert (l.rule_id == rule_id) == (l.starts_at < cut)

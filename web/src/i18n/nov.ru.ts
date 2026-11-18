@@ -78,6 +78,14 @@ export default {
     noBranch: 'Филиал не выбран',
     pickBranch: 'Выберите филиал',
     changeAssignee: 'Изменить',
+    sched: {
+      change: 'Изменить расписание',
+      from: 'Новое расписание действует с',
+      changed: 'Расписание изменено, новых уроков: {n}',
+      until: 'до {d}',
+      since: 'с {d}',
+      old: 'Старое',
+    },
     fin: {
       refundsNet: 'Возвраты {refunds} · чистая выручка {net}',
       netRevenue: 'Чистая выручка',

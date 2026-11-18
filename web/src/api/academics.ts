@@ -6,6 +6,9 @@ export interface ScheduleRuleRef {
   start: string
   end: string
   room_id: number
+  /** YYYY-MM-DD */
+  valid_from?: string
+  valid_to?: string | null
 }
 
 export interface Group {
@@ -25,6 +28,8 @@ export interface Group {
   members: number
   teacher_name: string | null
   schedule: ScheduleRuleRef[]
+  /** ended or replaced schedules, kept for the record */
+  old_schedule?: ScheduleRuleRef[]
 }
 
 export type CourseKind = 'group' | 'duo' | 'individual' | 'club'
@@ -170,6 +175,8 @@ export const academicsApi = {
   removeMember: (id: number, studentId: number) => http.delete(`/groups/${id}/members/${studentId}`),
   addRule: (id: number, body: RuleIn) =>
     http.post<{ rule_id: number; created: number; conflicts: string[] }>(`/groups/${id}/schedule`, body, { silent: true }),
+  changeRule: (ruleId: number, body: { weekdays: number[]; start_time: string; end_time: string; room_id: number; valid_from: string }) =>
+    http.post<{ rule_id: number; created: number; replaced: number }>(`/schedule-rules/${ruleId}/change`, body, { silent: true }),
   endRule: (ruleId: number) => http.delete(`/schedule-rules/${ruleId}`),
   lessons: (q: LessonQuery) => http.get<Lesson[]>(`/lessons${qs({ ...q })}`),
   createLesson: (body: { group_id?: number | null; student_id?: number | null; teacher_id: number; room_id: number; starts_at: string; ends_at: string; topic?: string | null; support?: boolean }) =>

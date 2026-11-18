@@ -17,7 +17,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useRefsStore } from '@/stores/refs'
 import { useToastStore } from '@/stores/toast'
 import { useTeachers } from '@/composables/useTeachers'
-import { addDays, dayLabel, dmy, hm, isoDate, weekdayShort, schoolNow } from '@/utils/dates'
+import { addDays, dayLabel, dmy, hm, isoDate, parseDate, todayIso, weekdayShort, schoolNow } from '@/utils/dates'
 import { tone } from '@/utils/levels'
 import type { Locale } from '@/i18n'
 
@@ -101,7 +101,16 @@ async function removeMember() {
 /* ---- schedule rules ---- */
 const rule = reactive({ weekdays: [] as number[], start: '16:00', end: '17:30', room_id: 0, from: isoDate(schoolNow()), to: '' })
 const roomOptions = computed(() => rooms.value.filter((r) => r.status === 'active').map((r) => ({ value: r.id, label: `${r.name} · ${r.capacity}` })))
+/** Rule being replaced by «Изменить»: the same form, but it ends the old schedule the day before the new one starts. */
+const changing = ref<number | null>(null)
+function openChange(r: { id: number; weekdays: number[]; start: string; end: string; room_id: number }) {
+  Object.assign(rule, { weekdays: [...r.weekdays], start: r.start.slice(0, 5), end: r.end.slice(0, 5), room_id: r.room_id, from: isoDate(schoolNow()), to: '' })
+  ruleError.value = null
+  changing.value = r.id
+  modal.value = 'rule'
+}
 function openRule() {
+  changing.value = null
   Object.assign(rule, { weekdays: [], start: '16:00', end: '17:30', room_id: g.value?.room_id ?? roomOptions.value[0]?.value ?? 0, from: isoDate(schoolNow()), to: '' })
   ruleError.value = null
   modal.value = 'rule'
@@ -112,6 +121,13 @@ async function addRule() {
   if (ruleError.value) return
   busy.value = true
   try {
+    if (changing.value !== null) {
+      const r = await academicsApi.changeRule(changing.value, { weekdays: rule.weekdays, start_time: rule.start, end_time: rule.end, room_id: rule.room_id, valid_from: rule.from })
+      toast.ok(t('nv.sched.changed', { n: r.created }))
+      modal.value = null
+      load()
+      return
+    }
     const r = await academicsApi.addRule(id.value, { weekdays: rule.weekdays, start_time: rule.start, end_time: rule.end, room_id: rule.room_id, valid_from: rule.from, valid_to: rule.to || null })
     toast.ok(t('groups.rule.created', { n: r.created }))
     conflicts.value = r.conflicts
@@ -251,8 +267,13 @@ const lessonState = (l: Lesson) => (l.status === 'cancelled' ? 'red' : l.attenda
           </template>
           <div v-for="r in g.schedule" :key="r.id" class="list-row">
             <span class="srcico" style="background: var(--navy-600)"><svg><use href="#i-clock" /></svg></span>
-            <div class="grow"><b>{{ r.weekdays.map((d) => weekdayShort(d, loc)).join(' / ') }} · {{ r.start.slice(0, 5) }}–{{ r.end.slice(0, 5) }}</b><span>{{ roomName(r.room_id) }}</span></div>
+            <div class="grow"><b>{{ r.weekdays.map((d) => weekdayShort(d, loc)).join(' / ') }} · {{ r.start.slice(0, 5) }}–{{ r.end.slice(0, 5) }}</b><span>{{ roomName(r.room_id) }}<template v-if="r.valid_to"> · {{ t('nv.sched.until', { d: dmy(parseDate(r.valid_to), loc) }) }}</template><template v-else-if="r.valid_from && r.valid_from > todayIso()"> · {{ t('nv.sched.since', { d: dmy(parseDate(r.valid_from), loc) }) }}</template></span></div>
+            <UiButton v-if="auth.can('students.archive') && !r.valid_to" size="sm" variant="ghost" icon="edit" @click="openChange(r)">{{ t('common.edit') }}</UiButton>
             <UiButton v-if="auth.can('schedule.edit')" size="sm" variant="ghost" icon="x" :aria-label="t('groups.rule.end')" @click="endingRule = r.id" />
+          </div>
+          <div v-for="r in g.old_schedule ?? []" :key="`o${r.id}`" class="list-row" style="opacity: .6">
+            <span class="srcico" style="background: var(--muted)"><svg><use href="#i-clock" /></svg></span>
+            <div class="grow"><b>{{ r.weekdays.map((d) => weekdayShort(d, loc)).join(' / ') }} · {{ r.start.slice(0, 5) }}–{{ r.end.slice(0, 5) }}</b><span>{{ t('nv.sched.old') }}<template v-if="r.valid_to"> · {{ t('nv.sched.until', { d: dmy(parseDate(r.valid_to), loc) }) }}</template></span></div>
           </div>
           <p v-if="!g.schedule.length" class="muted m0">{{ t('groups.noSchedule') }}</p>
         </UiCard>
@@ -287,7 +308,7 @@ const lessonState = (l: Lesson) => (l.status === 'cancelled' ? 'red' : l.attenda
       <StudentPicker :branch-id="g.branch_id" :exclude="members?.map((m) => m.student_id)" @pick="addMember" />
     </UiModal>
 
-    <UiModal :open="modal === 'rule'" :title="t('groups.rule.add')" @update:open="(v) => !v && (modal = null)">
+    <UiModal :open="modal === 'rule'" :title="changing !== null ? t('nv.sched.change') : t('groups.rule.add')" @update:open="(v) => !v && (modal = null)">
       <form id="rule-form" class="stack" @submit.prevent="addRule">
         <UiField :label="t('groups.rule.days')">
           <div class="pack-row">
@@ -299,7 +320,8 @@ const lessonState = (l: Lesson) => (l.status === 'cancelled' ? 'red' : l.attenda
           <UiInput v-model="rule.end" type="time" :label="t('groups.rule.end2')" />
         </div>
         <UiField :label="t('groups.room')"><UiSelect v-model="rule.room_id" :options="roomOptions" :label="t('groups.room')" block /></UiField>
-        <div class="form-2">
+        <UiInput v-if="changing !== null" v-model="rule.from" type="date" :min="todayIso()" :label="t('nv.sched.from')" />
+        <div v-else class="form-2">
           <UiInput v-model="rule.from" type="date" :label="t('groups.rule.from')" />
           <UiInput v-model="rule.to" type="date" :min="rule.from" :label="t('groups.rule.to')" />
         </div>
@@ -307,7 +329,7 @@ const lessonState = (l: Lesson) => (l.status === 'cancelled' ? 'red' : l.attenda
       </form>
       <template #footer="{ close }">
         <UiButton @click="close">{{ t('common.cancel') }}</UiButton>
-        <UiButton variant="primary" type="submit" form="rule-form" :loading="busy">{{ t('groups.rule.create') }}</UiButton>
+        <UiButton variant="primary" type="submit" form="rule-form" :loading="busy">{{ changing !== null ? t('common.save') : t('groups.rule.create') }}</UiButton>
       </template>
     </UiModal>
 
