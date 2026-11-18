@@ -139,6 +139,17 @@ async function convert() {
   }
 }
 
+const branchOptions = computed(() => [
+  ...(lead.value?.branch_id ? [] : [{ value: 0, label: t('nv.noBranch') }]),
+  ...refs.branches.map((b) => ({ value: b.id, label: b.name })),
+])
+async function setBranch(id: number) {
+  const l = lead.value
+  if (!l || !id || id === l.branch_id) return
+  updated(await crmApi.patch(l.id, { branch_id: id }))
+  await load(l.id)
+}
+
 async function savePhone() {
   const l = lead.value
   if (!l || phone.value.trim().length < 5) return
@@ -239,7 +250,11 @@ const eventOptions = computed(() => (['call', 'note', 'meeting'] as const).map((
         <dd><LevelTag v-if="lead.level_id" :id="lead.level_id" full /><UiChip v-else tone="warn" small>{{ t('crm.noTest') }}</UiChip><template v-if="lead.placement_score !== null"> · {{ t('crm.score', { n: lead.placement_score }) }}</template></dd>
         <dt>{{ t('crm.owner') }}</dt><dd>{{ lead.owner_name ?? t('crm.unassigned') }}</dd>
         <template v-if="lead.assignee_name"><dt>{{ t('nv.assignee') }}</dt><dd>{{ lead.assignee_name }}</dd></template>
-        <dt>{{ t('branch.label') }}</dt><dd>{{ refs.branchName(lead.branch_id) }}</dd>
+        <dt>{{ t('branch.label') }}</dt>
+        <dd>
+          <UiSelect v-if="canEdit && !lead.student_id" :model-value="lead.branch_id ?? 0" :options="branchOptions" :label="t('branch.label')" size="sm" @update:model-value="setBranch" />
+          <template v-else>{{ lead.branch_id ? refs.branchName(lead.branch_id) : t('nv.noBranch') }}</template>
+        </dd>
         <template v-if="lead.trial_at"><dt>{{ t('crm.trial') }}</dt><dd class="num">{{ dayLabel(lead.trial_at, loc) }} · {{ hm(lead.trial_at, loc) }}</dd></template>
       </dl>
       <form v-if="canEdit && !lead.phone && !lead.student_id" style="display: flex; gap: 8px; align-items: end" @submit.prevent="savePhone">

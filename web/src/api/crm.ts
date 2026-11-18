@@ -37,7 +37,8 @@ export interface Lead {
   age: number | null
   parent_name: string | null
   parent_phone: string | null
-  branch_id: number
+  /** null: a lead from Instagram/WhatsApp whose branch is not picked yet */
+  branch_id: number | null
   pipeline_id: number
   stage_id: number
   stage_changed_at: string
@@ -142,7 +143,7 @@ export const crmApi = {
     http.get<Board>(`/crm/board${qs(p)}`),
   create: (body: LeadIn) => http.post<Lead>('/crm/leads', body),
   get: (id: number) => http.get<LeadDetails>(`/crm/leads/${id}`),
-  patch: (id: number, body: Partial<LeadIn> & { is_hot?: boolean; next_action_at?: string | null }) =>
+  patch: (id: number, body: Partial<LeadIn> & { is_hot?: boolean; next_action_at?: string | null; branch_id?: number }) =>
     http.patch<Lead>(`/crm/leads/${id}`, body),
   stage: (id: number, stage_id: number, lost_reason?: string | null, silent = false) =>
     http.post<Lead>(`/crm/leads/${id}/stage`, { stage_id, lost_reason }, { silent }),

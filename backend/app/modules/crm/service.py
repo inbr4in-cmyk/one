@@ -18,7 +18,7 @@ def lead_filter(actor: Actor, action: str = "view"):
     elif scope == OWN:
         cond = or_(Lead.owner_id == actor.id, Lead.assignee_id == actor.id)
     else:
-        cond = Lead.branch_id.in_(actor.branch_ids or {-1})
+        cond = or_(Lead.branch_id.in_(actor.branch_ids or {-1}), Lead.branch_id.is_(None))  # no branch yet: everyone's
     if actor.stage_hidden:
         cond = and_(cond, Lead.stage_id.notin_(actor.stage_hidden))
     return cond
@@ -77,20 +77,35 @@ async def default_branch_id(db: AsyncSession) -> int:
     return await db.scalar(select(Branch.id).where(Branch.archived_at.is_(None)).order_by(Branch.id))
 
 
-async def crm_people(db: AsyncSession, branch_id: int, module: str = "inbox", action: str = "view") -> list[int]:
-    """Staff of the branch who work with leads — they get notified about new ones."""
-    rows = await db.scalars(
-        select(UserBranch.user_id).join(UserRole, UserRole.user_id == UserBranch.user_id)
-        .join(RolePermission, RolePermission.role_id == UserRole.role_id)
-        .join(User, User.id == UserBranch.user_id)
-        .where(UserBranch.branch_id == branch_id, RolePermission.module == module, RolePermission.action == action,
-               User.is_active.is_(True), User.archived_at.is_(None))
-        .distinct()
-    )
-    return list(rows)
+async def crm_people(db: AsyncSession, branch_id: int | None, module: str = "inbox", action: str = "view") -> list[int]:
+    """Staff of the branch who work with leads — they get notified about new ones. No branch yet: staff of every branch."""
+    q = (select(UserBranch.user_id).join(UserRole, UserRole.user_id == UserBranch.user_id)
+         .join(RolePermission, RolePermission.role_id == UserRole.role_id)
+         .join(User, User.id == UserBranch.user_id)
+         .where(RolePermission.module == module, RolePermission.action == action,
+                User.is_active.is_(True), User.archived_at.is_(None)))
+    if branch_id is not None:
+        q = q.where(UserBranch.branch_id == branch_id)
+    return list(await db.scalars(q.distinct()))
 
 
-async def create_lead(db: AsyncSession, *, full_name: str, phone: str | None, branch_id: int, source: str,
+async def set_branch(db: AsyncSession, lead: Lead, branch_id: int, actor_id: int | None) -> None:
+    """The branch is picked (or changed): the lead and its Instagram/WhatsApp chats move there, the step is in the history."""
+    if lead.branch_id == branch_id:
+        return
+    from app.models import Conversation, ExternalContact
+
+    b = await db.get(Branch, branch_id)
+    if b is None or b.archived_at is not None:
+        raise not_found("Филиал")
+    lead.branch_id = branch_id
+    for conv in await db.scalars(select(Conversation).join(ExternalContact, ExternalContact.id == Conversation.contact_id)
+                                 .where(ExternalContact.lead_id == lead.id)):
+        conv.branch_id = branch_id
+    db.add(LeadEvent(lead_id=lead.id, at=now(), kind="note", text=f"Филиал: {b.name}", actor_id=actor_id, meta={"branch_id": branch_id}))
+
+
+async def create_lead(db: AsyncSession, *, full_name: str, phone: str | None, branch_id: int | None, source: str,
                       owner_id: int | None, assignee_id: int | None = None, pipeline: str = "main", stage: str = "new",
                       notify: bool = True, contacted_on=None, **extra) -> Lead:
     """contacted_on: the day the person really got in touch, when the card is entered later (it becomes the lead's

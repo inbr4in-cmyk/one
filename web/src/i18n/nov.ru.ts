@@ -74,6 +74,8 @@ export default {
       none: 'Нет доступа',
       full: 'Полный',
     },
+    noBranch: 'Филиал не выбран',
+    pickBranch: 'Выберите филиал',
     fin: {
       refundsNet: 'Возвраты {refunds} · чистая выручка {net}',
       netRevenue: 'Чистая выручка',

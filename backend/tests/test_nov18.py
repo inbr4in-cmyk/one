@@ -70,3 +70,32 @@ async def test_admin_closes_funnel_stages_per_person(client, db, owner_h):
     await client.put("/api/crm/stage-access", headers=owner_h, json={"user_id": sales.id, "stage_id": new.id, "level": "edit"})
     assert (await client.get("/api/crm/stage-access", headers=owner_h)).json()["cells"] == {}
     assert (await client.patch(f"/api/crm/leads/{lead['id']}", headers=h, json={"notes": "x"})).status_code == 200
+
+
+async def test_instagram_lead_has_no_branch_until_staff_pick_it(client, db, owner_h, monkeypatch):
+    from app.services import meta
+    from tests.test_crm_inbox import ig_payload, signed
+
+    async def nobody(user_id):
+        return None, None
+
+    monkeypatch.setattr(meta, "ig_profile", nobody)
+    bid = await branch_id(db, YANGI)
+    sales = await make_staff(db, "sales", [YANGI], "+77080000778", "Менеджер филиала")
+    await db.commit()
+    h = await login(client, sales.phone)
+    body, hd = signed(ig_payload("17841400000000091", "ig.b1", "Здравствуйте"))
+    await client.post("/api/webhooks/meta", content=body, headers=hd)
+    conv = (await client.get("/api/inbox/conversations", headers=h)).json()[0]  # a branch manager sees it too
+    assert conv["branch_id"] is None
+    lead_id = conv["lead"]["id"]
+    card = (await client.get(f"/api/crm/leads/{lead_id}", headers=h)).json()["lead"]
+    assert card["branch_id"] is None
+    cols = (await client.get(f"/api/crm/board?branch_id={bid}", headers=h)).json()["columns"]
+    assert any(x["id"] == lead_id for c in cols for x in c["leads"])
+    assert (await client.post(f"/api/crm/leads/{lead_id}/convert", headers=owner_h, json={})).status_code == 400
+    r = await client.patch(f"/api/crm/leads/{lead_id}", headers=h, json={"branch_id": bid})
+    assert r.status_code == 200 and r.json()["branch_id"] == bid
+    assert (await client.get(f"/api/inbox/conversations/{conv['id']}", headers=h)).json()["branch_id"] == bid
+    events = (await client.get(f"/api/crm/leads/{lead_id}", headers=h)).json()["events"]
+    assert any(e["text"] == f"Филиал: {YANGI}" and e["actor_name"] == "Менеджер филиала" for e in events)

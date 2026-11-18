@@ -7,9 +7,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import normalize_phone
-from app.models import Conversation, ExternalContact, ExternalMessage, Lead, LeadEvent, LeadStage
+from app.models import Branch, Conversation, ExternalContact, ExternalMessage, Lead, LeadEvent, LeadStage
 from app.models.crm import LeadSource
-from app.modules.crm.service import create_lead, crm_people, default_branch_id, find_by_phone, find_client_by_phone
+from app.modules.crm.service import create_lead, crm_people, find_by_phone, find_client_by_phone
 from app.services import meta
 from app.services.clock import now
 from app.services.messaging import notify_user
@@ -80,7 +80,8 @@ async def receive(db: AsyncSession, *, channel: str, external_id: str, message_i
     phone = normalize_phone(phone) if phone else None
     contact, _ = await _contact(db, channel, external_id, name, username, phone)
     conv = await db.scalar(select(Conversation).where(Conversation.contact_id == contact.id).order_by(Conversation.id.desc()))
-    branch_id = conv.branch_id if conv and conv.branch_id else await default_branch_id(db)
+    # A new person has no branch yet: staff pick it when they get in touch or book the trial (owner, 18.11.2026).
+    branch_id = conv.branch_id if conv else None
     lead = await _link_lead(db, contact, branch_id)
     if lead:
         branch_id = lead.branch_id
@@ -108,7 +109,8 @@ async def receive(db: AsyncSession, *, channel: str, external_id: str, message_i
         if uid and conv.unread == 1:
             await notify_user(db, uid, "inbox", f"{contact.display_name or 'Новое сообщение'}: {conv.last_preview[:80]}",
                               link=f"/inbox/{conv.id}", meta_={"channel": channel})
-    await publish(f"inbox:branch:{branch_id}", {"type": "inbox.message", "conversation_id": conv.id, "message_id": msg.id})
+    for b in [branch_id] if branch_id else await db.scalars(select(Branch.id).where(Branch.archived_at.is_(None))):
+        await publish(f"inbox:branch:{b}", {"type": "inbox.message", "conversation_id": conv.id, "message_id": msg.id})
     return msg
 
 

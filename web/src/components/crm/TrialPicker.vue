@@ -5,10 +5,11 @@ import { UiButton, UiField, UiSelect, UiSkeleton } from '@/components/ui'
 import { academicsApi, type Group, type Lesson } from '@/api/academics'
 import { addDays, dayLabel, hm, isoDate, sameDay, schoolNow, toSchool, weekStart, weekdayShort } from '@/utils/dates'
 import { nowMs } from '@/utils/clock'
+import { useRefsStore } from '@/stores/refs'
 import type { Locale } from '@/i18n'
 
 /** Trial booking: teacher → that teacher's groups → the group's calendar → a lesson day → save. */
-const props = defineProps<{ branchId: number; busy?: boolean }>()
+const props = defineProps<{ branchId: number | null; busy?: boolean }>()
 const emit = defineEmits<{ pick: [Lesson] }>()
 const { t, locale } = useI18n()
 const loc = computed(() => locale.value as Locale)
@@ -20,10 +21,25 @@ const group = ref<Group | null>(null)
 const lessons = ref<Lesson[] | null>(null)
 const chosen = ref<Lesson | null>(null)
 
-onMounted(async () => {
-  const list = await academicsApi.groups({ branch_id: props.branchId }).catch(() => [])
+const refs = useRefsStore()
+/** A lead without a branch: the branch is picked first, and the trial then moves the lead there. */
+const branch = ref(props.branchId ?? 0)
+const branchOptions = computed(() => [{ value: 0, label: t('nv.pickBranch') }, ...refs.branches.map((b) => ({ value: b.id, label: b.name }))])
+
+async function loadGroups() {
+  groups.value = null
+  teacher.value = 0
+  if (!branch.value) {
+    groups.value = []
+    return
+  }
+  const id = branch.value
+  const list = await academicsApi.groups({ branch_id: id }).catch(() => [])
+  if (id !== branch.value) return
   groups.value = list.filter((g) => g.status !== 'finished' && g.kind !== 'individual' && g.kind !== 'duo' && g.kind !== 'club')
-})
+}
+onMounted(loadGroups)
+watch(branch, loadGroups)
 
 const teacherOptions = computed(() => {
   const seen = new Map<number, string>()
@@ -62,8 +78,11 @@ const weeks = computed(() => {
 
 <template>
   <div class="trial-pick">
+    <UiField v-if="!props.branchId" :label="t('branch.label')">
+      <UiSelect v-model="branch" :options="branchOptions" :label="t('branch.label')" block />
+    </UiField>
     <UiSkeleton v-if="!groups" :lines="3" />
-    <template v-else>
+    <template v-else-if="branch">
       <UiField :label="t('nv.trial.teacher')">
         <UiSelect v-model="teacher" :options="teacherOptions" :label="t('nv.trial.teacher')" block />
       </UiField>

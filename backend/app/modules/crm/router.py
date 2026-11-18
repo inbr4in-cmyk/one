@@ -20,7 +20,7 @@ from app.models.crm import LeadSource
 from app.models.learning import LessonStatus, StudentStatus
 from app.modules.crm.service import (
     create_lead, find_by_phone, find_client_by_phone, get_lead_scoped, lead_filter, merge_into_student,
-    stage_editable,
+    set_branch, stage_editable,
 )
 from app.modules.students.scope import get_student_scoped
 from app.modules.students.router import add_guardian, upsert_portal_user
@@ -80,6 +80,7 @@ class LeadPatch(In):
     next_action_at: datetime | None = None
     assignee_id: int | None = None
     is_hot: bool | None = None
+    branch_id: int | None = None
 
 
 PATCH_TITLES = {"full_name": "имя", "phone": "телефон", "age": "возраст", "parent_name": "родитель",
@@ -93,7 +94,7 @@ class LeadCard(BaseModel):
     age: int | None
     parent_name: str | None
     parent_phone: str | None
-    branch_id: int
+    branch_id: int | None
     pipeline_id: int
     stage_id: int
     stage_changed_at: datetime
@@ -291,7 +292,7 @@ async def board(db: DB, actor: Actor = require("crm", "view"), pipeline: str = "
         raise not_found("Воронка")
     stmt = select(Lead).where(Lead.pipeline_id == p.id, Lead.archived_at.is_(None), lead_filter(actor))
     if branch_id:
-        stmt = stmt.where(Lead.branch_id == branch_id)
+        stmt = stmt.where((Lead.branch_id == branch_id) | Lead.branch_id.is_(None))
     if source:
         stmt = stmt.where(Lead.source == source)
     if owner_id:
@@ -360,6 +361,9 @@ async def patch_lead(lead_id: int, body: LeadPatch, db: DB, actor: Actor = requi
     fields = list(LeadPatch.model_fields)
     before = snapshot(lead, fields)
     data = body.model_dump(exclude_unset=True)
+    if branch := data.pop("branch_id", None):
+        actor.ensure_branch("crm", "edit", branch)
+        await set_branch(db, lead, branch, actor.id)
     for k in ("phone", "parent_phone"):
         if data.get(k):
             data[k] = normalize_phone(data[k])
@@ -441,7 +445,10 @@ async def book_trial(lead_id: int, body: TrialIn, db: DB, actor: Actor = require
     lesson = await db.get(Lesson, body.lesson_id)
     if lesson is None or lesson.status != LessonStatus.PLANNED or lesson.starts_at < now():
         raise bad_request("Выберите предстоящий урок")
-    if lesson.branch_id != lead.branch_id and actor.scope("crm", "edit") != NETWORK:
+    if lead.branch_id is None or (lesson.branch_id != lead.branch_id and actor.scope("crm", "edit") == NETWORK):
+        actor.ensure_branch("crm", "edit", lesson.branch_id)
+        await set_branch(db, lead, lesson.branch_id, actor.id)  # the trial decides the branch
+    elif lesson.branch_id != lead.branch_id:
         raise forbidden("Урок другого филиала")
     room = await db.get(Room, lesson.room_id)
     members = await db.scalar(select(func.count()).select_from(GroupMember).where(
@@ -478,6 +485,8 @@ async def convert(lead_id: int, body: ConvertIn, db: DB, actor: Actor = require(
     lead = await get_lead_scoped(db, actor, lead_id, "view")
     if lead.student_id:
         return {"student_id": lead.student_id}
+    if lead.branch_id is None:
+        raise bad_request("Сначала выберите филиал лида")
     actor.ensure_branch("students", "create", lead.branch_id)
     s = Student(full_name=lead.full_name, phone=lead.phone, branch_id=lead.branch_id, level_id=lead.level_id,
                 status=StudentStatus.TRIAL if lead.trial_lesson_id else StudentStatus.LEAD, source=lead.source,

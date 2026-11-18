@@ -73,6 +73,8 @@ export default {
       none: 'Рұқсат жоқ',
       full: 'Толық',
     },
+    noBranch: 'Филиал таңдалмаған',
+    pickBranch: 'Филиалды таңдаңыз',
     fin: {
       refundsNet: 'Қайтарымдар {refunds} · таза түсім {net}',
       netRevenue: 'Таза түсім',

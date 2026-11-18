@@ -17,7 +17,7 @@ from app.core.ratelimit import client_ip, hit
 from app.core.schemas import In, ORM
 from app.core.security import mask_phone
 from app.models import Conversation, ExternalContact, ExternalMessage, Lead, LeadEvent, LeadStage, MessageTemplate, Student
-from app.modules.crm.service import merge_into_student
+from app.modules.crm.service import merge_into_student, set_branch
 from app.modules.students.scope import get_student_scoped
 from app.modules.inbox.service import comment_to_answer, handle_meta_payload, in_window
 from app.services import meta
@@ -284,7 +284,8 @@ async def patch_conv(conv_id: int, body: ConvPatch, db: DB, actor: Actor = requi
         contact = await db.get(ExternalContact, conv.contact_id)
         if contact.lead_id:
             lead = await db.get(Lead, contact.lead_id)
-            lead.branch_id = data["branch_id"]
+            if data["branch_id"]:
+                await set_branch(db, lead, data["branch_id"], actor.id)
     if "assignee_id" in data:
         contact = await db.get(ExternalContact, conv.contact_id)
         if contact.lead_id:

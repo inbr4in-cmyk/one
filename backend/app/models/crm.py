@@ -66,7 +66,8 @@ class Lead(IdMixin, TimestampMixin, ArchiveMixin, Base):
     age: Mapped[IntN]
     parent_name: Mapped[StrN]
     parent_phone: Mapped[StrN]
-    branch_id: Mapped[int] = fk("branches.id")
+    # Empty for a lead that wrote to Instagram/WhatsApp until staff pick the branch (on contact or trial booking).
+    branch_id: Mapped[int | None] = fk("branches.id", nullable=True)
     pipeline_id: Mapped[int] = fk("pipelines.id")
     stage_id: Mapped[int] = fk("lead_stages.id")
     stage_changed_at: Mapped[DT]
