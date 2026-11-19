@@ -3,7 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import { UiAvatar, UiButton, UiCard, UiChip, UiDrawer, UiEmptyState, UiPeriod, UiPrompt, UiSkeleton, UiTabs } from '@/components/ui'
-import AdjustModal from '@/components/ops/AdjustModal.vue'
+import SettleModal from '@/components/ops/SettleModal.vue'
 import TimesheetGrid from '@/components/ops/TimesheetGrid.vue'
 import PayBreakdownView from '@/components/ops/PayBreakdown.vue'
 import { payrollApi, type Accrual, type PayBreakdown, type PayrollPerson, type PayrollSheet, type PeriodStatus } from '@/api/payroll'
@@ -35,7 +35,7 @@ const tabs = computed(() => [
 ])
 const period = ref(periodOf())
 const sheet = ref<PayrollSheet | null>(null)
-const my = ref<{ total: number; rates_total?: number; salary_total?: number; items: Accrual[]; breakdown?: PayBreakdown } | null>(null)
+const my = ref<{ total: number; rates_total?: number; salary_total?: number; paid?: number; items: Accrual[]; breakdown?: PayBreakdown } | null>(null)
 const breakdown = ref<PayBreakdown | null>(null)
 const detail = ref<PayrollPerson | null>(null)
 const accruals = ref<Accrual[] | null>(null)
@@ -47,7 +47,6 @@ const error = ref<string | null>(null)
 
 const status = computed<PeriodStatus | null>(() => (branch.filterId === null ? null : sheet.value?.status[String(branch.filterId)] ?? 'draft'))
 const finished = computed(() => period.value < periodOf())
-const locked = computed(() => status.value === 'approved' || status.value === 'paid')
 
 async function loadSheet() {
   if (!canSheet.value) return
@@ -104,7 +103,7 @@ const signed = (n: number) => (n > 0 ? `+${money(n, loc.value)}` : n < 0 ? `−$
   <div class="ph">
     <div><h1>{{ t('nav.payroll') }}</h1><p>{{ t('payroll.subtitle') }}</p></div>
     <span class="sp" />
-    <UiButton v-if="tab === 'sheet' && auth.can('payroll.adjust')" icon="plus" :disabled="locked" :title="locked ? t('payroll.lockedNote') : undefined" @click="adjust(null)">{{ t('payroll.adjust') }}</UiButton>
+    <UiButton v-if="tab === 'sheet' && auth.can('payroll.adjust')" variant="primary" icon="wallet" @click="adjust(null)">{{ t('nv.settle.btn') }}</UiButton>
   </div>
 
   <div class="toolbar">
@@ -128,10 +127,6 @@ const signed = (n: number) => (n > 0 ? `+${money(n, loc.value)}` : n < 0 ? `−$
         <b>{{ t(`payroll.status.${status}`) }} · {{ periodLabel(period, loc) }}</b>
         <span>{{ status === 'draft' ? (finished ? t('payroll.draftNote') : t('payroll.openNote')) : status === 'approved' ? t('payroll.approvedNote') : t('payroll.paidNote') }}</span>
       </div>
-      <template v-if="auth.can('payroll.approve')">
-        <UiButton v-if="status === 'draft'" size="sm" variant="navy" icon="ok" :disabled="!finished" :title="!finished ? t('payroll.onlyFinished') : undefined" @click="confirm = 'approve'">{{ t('payroll.approve') }}</UiButton>
-        <UiButton v-else-if="status === 'approved'" size="sm" variant="primary" icon="wallet" @click="confirm = 'paid'">{{ t('payroll.markPaid') }}</UiButton>
-      </template>
     </div>
 
     <UiCard flush>
@@ -145,7 +140,7 @@ const signed = (n: number) => (n > 0 ? `+${money(n, loc.value)}` : n < 0 ? `−$
             <b>{{ p.full_name }}</b>
             <span>{{ p.position ?? '—' }}<template v-if="p.salary_total"> · {{ t('payroll.bySalary') }} {{ money(p.salary_total, loc) }} · {{ t('payroll.byRates') }} {{ money(p.rates_total, loc) }}</template><template v-else><template v-for="[k, v] in topKinds(p)" :key="k"> · {{ kindLabel(String(k)) }} {{ money(v.amount, loc) }}</template></template></span>
           </div>
-          <b class="num">{{ money(p.total, loc) }}</b>
+          <span class="pay-sum"><b class="num">{{ money(p.total, loc) }}</b><span v-if="p.paid" class="num" :class="(p.left ?? 0) < 0 ? 'redc' : 'muted'">{{ (p.left ?? 0) < 0 ? t('nv.settle.debt', { sum: money(-(p.left ?? 0), loc) }) : (p.left ?? 0) === 0 ? t('nv.settle.paidAll') : t('nv.settle.left', { sum: money(p.left ?? 0, loc) }) }}</span></span>
         </button>
       </div>
       <UiEmptyState v-else icon="salary" :title="t('payroll.empty')" />
@@ -157,6 +152,7 @@ const signed = (n: number) => (n > 0 ? `+${money(n, loc.value)}` : n < 0 ? `−$
       <div class="card kpi">
         <div class="k">{{ t('payroll.myTotal', { period: periodLabel(period, loc) }) }}</div>
         <div v-if="my" class="v num">{{ money(my.total, loc) }}</div><UiSkeleton v-else :lines="1" />
+        <span v-if="my && my.paid" class="muted" style="font-size: 12px; display: block">{{ t('nv.settle.paid') }} {{ money(my.paid, loc) }} · {{ my.total - my.paid < 0 ? t('nv.settle.debt', { sum: money(my.paid - my.total, loc) }) : t('nv.settle.left', { sum: money(my.total - my.paid, loc) }) }}</span>
         <span v-if="my && my.salary_total" class="muted" style="font-size: 12px">{{ t('payroll.bySalary') }} {{ money(my.salary_total, loc) }} · {{ t('payroll.byRates') }} {{ money(my.rates_total ?? 0, loc) }}</span>
       </div>
     </div>
@@ -198,11 +194,11 @@ const signed = (n: number) => (n > 0 ? `+${money(n, loc.value)}` : n < 0 ? `−$
     </template>
     <template #footer="{ close }">
       <UiButton @click="close">{{ t('common.close') }}</UiButton>
-      <UiButton v-if="auth.can('payroll.adjust') && detail?.user_id !== auth.user?.id" variant="navy" icon="plus" :disabled="locked" @click="adjust(detail?.user_id ?? null)">{{ t('payroll.adjust') }}</UiButton>
+      <UiButton v-if="auth.can('payroll.adjust') && (detail?.user_id !== auth.user?.id || auth.user?.roles.includes('owner'))" variant="primary" icon="wallet" @click="adjust(detail?.user_id ?? null)">{{ t('nv.settle.btn') }}</UiButton>
     </template>
   </UiDrawer>
 
-  <AdjustModal v-model:open="adjustOpen" :period="period" :user-id="adjustFor" @saved="afterAdjust" />
+  <SettleModal v-model:open="adjustOpen" :period="period" :user-id="adjustFor" @saved="afterAdjust" />
   <UiPrompt
     :open="confirm !== null"
     :title="confirm === 'approve' ? t('payroll.approveTitle', { period: periodLabel(period, loc) }) : t('payroll.paidTitle', { period: periodLabel(period, loc) })"
@@ -214,3 +210,8 @@ const signed = (n: number) => (n > 0 ? `+${money(n, loc.value)}` : n < 0 ? `−$
     @confirm="runConfirm"
   />
 </template>
+
+<style scoped>
+.pay-sum { display: flex; flex-direction: column; align-items: flex-end; gap: 1px }
+.pay-sum span { font-size: 12px }
+</style>

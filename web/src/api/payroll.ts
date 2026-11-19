@@ -11,6 +11,9 @@ export interface PayrollPerson {
   total: number
   rates_total: number
   salary_total: number
+  /** handed out for the month, and what is left (below zero = the person's debt) */
+  paid?: number
+  left?: number
 }
 
 export interface PayrollSheet {
@@ -47,6 +50,19 @@ export interface AdjustIn {
   period?: string
 }
 
+export interface SettlePart { part: 'salary' | 'rate' | 'kpi' | 'bonus' | 'deduction' | 'carry'; title: string; accrued: number; paid: number; left: number; note: string | null }
+export interface PayoutBatch { id: number; period: string; paid_on: string; note: string | null; total: number; lines: { part: string; title: string; amount: number }[] }
+export interface Settlement { user_id: number; full_name: string; position: string | null; period: string; parts: SettlePart[]; balance: number; payouts: PayoutBatch[] }
+export interface PayoutIn {
+  user_id: number
+  branch_id: number
+  period: string
+  paid_on?: string | null
+  lines: { part: string; amount: number }[]
+  bonus?: { amount: number; note: string } | null
+  fine?: { amount: number; note: string } | null
+}
+
 export type DayStatus = 'work' | 'off' | 'sick' | 'vacation' | 'absent'
 export interface TimesheetPerson {
   user_id: number
@@ -66,7 +82,10 @@ export const payrollApi = {
     http.put<{ ok: boolean }>('/payroll/timesheet', body, { silent: true }),
   sheet: (p: { period: string; branch_id?: number | null }) => http.get<PayrollSheet>(`/payroll${qs(p)}`),
   accruals: (p: { period: string; user_id?: number; branch_id?: number | null }) => http.get<Accrual[]>(`/payroll/accruals${qs(p)}`),
-  my: (period: string) => http.get<{ period: string; total: number; rates_total: number; salary_total: number; items: Accrual[]; breakdown?: PayBreakdown }>(`/payroll/my${qs({ period })}`),
+  settlement: (p: { user_id: number; branch_id: number; period: string }) => http.get<Settlement>(`/payroll/settlement${qs(p)}`, { silent: true }),
+  payOut: (body: PayoutIn) => http.post<Settlement>('/payroll/payouts', body, { silent: true }),
+  cancelPayout: (id: number) => http.post<{ ok: boolean }>(`/payroll/payouts/${id}/cancel`, {}, { silent: true }),
+  my: (period: string) => http.get<{ period: string; total: number; rates_total: number; salary_total: number; paid?: number; payouts?: PayoutBatch[]; items: Accrual[]; breakdown?: PayBreakdown }>(`/payroll/my${qs({ period })}`),
   breakdown: (p: { period: string; user_id: number; branch_id?: number | null }) => http.get<PayBreakdown>(`/payroll/breakdown${qs(p)}`, { silent: true }),
   adjust: (body: AdjustIn) => http.post<Accrual>('/payroll/adjust', body, { silent: true }),
   approve: (period: string, branch_id: number) => http.post<{ status: PeriodStatus; total: number }>('/payroll/periods/approve', { period, branch_id }, { silent: true }),

@@ -202,6 +202,8 @@ async def archive_expense(expense_id: int, db: DB, actor: Actor = require("finan
     if e is None or e.archived_at:
         raise not_found("Расход")
     _check_expense_branch(actor, e.branch_id)
+    if (e.source_ref or "").startswith("payout:"):
+        raise bad_request("Это выплата сотруднику: отмените её в разделе «Зарплата»")
     e.archived_at = now()
     await write_audit(db, actor_id=actor.id, action="expense.archive", entity="expense", entity_id=e.id,
                       branch_id=e.branch_id, ip=actor.ip)
@@ -264,7 +266,9 @@ async def pnl(db: DB, period: str, branches: set[int] | None, date_from: date | 
     cats = {c.id: c.name for c in await db.scalars(select(ExpenseCategory))}
     exp = (await db.execute(
         select(Expense.branch_id, Expense.category_id, func.sum(Expense.amount))
-        .where(Expense.archived_at.is_(None), Expense.spent_on >= s, Expense.spent_on < e)
+        .where(Expense.archived_at.is_(None), Expense.spent_on >= s, Expense.spent_on < e,
+               # a payout to staff is in the expense list, but the P&L already counts the pay as it is earned
+               func.coalesce(Expense.source_ref, "").not_like("payout:%"))
         .group_by(Expense.branch_id, Expense.category_id))).all()
     payroll = await _payroll_between(db, s, e) if ranged else {b: int(v) for b, v in (await db.execute(
         select(Accrual.branch_id, func.sum(Accrual.amount)).where(Accrual.period == period)

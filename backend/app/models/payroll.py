@@ -1,4 +1,4 @@
-from sqlalchemy import String, UniqueConstraint
+from sqlalchemy import BigInteger, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base, IdMixin, TimestampMixin
@@ -57,3 +57,23 @@ class StaffDay(IdMixin, TimestampMixin, Base):
     # work | off | sick | vacation | absent
     status: Mapped[str] = mapped_column(String(10))
     created_by: Mapped[IntN]
+
+
+class StaffPayout(IdMixin, TimestampMixin, Base):
+    """«Рассчитаться»: money actually handed to a staff member, one row per part of the pay. Rows of one payment
+    share batch_id. A fine withheld at the payment is a negative row (part «deduction»)."""
+
+    __tablename__ = "staff_payouts"
+
+    user_id: Mapped[int] = fk("users.id")
+    branch_id: Mapped[int] = fk("branches.id", index=False)
+    period: Mapped[str] = mapped_column(String(7), index=True)
+    batch_id: Mapped[int | None] = mapped_column(BigInteger, default=None, index=True)
+    # salary | rate | kpi | bonus | deduction | carry (what is left from earlier months, or the debt)
+    part: Mapped[str] = mapped_column(String(12))
+    amount: Mapped[Money]
+    paid_on: Mapped[D]
+    note: Mapped[StrN]
+    expense_id: Mapped[int | None] = fk("expenses.id", nullable=True, index=False)
+    created_by: Mapped[IntN]
+    cancelled_at: Mapped[DTN]

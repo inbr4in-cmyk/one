@@ -1,6 +1,6 @@
 """Payroll sheets, manual bonuses/deductions, approval and ratings (ТЗ 10)."""
 
-from datetime import date
+from datetime import date, timedelta
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
@@ -11,12 +11,12 @@ from app.core.deps import DB, Actor, require
 from app.core.errors import bad_request, conflict, not_found
 from app.core.permissions import OWN
 from app.core.schemas import In
-from app.models import Accrual, Attendance, Lesson, PayrollPeriod, StaffDay, User, UserBranch
+from app.models import Accrual, Attendance, Expense, ExpenseCategory, Lesson, PayrollPeriod, StaffDay, StaffPayout, User, UserBranch
 from app.models.learning import AttendanceStatus, LessonStatus
 from app.modules.finance.router import month_bounds
 from app.services.clock import now, period_of, today
 from app.services.messaging import notify_user
-from app.services.payroll import accrue_salary, month_days, norm_days, period_locked, TIMESHEET_FROM, WORK_WEEKDAYS
+from app.services.payroll import accrue_salary, month_days, norm_days, period_locked, TIMESHEET_FROM, WORK_WEEKDAYS, worked_days
 
 router = APIRouter(tags=["payroll"])
 
@@ -83,6 +83,12 @@ async def sheet(db: DB, actor: Actor = require("payroll", "view"), period: str |
         p["by_kind"][kind] = {"title": KIND_NAMES.get(kind, kind), "amount": int(total), "count": cnt}
         p["total"] += int(total)
         p["salary_total" if kind == "salary" else "rates_total"] += int(total)
+    paid = dict((await db.execute(select(StaffPayout.user_id, func.sum(StaffPayout.amount)).where(
+        StaffPayout.period == period, StaffPayout.cancelled_at.is_(None), StaffPayout.user_id.in_(list(people) or [0]))
+        .group_by(StaffPayout.user_id))).all())
+    for uid, p in people.items():
+        p["paid"] = int(paid.get(uid, 0))
+        p["left"] = p["total"] - p["paid"]
     branch_ids = {branch_id} if branch_id else ({a.branch_id for a in await db.scalars(
         select(Accrual).where(Accrual.period == period, *_scope_filter(actor, "view", None)))} - {None})
     done = {p.branch_id: p.status for p in await db.scalars(select(PayrollPeriod).where(
@@ -156,6 +162,200 @@ async def accruals(db: DB, actor: Actor = require("payroll", "view"), period: st
     return [_out(a) for a in await db.scalars(q.order_by(Accrual.id).limit(2000))]
 
 
+# ---------- «Рассчитаться»: payouts ----------
+PAYOUTS_FROM = "2026-11"  # earlier months were settled outside the program: nothing is carried over from them
+PARTS = (("salary", "Оклад"), ("rate", "Ставка за уроки"), ("kpi", "KPI"), ("bonus", "Премия"),
+         ("deduction", "Штраф"), ("carry", "Остаток с прошлых месяцев"))
+KPI_KINDS = ("trial_retention", "final_test", "trial_visit", "return", "sale")
+
+
+async def settlement(db: DB, user: User, period: str) -> dict:
+    """What the person earned in the month by part of the pay, what was already handed out, what is left.
+    «carry» is what is still owed from earlier months, or the debt when more was paid than earned."""
+    bd = await breakdown(db, user.id, period, [])
+    accrued = dict.fromkeys((k for k, _ in PARTS), 0)
+    accrued["rate"] = bd["lessons_total"]
+    accrued["kpi"] = bd["kpi"]["amount"]
+    for o in bd["other"]:
+        k = o["key"]
+        accrued[k if k in ("salary", "bonus", "deduction") else "kpi" if k in KPI_KINDS else "rate"] += o["amount"]
+    paid = {k: int(v) for k, v in (await db.execute(
+        select(StaffPayout.part, func.sum(StaffPayout.amount)).where(
+            StaffPayout.user_id == user.id, StaffPayout.period == period, StaffPayout.cancelled_at.is_(None))
+        .group_by(StaffPayout.part))).all()}
+    all_accrued = int(await db.scalar(select(func.coalesce(func.sum(Accrual.amount), 0)).where(
+        Accrual.user_id == user.id, Accrual.period >= PAYOUTS_FROM, Accrual.period <= period)))
+    all_paid = int(await db.scalar(select(func.coalesce(func.sum(StaffPayout.amount), 0)).where(
+        StaffPayout.user_id == user.id, StaffPayout.period <= period, StaffPayout.cancelled_at.is_(None))))
+    parts = []
+    for k, title in PARTS:
+        if k == "carry":
+            continue
+        parts.append({"part": k, "title": title, "accrued": accrued[k], "paid": paid.get(k, 0),
+                      "left": accrued[k] - paid.get(k, 0), "note": None})
+    balance = all_accrued - all_paid  # everything owed up to this month; negative = the person's debt
+    carry = balance - sum(p["left"] for p in parts)
+    parts.append({"part": "carry", "title": "Остаток с прошлых месяцев" if carry >= 0 else "Долг сотрудника",
+                  "accrued": carry + paid.get("carry", 0), "paid": paid.get("carry", 0), "left": carry, "note": None})
+    if user.pay_scheme in ("salary", "both") and user.salary and period >= TIMESHEET_FROM:
+        worked, norm = await worked_days(db, user.id, period)
+        parts[0]["note"] = f"{worked} из {norm} дн."
+    return {"user_id": user.id, "full_name": user.full_name, "position": user.position, "period": period,
+            "parts": parts, "balance": balance}
+
+
+async def _payout_target(db: DB, actor: Actor, user_id: int, branch_id: int) -> User:
+    actor.ensure_branch("payroll", "adjust", branch_id)
+    if user_id == actor.id and not actor.is_owner:
+        raise bad_request("С собой рассчитывается руководитель")
+    target = await db.get(User, user_id)
+    in_branch = await db.scalar(select(UserBranch.id).where(UserBranch.user_id == user_id, UserBranch.branch_id == branch_id))
+    if target is None or target.kind != "staff" or in_branch is None:
+        raise not_found("Сотрудник филиала")
+    return target
+
+
+async def _payout_list(db: DB, user_id: int, period: str | None) -> list[dict]:
+    q = select(StaffPayout).where(StaffPayout.user_id == user_id, StaffPayout.cancelled_at.is_(None))
+    if period:
+        q = q.where(StaffPayout.period == period)
+    batches: dict[int, dict] = {}
+    names = dict(PARTS)
+    for r in await db.scalars(q.order_by(StaffPayout.id.desc()).limit(500)):
+        b = batches.setdefault(r.batch_id or r.id, {"id": r.batch_id or r.id, "period": r.period, "paid_on": r.paid_on.isoformat(),
+                                                    "note": r.note, "total": 0, "lines": []})
+        b["total"] += r.amount
+        b["lines"].append({"part": r.part, "title": names.get(r.part, r.part), "amount": r.amount})
+    return list(batches.values())
+
+
+@router.get("/payroll/settlement")
+async def get_settlement(user_id: int, branch_id: int, db: DB, actor: Actor = require("payroll", "adjust"),
+                         period: str | None = None) -> dict:
+    period = period or period_of(today())
+    month_bounds(period)
+    target = await _payout_target(db, actor, user_id, branch_id)
+    out = await settlement(db, target, period)
+    out["payouts"] = await _payout_list(db, user_id, period)
+    return out
+
+
+class PayLineIn(In):
+    part: str = Field(pattern="^(salary|rate|kpi|bonus|deduction|carry)$")
+    amount: int = Field(ge=-10_000_000, le=10_000_000)
+
+
+class ExtraIn(In):
+    amount: int = Field(gt=0, le=10_000_000)
+    note: str = Field(min_length=3, max_length=255)
+
+
+class PayoutIn(In):
+    user_id: int
+    branch_id: int
+    period: str | None = Field(default=None, max_length=7)
+    paid_on: date | None = None
+    lines: list[PayLineIn] = Field(default_factory=list, max_length=6)
+    # a new bonus or fine written and settled in the same payment
+    bonus: ExtraIn | None = None
+    fine: ExtraIn | None = None
+    note: str | None = Field(default=None, max_length=255)
+
+
+@router.post("/payroll/payouts", status_code=201)
+async def pay_out(body: PayoutIn, db: DB, actor: Actor = require("payroll", "adjust")) -> dict:
+    """Hand out the pay, whole or by part (only the salary, only the lesson rate…). More than earned may be paid:
+    the difference stays as the person's debt. The money goes to the expenses, category «Зарплата»."""
+    period = body.period or period_of(today())
+    month_bounds(period)
+    if period < PAYOUTS_FROM:
+        raise bad_request("Расчёт ведётся с ноября 2026")
+    target = await _payout_target(db, actor, body.user_id, body.branch_id)
+    paid_on = body.paid_on or today()
+    if paid_on > today() or paid_on < today() - timedelta(days=31):
+        raise bad_request("Дата выплаты: сегодня или до 31 дня назад")
+    lines = {}
+    for ln in body.lines:
+        if ln.amount == 0:
+            continue
+        if ln.part in lines:
+            raise bad_request("Часть выплаты указана дважды")
+        if ln.amount < 0 and ln.part not in ("deduction", "carry"):
+            raise bad_request("Сумма выплаты не может быть меньше нуля")
+        if ln.amount > 0 and ln.part == "deduction":
+            raise bad_request("Штраф уменьшает выплату")
+        lines[ln.part] = ln.amount
+    for extra, kind, sign in ((body.bonus, "bonus", 1), (body.fine, "deduction", -1)):
+        if extra is None:
+            continue
+        if await period_locked(db, period, body.branch_id):
+            raise conflict("Ведомость за этот месяц уже утверждена: премию и штраф поставьте в текущем месяце")
+        a = Accrual(user_id=target.id, branch_id=body.branch_id, period=period, kind=kind, amount=sign * extra.amount,
+                    ref_type="manual", ref_id=None, description=extra.note, created_by=actor.id)
+        db.add(a)
+        await db.flush()
+        await write_audit(db, actor_id=actor.id, action=f"payroll.{kind}", entity="accrual", entity_id=a.id,
+                          branch_id=body.branch_id, ip=actor.ip,
+                          after={"user_id": target.id, "amount": a.amount, "description": extra.note})
+        lines[kind] = lines.get(kind, 0) + sign * extra.amount
+    if not lines:
+        raise bad_request("Укажите, что выплачиваете")
+    total = sum(lines.values())
+    if total < 0:
+        raise bad_request("Штрафы и долг больше выплаты: выдавать нечего")
+    names = dict(PARTS)
+    expense = None
+    if total > 0:
+        cat = await db.scalar(select(ExpenseCategory.id).where(ExpenseCategory.code == "salary"))
+        if cat is None:
+            c = ExpenseCategory(code="salary", name="Зарплата")
+            db.add(c)
+            await db.flush()
+            cat = c.id
+        y, m = period.split("-")
+        detail = ", ".join(f"{names[k].lower()} {v:,}".replace(",", " ") for k, v in lines.items())
+        expense = Expense(branch_id=body.branch_id, category_id=cat, amount=total, spent_on=paid_on,
+                          note=f"Зарплата: {target.full_name}, {m}.{y} ({detail})"[:255], created_by=actor.id)
+        db.add(expense)
+        await db.flush()
+    rows = [StaffPayout(user_id=target.id, branch_id=body.branch_id, period=period, part=k, amount=v, paid_on=paid_on,
+                        note=body.note, expense_id=expense.id if expense else None, created_by=actor.id)
+            for k, v in lines.items()]
+    db.add_all(rows)
+    await db.flush()
+    for r in rows:
+        r.batch_id = rows[0].id
+    if expense is not None:
+        expense.source_ref = f"payout:{rows[0].id}"
+    await write_audit(db, actor_id=actor.id, action="payroll.payout", entity="user", entity_id=target.id,
+                      branch_id=body.branch_id, ip=actor.ip, after={"period": period, "lines": lines, "total": total,
+                                                                   "paid_on": paid_on.isoformat()})
+    await notify_user(db, target.id, "payroll", "Выплата", body=f"{total:,} тг".replace(",", " "), link="/payroll/my")
+    await db.commit()
+    out = await settlement(db, target, period)
+    out["payouts"] = await _payout_list(db, target.id, period)
+    return out
+
+
+@router.post("/payroll/payouts/{batch_id}/cancel")
+async def cancel_payout(batch_id: int, db: DB, actor: Actor = require("payroll", "adjust")) -> dict:
+    """A payment entered by mistake: its lines and its expense are taken back (a bonus or fine written with it stays)."""
+    rows = list(await db.scalars(select(StaffPayout).where(StaffPayout.batch_id == batch_id, StaffPayout.cancelled_at.is_(None))))
+    if not rows:
+        raise not_found("Выплата")
+    actor.ensure_branch("payroll", "adjust", rows[0].branch_id)
+    for r in rows:
+        r.cancelled_at = now()
+    if rows[0].expense_id:
+        e = await db.get(Expense, rows[0].expense_id)
+        if e is not None and e.archived_at is None:
+            e.archived_at = now()
+    await write_audit(db, actor_id=actor.id, action="payroll.payout_cancel", entity="user", entity_id=rows[0].user_id,
+                      branch_id=rows[0].branch_id, ip=actor.ip, after={"batch_id": batch_id, "total": sum(r.amount for r in rows)})
+    await db.commit()
+    return {"ok": True}
+
+
 @router.get("/payroll/my")
 async def my_pay(db: DB, actor: Actor = require("payroll", "view"), period: str | None = None) -> dict:
     """«Мои начисления»: every staff member sees how their pay is formed, line by line."""
@@ -163,7 +363,10 @@ async def my_pay(db: DB, actor: Actor = require("payroll", "view"), period: str 
     items = [_out(a) for a in await db.scalars(select(Accrual).where(Accrual.user_id == actor.id, Accrual.period == period)
                                                  .order_by(Accrual.id))]
     salary = sum(i.amount for i in items if i.kind == "salary")
-    return {"period": period, "total": sum(i.amount for i in items), "salary_total": salary,
+    paid = int(await db.scalar(select(func.coalesce(func.sum(StaffPayout.amount), 0)).where(
+        StaffPayout.user_id == actor.id, StaffPayout.period == period, StaffPayout.cancelled_at.is_(None))))
+    return {"period": period, "total": sum(i.amount for i in items), "salary_total": salary, "paid": paid,
+            "payouts": await _payout_list(db, actor.id, period),
             "rates_total": sum(i.amount for i in items) - salary, "items": items,
             "breakdown": await breakdown(db, actor.id, period, [])}
 
