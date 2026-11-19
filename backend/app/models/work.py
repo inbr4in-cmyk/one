@@ -1,6 +1,7 @@
 """Tasks, staff check-ins and daily reports."""
 
-from sqlalchemy import String, UniqueConstraint
+from sqlalchemy import Boolean, String, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import ArchiveMixin, Base, IdMixin, TimestampMixin
@@ -73,3 +74,20 @@ class DailyReport(IdMixin, TimestampMixin, Base):
     user_id: Mapped[int] = fk("users.id")
     day: Mapped[str] = mapped_column(String(10))
     text: Mapped[str] = mapped_column(String(8000))
+
+
+class StaffProfile(IdMixin, TimestampMixin, Base):
+    """Анкета сотрудника: filled in by the person, shown to signed-in users (staff, students, parents)."""
+
+    __tablename__ = "staff_profiles"
+
+    user_id: Mapped[int] = fk("users.id", index=False)
+    photo_key: Mapped[StrN]
+    about: Mapped[TextN]
+    # lists of small objects, see modules/work/profile.py
+    education: Mapped[list] = mapped_column(JSONB, default=list)
+    experience: Mapped[list] = mapped_column(JSONB, default=list)
+    awards: Mapped[list] = mapped_column(JSONB, default=list)
+    # phone and e-mail are shown to students and parents only when the person allows it
+    show_contacts: Mapped[bool] = mapped_column(Boolean, default=False)
+    __table_args__ = (UniqueConstraint("user_id"),)

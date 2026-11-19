@@ -50,6 +50,7 @@ const portalRoutes: RouteRecordRaw[] = [
   portal('chats/:id(\\d+)?', 'portal-chats', 'portal.nav.chats', () => import('@/pages/chats/ChatsPage.vue'), { flush: true }),
   portal('feedback', 'portal-feedback', 'nav.feedback', () => import('@/pages/FeedbackPage.vue')),
   portal('rules', 'portal-rules', 'nav.rules', () => import('@/pages/RulesPage.vue')),
+  portal('teachers/:id(\\d+)', 'portal-teacher', 'nv.profile.title', () => import('@/pages/staff/ProfilePage.vue')),
   portal('profile', 'portal-profile', 'portal.nav.profile', () => import('@/pages/portal/PortalProfile.vue')),
 ]
 
@@ -94,6 +95,8 @@ export function homePath(): string {
 function portalPath(path: string): string {
   const chat = /^\/chats\/(\d+)/.exec(path)
   if (chat) return `/portal/chats/${chat[1]}`
+  const staff = /^\/staff\/(\d+)/.exec(path)
+  if (staff) return `/portal/teachers/${staff[1]}`
   if (path.startsWith('/complaints') || path.startsWith('/feedback')) return '/portal/feedback'
   if (path.startsWith('/rules')) return '/portal/rules'
   return '/portal'

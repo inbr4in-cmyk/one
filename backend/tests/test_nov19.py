@@ -65,3 +65,52 @@ async def test_settle_with_staff_by_parts_goes_to_expenses_and_may_leave_a_debt(
     assert st["balance"] == 200 and len(st["payouts"]) == 1
     left = (await db.scalars(select(Expense).where(Expense.source_ref.like("payout:%"), Expense.archived_at.is_(None)))).all()
     assert len(left) == 1
+
+
+async def test_staff_profile_is_filled_by_the_person_and_seen_only_by_signed_in_users(client, db, owner_h):
+    from tests.test_chats import _portal_login
+    from tests.test_core_learning import _student
+
+    bid = await branch_id(db, YANGI)
+    teacher = await make_staff(db, "teacher", [YANGI], "+77051115601", "Анкета Учитель")
+    other = await make_staff(db, "teacher", [YANGI], "+77051115602", "Другой Учитель")
+    th, oh = await login(client, "+77051115601"), await login(client, "+77051115602")
+    url = f"/api/profiles/{teacher.id}"
+
+    assert (await client.get(url)).status_code == 401  # never public
+    png = b"\x89PNG\r\n\x1a\n" + b"0" * 64
+    up = await client.post("/api/files", headers=th, files={"file": ("me.png", png, "image/png")})
+    assert up.status_code in (200, 201), up.text
+    body = {
+        "photo_key": up.json()["key"], "email": "teacher@example.com", "about": "Преподаю IELTS",
+        "education": [{"place": "ЮКГУ", "role": "Филолог", "year_from": 2012, "year_to": 2016},
+                      {"place": "British Council", "role": "CELTA", "year_from": 2018, "year_to": 2018}],
+        "experience": [{"place": "One English", "role": "Учитель", "year_from": 2019, "year_to": None}],
+        "awards": [{"title": "IELTS 8.0", "year": 2020, "file_key": None, "file_name": None}],
+        "show_contacts": False,
+    }
+    assert (await client.put(url, headers=oh, json=body)).status_code == 403  # a colleague cannot fill it in
+    bad = {**body, "education": [{"place": "X", "role": None, "year_from": 2020, "year_to": 2010}]}
+    assert (await client.put(url, headers=th, json=bad)).status_code == 400
+    r = await client.put(url, headers=th, json=body)
+    assert r.status_code == 200, r.text
+    assert r.json()["can_edit"] and len(r.json()["education"]) == 2 and r.json()["photo_url"]
+    me = (await client.get("/api/auth/me", headers=th)).json()
+    assert me["avatar_url"] and (await client.get(me["avatar_url"])).status_code == 200
+
+    seen = (await client.get(url, headers=oh)).json()  # colleagues see contacts, cannot edit
+    assert seen["phone"] and seen["email"] == "teacher@example.com" and not seen["can_edit"]
+
+    s = await _student(db, client, owner_h, bid, "Анкета Ученик", "+77051115603")
+    from app.models import Student
+    st = await db.get(Student, s["id"])
+    ph = await _portal_login(db, client, st.user_id)
+    seen = (await client.get(url, headers=ph)).json()
+    assert seen["about"] == "Преподаю IELTS" and seen["phone"] is None and seen["email"] is None
+    assert not seen["can_edit"] and seen["photo_key"] is None
+    assert (await client.put(url, headers=ph, json=body)).status_code == 403
+    assert (await client.get(f"/api/profiles/{st.user_id}", headers=ph)).status_code == 404  # staff only
+
+    assert (await client.put(url, headers=th, json={**body, "show_contacts": True})).status_code == 200
+    assert (await client.get(url, headers=ph)).json()["phone"]
+    assert (await client.put(url, headers=owner_h, json=body)).status_code == 200  # the admin may correct it

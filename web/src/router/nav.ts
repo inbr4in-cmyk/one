@@ -70,6 +70,7 @@ export const DETAIL_ROUTES: { name: string; path: string; parent?: string; perm?
   { name: 'lesson-attendance', path: '/attendance/:lessonId(\\d+)', parent: 'attendance', perm: 'attendance.view', page: () => import('@/pages/attendance/AttendanceSheetPage.vue') },
   { name: 'task', path: '/tasks/:id(\\d+)', parent: 'tasks', perm: 'tasks.view', page: () => import('@/pages/tasks/TaskPage.vue') },
   { name: 'course', path: '/training/:id(\\d+)', parent: 'training', perm: 'training.view', page: () => import('@/pages/training/CoursePage.vue') },
+  { name: 'staff-profile', path: '/staff/:id(\\d+)', title: 'nv.profile.title', page: () => import('@/pages/staff/ProfilePage.vue') },
   { name: 'feedback', path: '/feedback', title: 'nav.feedback', page: () => import('@/pages/FeedbackPage.vue') },
   { name: 'rules', path: '/rules', title: 'nav.rules', page: () => import('@/pages/RulesPage.vue') },
 ]

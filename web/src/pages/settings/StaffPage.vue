@@ -154,7 +154,7 @@ const hours = (r: CheckinRow) => {
         <tbody>
           <tr v-for="s in page.items" :key="s.id" :class="{ muted: !!s.archived_at || !s.is_active }">
             <td>
-              <div class="who2"><UiAvatar :name="s.full_name" size="sm" /><div><b>{{ s.full_name }}</b><div class="muted" style="font-size: 12px">{{ s.position || '—' }}<template v-if="s.phone"> · {{ formatPhone(s.phone) }}</template></div></div></div>
+              <div class="who2"><UiAvatar :name="s.full_name" size="sm" /><div><RouterLink :to="`/staff/${s.id}`" class="rowlink"><b>{{ s.full_name }}</b></RouterLink><div class="muted" style="font-size: 12px">{{ s.position || '—' }}<template v-if="s.phone"> · {{ formatPhone(s.phone) }}</template></div></div></div>
             </td>
             <td><div class="chips-row"><span v-for="r in s.roles" :key="r.id" class="chip">{{ te(`roles.${r.code}`) ? t(`roles.${r.code}`) : r.name }}</span></div></td>
             <td style="font-size: 13px">{{ s.branch_ids.map((b) => refs.branchName(b)).join(', ') || '—' }}</td>

@@ -92,7 +92,7 @@ const tiles = computed(() => [
 
       <UiCard v-if="child.groups.length" :title="t('portal.groups')">
         <div v-for="g in child.groups" :key="g.id" class="list-row">
-          <div class="grow"><b>{{ g.name }}</b><span>{{ [g.level, g.teacher].filter(Boolean).join(' · ') }}</span></div>
+          <div class="grow"><b>{{ g.name }}</b><span>{{ g.level }}<template v-if="g.level && g.teacher"> · </template><RouterLink v-if="g.teacher" :to="`/portal/teachers/${g.teacher_id}`" class="t-link">{{ g.teacher }}</RouterLink></span></div>
           <RouterLink v-if="g.chat_id && !child.blocked" :to="`/portal/chats/${g.chat_id}`" class="btn sm"><UiIcon name="chat" :size="16" />{{ t('portal.groupChat') }}</RouterLink>
         </div>
       </UiCard>

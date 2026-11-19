@@ -36,6 +36,6 @@ from app.models.learning import (
 from app.models.org import Branch, Level, Room
 from app.models.payroll import Accrual, PayrollPeriod, RateSetting, StaffDay, StaffPayout
 from app.models.store import Book, BookMovement, BookStock, CoinEntry, ShopItem, ShopOrder
-from app.models.work import DailyReport, StaffCheckin, Task, TaskAssignee, TaskComment
+from app.models.work import DailyReport, StaffCheckin, StaffProfile, Task, TaskAssignee, TaskComment
 
 __all__ = [n for n in dir() if n[0].isupper()]
