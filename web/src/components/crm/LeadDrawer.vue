@@ -3,7 +3,7 @@ import { useSourceLabel } from '@/composables/useSourceLabel'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import { UiAvatar, UiButton, UiChip, UiDrawer, UiIcon, UiInput, UiPrompt, UiSegmented, UiSelect, UiSkeleton, UiTextarea } from '@/components/ui'
+import { UiAvatar, UiButton, UiChip, UiDrawer, UiField, UiIcon, UiInput, UiModal, UiPrompt, UiSegmented, UiSelect, UiSkeleton, UiTextarea } from '@/components/ui'
 import LevelTag from '@/components/students/LevelTag.vue'
 import LinkStudentModal from './LinkStudentModal.vue'
 import TrialPicker from './TrialPicker.vue'
@@ -44,7 +44,7 @@ const stage = computed(() => stages.value.find((s) => s.id === lead.value?.stage
 const steps = computed(() => stages.value.filter((s) => !s.is_lost))
 const curIdx = computed(() => steps.value.findIndex((s) => s.id === lead.value?.stage_id))
 const canEdit = computed(() => auth.can('crm.edit') && lead.value?.can_edit !== false)
-const stageOptions = computed(() => stages.value.filter((s) => !s.is_won && s.code !== 'trial_done').map((s) => ({ value: s.id, label: stageName(s) })))
+const stageOptions = computed(() => stages.value.filter((s) => s.code !== 'trial_done').map((s) => ({ value: s.id, label: stageName(s) })))
 const stageName = (s: Stage) => (te(`crm.stage.${s.code}`) ? t(`crm.stage.${s.code}`) : s.name)
 const channel = computed(() => (lead.value?.source === 'instagram' ? 'ig' : lead.value?.source === 'whatsapp' ? 'wa' : undefined))
 
@@ -195,6 +195,35 @@ async function savePhone() {
   }
 }
 
+/* ---- «Редактировать»: fix a name or a phone typed wrong ---- */
+const editOpen = ref(false)
+const edit = ref({ full_name: '', phone: '', age: '', parent_name: '', parent_phone: '', level_id: 0, notes: '' })
+const levelOptions = computed(() => [{ value: 0, label: '—' }, ...refs.levels.map((x) => ({ value: x.id, label: x.name }))])
+function openEdit() {
+  const l = lead.value
+  if (!l) return
+  edit.value = { full_name: l.full_name, phone: l.phone ?? '', age: l.age ? String(l.age) : '', parent_name: l.parent_name ?? '',
+    parent_phone: l.parent_phone ?? '', level_id: l.level_id ?? 0, notes: l.notes ?? '' }
+  editOpen.value = true
+}
+async function saveEdit() {
+  const l = lead.value
+  const e = edit.value
+  if (!l || !e.full_name.trim()) return
+  busy.value = true
+  try {
+    updated(await crmApi.patch(l.id, {
+      full_name: e.full_name.trim(), phone: e.phone.trim() || null, age: Number(e.age) || null, parent_name: e.parent_name.trim() || null,
+      parent_phone: e.parent_phone.trim() || null, level_id: e.level_id || null, notes: e.notes.trim() || null,
+    }))
+    toast.ok(t('common.saved'))
+    editOpen.value = false
+    await load(l.id)
+  } finally {
+    busy.value = false
+  }
+}
+
 async function linkStudent(studentId: number) {
   const l = lead.value
   if (!l) return
@@ -246,6 +275,7 @@ const eventOptions = computed(() => (['call', 'note', 'meeting'] as const).map((
           <b style="font-size: 15px">{{ lead.full_name }}</b>
           <div class="muted" style="font-size: 12.5px">{{ t('crm.leadN', { n: lead.id }) }} · {{ relativeTime(lead.created_at, loc) }}</div>
         </div>
+        <UiButton v-if="canEdit" size="sm" icon="edit" @click="openEdit">{{ t('nv.leadEditBtn') }}</UiButton>
         <button v-if="canEdit" type="button" class="iconbtn" :aria-pressed="lead.is_hot" :title="t('crm.hot')" :class="{ hot: lead.is_hot }" @click="toggleHot"><UiIcon name="zap" /></button>
       </div>
 
@@ -253,7 +283,7 @@ const eventOptions = computed(() => (['call', 'note', 'meeting'] as const).map((
         <UiButton v-if="canEdit && !lead.student_id" variant="primary" icon="cal" block @click="openTrial">{{ lead.trial_lesson_id ? t('crm.rebookTrial') : t('crm.bookTrial') }}</UiButton>
         <UiButton v-if="lead.conversation_id && auth.can('inbox.view')" icon="inbox" block :to="`/inbox/${lead.conversation_id}`">{{ t('crm.openDialog') }}</UiButton>
         <UiButton v-if="lead.student_id && auth.can('students.view')" icon="user" block :to="{ name: 'student', params: { id: lead.student_id } }">{{ t('crm.openStudent') }}</UiButton>
-        <UiButton v-else-if="!lead.student_id && auth.can('students.create')" icon="users" block :loading="busy" @click="convert">{{ t('crm.convert') }}</UiButton>
+        <UiButton v-else-if="!lead.student_id && stage?.is_won && auth.can('students.create')" icon="users" block :loading="busy" @click="convert">{{ t('crm.convert') }}</UiButton>
         <UiButton v-if="canEdit && !lead.student_id && auth.can('students.view')" icon="user" block @click="linkOpen = true">{{ t('nv.link.btn') }}</UiButton>
       </div>
       <div v-if="lead.existing_student && !lead.student_id" class="alert info">
@@ -323,6 +353,25 @@ const eventOptions = computed(() => (['call', 'note', 'meeting'] as const).map((
     </div>
   </UiDrawer>
   <UiPrompt :open="lostPrompt !== null" :title="t('crm.lostTitle')" :text="t('crm.lostText')" :label="t('crm.lostReason')" reason required :confirm-label="t('crm.markLost')" danger :busy="busy" @update:open="(v) => !v && (lostPrompt = null)" @confirm="confirmLost" />
+  <UiModal :open="editOpen" :title="t('nv.leadEdit')" @update:open="(v) => (editOpen = v)">
+    <form id="lead-edit" class="stack" @submit.prevent="saveEdit">
+      <UiInput v-model="edit.full_name" :label="t('students.form.name')" :maxlength="255" />
+      <div class="form-2">
+        <UiInput v-model="edit.phone" type="tel" :label="t('students.form.phone')" placeholder="+7" />
+        <UiInput v-model="edit.age" inputmode="numeric" :maxlength="2" :label="t('crm.age')" />
+      </div>
+      <div class="form-2">
+        <UiInput v-model="edit.parent_name" :label="t('crm.parent')" :maxlength="255" />
+        <UiInput v-model="edit.parent_phone" type="tel" :label="t('nv.parentPhone')" placeholder="+7" />
+      </div>
+      <UiField :label="t('students.form.level')"><UiSelect v-model="edit.level_id" :options="levelOptions" :label="t('students.form.level')" block /></UiField>
+      <UiTextarea v-model="edit.notes" :label="t('nv.leadNote')" :rows="3" :maxlength="4000" />
+    </form>
+    <template #footer="{ close }">
+      <UiButton @click="close">{{ t('common.cancel') }}</UiButton>
+      <UiButton variant="primary" type="submit" form="lead-edit" :loading="busy" :disabled="!edit.full_name.trim()">{{ t('common.save') }}</UiButton>
+    </template>
+  </UiModal>
   <LinkStudentModal v-model:open="linkOpen" :busy="busy" :preset="lead?.existing_student ?? null" @confirm="linkStudent" />
   <UiPrompt :open="archivePrompt" :title="t('crm.archive')" :text="t('crm.archiveText')" :confirm-label="t('crm.archive')" danger :busy="busy" @update:open="(v) => (archivePrompt = v)" @confirm="archive" />
 </template>

@@ -113,7 +113,7 @@ function onDragEnd() {
   dragId.value = dropStage.value = null
 }
 function canDrop(s: Stage) {
-  return !s.is_won && s.code !== 'trial_done'
+  return s.code !== 'trial_done'
 }
 function onDrop(s: Stage) {
   const id = dragId.value
@@ -121,7 +121,6 @@ function onDrop(s: Stage) {
   if (id === null) return
   const found = findLead(id)
   if (!found || found.lead.stage_id === s.id) return
-  if (s.is_won) return toast.error(t('crm.wonAuto'))
   if (s.code === 'trial_done') return toast.error(t('crm.trialDoneAuto'))
   if (s.is_lost) {
     lostMove.value = { lead: found.lead, stage: s }
@@ -217,7 +216,7 @@ function onCardKey(e: KeyboardEvent, l: Lead) {
         >
           <div class="col-h">
             <span class="st" :style="{ background: tone(c.stage.color) }" /><b>{{ stageName(c.stage) }}</b><span class="c">{{ c.total }}</span><span class="sp" />
-            <UiIcon v-if="!canDrop(c.stage)" name="lock" :size="14" class="muted" :title="c.stage.is_won ? t('crm.wonAuto') : t('crm.trialDoneAuto')" />
+            <UiIcon v-if="!canDrop(c.stage)" name="lock" :size="14" class="muted" :title="t('crm.trialDoneAuto')" />
           </div>
           <TransitionGroup name="fade" tag="div" class="col-b">
             <article

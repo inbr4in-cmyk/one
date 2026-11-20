@@ -66,6 +66,7 @@ class GroupIn(In):
         return self
 
 
+BACKDATE_DAYS = 31  # how far back a schedule or a membership may be dated when it is entered later
 KIND_CAPACITY = {"individual": 1, "duo": 2}
 
 
@@ -215,6 +216,7 @@ async def archive_group(group_id: int, db: DB, actor: Actor = require("students"
 
 class MemberIn(In):
     student_id: int
+    joined_on: date | None = None  # «в группе с»: today when empty
 
 
 @router.get("/groups/{group_id}/members")
@@ -242,7 +244,16 @@ async def add_member(group_id: int, body: MemberIn, db: DB, actor: Actor = requi
                                                                                 GroupMember.left_on.is_(None)))
     if cnt >= g.capacity:
         raise conflict(f"В группе нет мест ({cnt}/{g.capacity})")
-    db.add(GroupMember(group_id=g.id, student_id=s.id, joined_on=today()))
+    since = body.joined_on or today()
+    if since != today():
+        # Entered late: the student really studies in the group from an earlier day (up to a month back).
+        if since > today() or since < today() - timedelta(days=BACKDATE_DAYS):
+            raise bad_request("Дата «в группе с»: не позже сегодня и не раньше чем месяц назад")
+        if g.starts_on and since < g.starts_on:
+            raise bad_request(f"Группа открыта {g.starts_on:%d.%m.%Y}: раньше записать нельзя")
+        if await db.scalar(select(GroupMember.id).where(GroupMember.student_id == s.id, GroupMember.left_on > since).limit(1)):
+            raise bad_request("В эти дни ученик был в другой группе — выберите дату позже")
+    db.add(GroupMember(group_id=g.id, student_id=s.id, joined_on=since))
     s.level_id = g.level_id
     if s.status in (StudentStatus.LEAD, StudentStatus.TRIAL, StudentStatus.WAITING):
         s.status = StudentStatus.ACTIVE  # got a group: no longer «ждёт группу»
@@ -296,20 +307,30 @@ async def add_rule(group_id: int, body: RuleIn, db: DB, actor: Actor = require("
         raise bad_request("Кабинет на ремонте")
     if room.capacity < g.capacity and g.kind != "club":
         raise bad_request(f"Вместимость кабинета {room.capacity} меньше размера группы {g.capacity}")
+    if body.valid_from < today() - timedelta(days=BACKDATE_DAYS):
+        raise bad_request("Расписание задним числом — не раньше чем месяц назад")
     rule = ScheduleRule(group_id=g.id, weekdays=sorted(set(body.weekdays)), start_time=body.start_time, end_time=body.end_time,
                         room_id=room.id, teacher_id=g.teacher_id, valid_from=body.valid_from, valid_to=body.valid_to)
     db.add(rule)
     await db.flush()
     created, problems = await sched.generate(db, rule, g)
+    past = 0
+    if body.valid_from < today():
+        # The group really started earlier than it is entered: its past lessons appear too, so attendance can be marked.
+        if g.starts_on is None or g.starts_on > body.valid_from:
+            g.starts_on = body.valid_from
+        past, p = await sched.backfill(db, rule, g, body.valid_from, today() - timedelta(days=1))
+        created, problems = created + past, p + problems
     if created == 0 and problems:
         # Nothing could be scheduled: don't keep a rule that only produces conflicts.
         await db.delete(rule)
         await db.commit()
         raise conflict(f"Все занятия пересекаются с расписанием: {problems[0]}" + (f" и ещё {len(problems) - 1}" if len(problems) > 1 else ""))
     await write_audit(db, actor_id=actor.id, action="schedule.rule_add", entity="group", entity_id=g.id, branch_id=g.branch_id,
-                      ip=actor.ip, after={"weekdays": rule.weekdays, "time": f"{body.start_time}-{body.end_time}", "lessons": created})
+                      ip=actor.ip, after={"weekdays": rule.weekdays, "time": f"{body.start_time}-{body.end_time}", "lessons": created,
+                                           "past": past, "from": str(body.valid_from)})
     await db.commit()
-    return {"rule_id": rule.id, "created": created, "conflicts": problems}
+    return {"rule_id": rule.id, "created": created, "past": past, "conflicts": problems}
 
 
 class BackfillIn(In):

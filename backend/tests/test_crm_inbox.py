@@ -110,6 +110,11 @@ async def test_trial_bonus_once_and_sale_bonus(db, client, owner_h):
     bonuses = list(await db.scalars(select(Accrual).where(Accrual.kind == "trial_visit")))
     assert len(bonuses) == 1 and bonuses[0].user_id == sales.id and bonuses[0].amount == 2000
     # Sales person can't sell; office manager converts and takes the first payment
+    # ...and only after the payment column: through the trial the person stays a lead, with no student card
+    assert (await client.post(f"/api/crm/leads/{lead['id']}/convert", headers=oh, json={})).status_code == 400
+    from app.services.crm import stage_by_code
+    paid = await stage_by_code(db, "main", "paid")
+    assert (await client.post(f"/api/crm/leads/{lead['id']}/stage", headers=owner_h, json={"stage_id": paid.id})).status_code == 200
     sid = (await client.post(f"/api/crm/leads/{lead['id']}/convert", headers=oh, json={})).json()["student_id"]
     await client.post(f"/api/groups/{g['id']}/members", headers=oh, json={"student_id": sid})
     assert (await client.post("/api/payments", headers=sh, json={"student_id": sid, "lessons": 8, "method": "cash"})).status_code == 403

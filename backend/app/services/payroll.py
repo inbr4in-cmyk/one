@@ -138,9 +138,19 @@ async def accrue_lesson(db: AsyncSession, *, teacher_id: int, lesson_id: int, n:
         extra = await rate(db, "teacher_extra_per_student", on)
         threshold = await rate(db, "teacher_extra_threshold", on)
         amount = teacher_lesson_pay(n, base, extra, threshold)
+    nobody = False
+    if kind in ("individual", "duo"):
+        # An individual (or duo) lesson nobody came to — the student asked off or did not show up — is not paid,
+        # in a room with its own rate too. A trial visitor counts as someone who came.
+        from app.models import Attendance
+        from app.models.learning import AttendanceStatus
+        came = await db.scalar(select(func.count()).select_from(Attendance).where(
+            Attendance.lesson_id == lesson_id, Attendance.status.in_((AttendanceStatus.PRESENT, AttendanceStatus.LATE))))
+        if not came:
+            amount, nobody = 0, True
     if not await on_rates(db, teacher_id):
         amount = 0  # оклад only: the lesson is recorded, the pay is in the salary
-    desc = f"Урок {group_name} {on.strftime('%d.%m')}: {n} уч."
+    desc = f"Урок {group_name} {on.strftime('%d.%m')}: " + ("ученик не пришёл, без оплаты" if nobody else f"{n} уч.")
     existing = await db.scalar(select(Accrual).where(Accrual.kind == "lesson", Accrual.ref_type == "lesson",
                                                      Accrual.ref_id == lesson_id))
     if existing is None:

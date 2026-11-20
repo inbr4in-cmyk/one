@@ -95,6 +95,12 @@ export default {
       since: 'с {d}',
       old: 'Старое',
     },
+    leadEdit: 'Изменить данные лида',
+    leadEditBtn: 'Редактировать',
+    parentPhone: 'Телефон родителя',
+    leadNote: 'Заметка',
+    memberSince: 'В группе с',
+    rulePast: 'Создано уроков: {n}, из них прошедших: {p}',
     profile: {
       title: 'Профиль сотрудника',
       mine: 'Мой профиль',

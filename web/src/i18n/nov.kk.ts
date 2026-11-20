@@ -94,6 +94,12 @@ export default {
       since: '{d} бастап',
       old: 'Ескі',
     },
+    leadEdit: 'Лид деректерін өзгерту',
+    leadEditBtn: 'Өңдеу',
+    parentPhone: 'Ата-ананың телефоны',
+    leadNote: 'Ескертпе',
+    memberSince: 'Топта қай күннен',
+    rulePast: 'Құрылған сабақтар: {n}, оның ішінде өткендері: {p}',
     profile: {
       title: 'Қызметкер профилі',
       mine: 'Менің профилім',

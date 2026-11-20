@@ -75,9 +75,20 @@ const upcoming = computed(() => {
 })
 
 /* ---- members ---- */
+/** «В группе с»: a group entered later than it really started takes its students from its first day. */
+const memberSince = ref(todayIso())
+const sinceMin = computed(() => {
+  const floor = isoDate(addDays(schoolNow(), -31))
+  return g.value?.starts_on && g.value.starts_on > floor ? g.value.starts_on : floor
+})
+function openMember() {
+  const s = g.value?.starts_on
+  memberSince.value = s && s < todayIso() && s >= sinceMin.value && !(members.value?.length) ? s : memberSince.value < sinceMin.value ? todayIso() : memberSince.value
+  modal.value = 'member'
+}
 async function addMember(s: StudentListItem) {
   try {
-    await academicsApi.addMember(id.value, s.id)
+    await academicsApi.addMember(id.value, s.id, memberSince.value)
     toast.ok(t('groups.memberAdded', { name: s.full_name }))
     modal.value = null
     load()
@@ -109,9 +120,14 @@ function openChange(r: { id: number; weekdays: number[]; start: string; end: str
   changing.value = r.id
   modal.value = 'rule'
 }
+/** A group opened in the past month and entered now: its schedule starts on its opening day, past lessons included. */
+function ruleStart() {
+  const s = g.value?.starts_on
+  return s && s < todayIso() && s >= isoDate(addDays(schoolNow(), -31)) && !g.value?.schedule?.length ? s : isoDate(schoolNow())
+}
 function openRule() {
   changing.value = null
-  Object.assign(rule, { weekdays: [], start: '16:00', end: '17:30', room_id: g.value?.room_id ?? roomOptions.value[0]?.value ?? 0, from: isoDate(schoolNow()), to: '' })
+  Object.assign(rule, { weekdays: [], start: '16:00', end: '17:30', room_id: g.value?.room_id ?? roomOptions.value[0]?.value ?? 0, from: ruleStart(), to: '' })
   ruleError.value = null
   modal.value = 'rule'
 }
@@ -129,7 +145,7 @@ async function addRule() {
       return
     }
     const r = await academicsApi.addRule(id.value, { weekdays: rule.weekdays, start_time: rule.start, end_time: rule.end, room_id: rule.room_id, valid_from: rule.from, valid_to: rule.to || null })
-    toast.ok(t('groups.rule.created', { n: r.created }))
+    toast.ok(r.past ? t('nv.rulePast', { n: r.created, p: r.past }) : t('groups.rule.created', { n: r.created }))
     conflicts.value = r.conflicts
     modal.value = null
     load()
@@ -243,7 +259,7 @@ const lessonState = (l: Lesson) => (l.status === 'cancelled' ? 'red' : l.attenda
     <div class="grid grp-grid stagger">
       <UiCard :title="t('groups.members')" icon="users">
         <template v-if="auth.can('students.edit')" #actions>
-          <UiButton v-if="g.kind !== 'club'" size="sm" variant="ghost" icon="plus" :disabled="g.members >= g.capacity" @click="modal = 'member'">{{ t('common.add') }}</UiButton>
+          <UiButton v-if="g.kind !== 'club'" size="sm" variant="ghost" icon="plus" :disabled="g.members >= g.capacity" @click="openMember">{{ t('common.add') }}</UiButton>
         </template>
         <UiSkeleton v-if="!members" :lines="4" />
         <template v-else>
@@ -305,6 +321,7 @@ const lessonState = (l: Lesson) => (l.status === 'cancelled' ? 'red' : l.attenda
     <GroupFormDrawer :open="modal === 'edit'" :group="g" :teachers="teachers" @update:open="(v) => !v && (modal = null)" @saved="(x) => (g = x)" />
 
     <UiModal :open="modal === 'member'" :title="t('groups.addMember')" @update:open="(v) => !v && (modal = null)">
+      <UiInput v-model="memberSince" type="date" :min="sinceMin" :max="todayIso()" :label="t('nv.memberSince')" style="margin-bottom: 12px" />
       <StudentPicker :branch-id="g.branch_id" :exclude="members?.map((m) => m.student_id)" @pick="addMember" />
     </UiModal>
 
@@ -322,7 +339,7 @@ const lessonState = (l: Lesson) => (l.status === 'cancelled' ? 'red' : l.attenda
         <UiField :label="t('groups.room')"><UiSelect v-model="rule.room_id" :options="roomOptions" :label="t('groups.room')" block /></UiField>
         <UiInput v-if="changing !== null" v-model="rule.from" type="date" :min="todayIso()" :label="t('nv.sched.from')" />
         <div v-else class="form-2">
-          <UiInput v-model="rule.from" type="date" :label="t('groups.rule.from')" />
+          <UiInput v-model="rule.from" type="date" :min="isoDate(addDays(schoolNow(), -31))" :label="t('groups.rule.from')" />
           <UiInput v-model="rule.to" type="date" :min="rule.from" :label="t('groups.rule.to')" />
         </div>
         <p v-if="ruleError" class="form-err m0" role="alert">{{ ruleError }}</p>

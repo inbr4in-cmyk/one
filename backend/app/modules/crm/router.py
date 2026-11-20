@@ -362,6 +362,10 @@ async def patch_lead(lead_id: int, body: LeadPatch, db: DB, actor: Actor = requi
     fields = list(LeadPatch.model_fields)
     before = snapshot(lead, fields)
     data = body.model_dump(exclude_unset=True)
+    if "full_name" in data:
+        data["full_name"] = (data["full_name"] or "").strip()
+        if not data["full_name"]:
+            raise bad_request("Укажите имя")
     if branch := data.pop("branch_id", None):
         actor.ensure_branch("crm", "edit", branch)
         await set_branch(db, lead, branch, actor.id)
@@ -400,8 +404,6 @@ async def change_stage(lead_id: int, body: StageIn, db: DB, actor: Actor = requi
     st = await db.get(LeadStage, body.stage_id)
     if st is None or st.archived_at:
         raise not_found("Этап")
-    if st.is_won:
-        raise bad_request("«Оплатил» ставится автоматически при первой оплате")
     if st.is_lost and not body.lost_reason:
         raise bad_request("Отказ — только с причиной")
     if st.code == "trial_done":
@@ -588,6 +590,10 @@ async def convert(lead_id: int, body: ConvertIn, db: DB, actor: Actor = require(
     lead = await get_lead_scoped(db, actor, lead_id, "view")
     if lead.student_id:
         return {"student_id": lead.student_id}
+    stage = await db.get(LeadStage, lead.stage_id)
+    if stage is None or not stage.is_won:
+        # The students list holds real students only: until the payment the person stays a lead, the trial included.
+        raise bad_request("Карточка ученика создаётся после оплаты: переведите лида в «Оплатил»")
     if lead.branch_id is None:
         raise bad_request("Сначала выберите филиал лида")
     actor.ensure_branch("students", "create", lead.branch_id)

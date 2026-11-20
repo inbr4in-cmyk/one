@@ -173,10 +173,10 @@ export const academicsApi = {
   updateGroup: (id: number, body: GroupIn) => http.patch<Group>(`/groups/${id}`, body),
   archiveGroup: (id: number) => http.post<null>(`/groups/${id}/archive`),
   members: (id: number) => http.get<GroupMember[]>(`/groups/${id}/members`),
-  addMember: (id: number, student_id: number) => http.post<{ ok: boolean }>(`/groups/${id}/members`, { student_id }),
+  addMember: (id: number, student_id: number, joined_on?: string) => http.post<{ ok: boolean }>(`/groups/${id}/members`, { student_id, joined_on }),
   removeMember: (id: number, studentId: number) => http.delete(`/groups/${id}/members/${studentId}`),
   addRule: (id: number, body: RuleIn) =>
-    http.post<{ rule_id: number; created: number; conflicts: string[] }>(`/groups/${id}/schedule`, body, { silent: true }),
+    http.post<{ rule_id: number; created: number; past?: number; conflicts: string[] }>(`/groups/${id}/schedule`, body, { silent: true }),
   changeRule: (ruleId: number, body: { weekdays: number[]; start_time: string; end_time: string; room_id: number; valid_from: string }) =>
     http.post<{ rule_id: number; created: number; replaced: number }>(`/schedule-rules/${ruleId}/change`, body, { silent: true }),
   endRule: (ruleId: number) => http.delete(`/schedule-rules/${ruleId}`),
