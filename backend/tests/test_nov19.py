@@ -104,7 +104,9 @@ async def test_staff_profile_is_filled_by_the_person_and_seen_only_by_signed_in_
     s = await _student(db, client, owner_h, bid, "Анкета Ученик", "+77051115603")
     from app.models import Student
     st = await db.get(Student, s["id"])
-    ph = await _portal_login(db, client, st.user_id)
+    sh = await _portal_login(db, client, st.user_id)
+    assert (await client.get(url, headers=sh)).status_code == 403  # students do not see teachers' profiles
+    ph = await _portal_login(db, client, s["guardians"][0]["user_id"])  # parents do
     seen = (await client.get(url, headers=ph)).json()
     assert seen["about"] == "Преподаю IELTS" and seen["phone"] is None and seen["email"] is None
     assert not seen["can_edit"] and seen["photo_key"] is None

@@ -326,6 +326,7 @@ const eventOptions = computed(() => (['call', 'note', 'meeting'] as const).map((
           <template v-else>{{ lead.branch_id ? refs.branchName(lead.branch_id) : t('nv.noBranch') }}</template>
         </dd>
         <template v-if="lead.trial_at"><dt>{{ t('crm.trial') }}</dt><dd class="num">{{ dayLabel(lead.trial_at, loc) }} · {{ hm(lead.trial_at, loc) }}</dd></template>
+        <template v-if="lead.trial_at && lead.trial_teacher"><dt>{{ t('nv.profile.teacher') }}</dt><dd>{{ lead.trial_teacher }}</dd></template>
       </dl>
       <form v-if="canEdit && !lead.phone && !lead.student_id" style="display: flex; gap: 8px; align-items: end" @submit.prevent="savePhone">
         <div class="grow"><UiInput v-model="phone" type="tel" :label="t('nv.link.phonePh')" placeholder="+7" /></div>

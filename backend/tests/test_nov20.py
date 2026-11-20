@@ -77,3 +77,26 @@ async def test_lead_can_be_corrected_and_becomes_a_student_only_in_the_paid_colu
     assert (await client.post(f"/api/crm/leads/{lead['id']}/stage", headers=owner_h, json={"stage_id": paid.id})).status_code == 200
     r = await client.post(f"/api/crm/leads/{lead['id']}/convert", headers=owner_h, json={})
     assert r.status_code == 200 and r.json()["student_id"]
+
+
+async def test_refused_lead_is_booked_on_a_trial_again_and_the_card_shows_the_teacher(client, db, owner_h):
+    from app.services.clock import now
+    from app.services.crm import stage_by_code
+    from tests.test_core_learning import _setup
+
+    bid, teacher, room, g = await _setup(db, client, owner_h)
+    lesson = Lesson(branch_id=bid, group_id=g["id"], level_id=g["level_id"], teacher_id=teacher.id, room_id=room.id,
+                    starts_at=now() + timedelta(hours=2), ends_at=now() + timedelta(hours=3))
+    db.add(lesson)
+    await db.flush()
+    lead = (await client.post("/api/crm/leads", headers=owner_h, json={"full_name": "Отказник", "branch_id": bid})).json()
+    lost = await stage_by_code(db, "main", "lost")
+    r = await client.post(f"/api/crm/leads/{lead['id']}/stage", headers=owner_h, json={"stage_id": lost.id, "lost_reason": "Дорого"})
+    assert r.status_code == 200 and r.json()["lost_reason"] == "Дорого"
+    r = await client.post(f"/api/crm/leads/{lead['id']}/trial", headers=owner_h, json={"lesson_id": lesson.id, "notify": False})
+    assert r.status_code == 200, r.text
+    card = r.json()
+    booked = await stage_by_code(db, "main", "trial_booked")
+    assert card["stage_id"] == booked.id and card["lost_reason"] is None and card["trial_teacher"] == teacher.full_name
+    events = (await client.get(f"/api/crm/leads/{lead['id']}", headers=owner_h)).json()["events"]
+    assert any("Дорого" in (e["text"] or "") for e in events)  # the refusal stays in the history

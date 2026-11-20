@@ -108,6 +108,7 @@ class LeadCard(BaseModel):
     placement_score: int | None
     trial_lesson_id: int | None
     trial_at: datetime | None = None
+    trial_teacher: str | None = None  # who gives the trial lesson (the substitute, if there is one)
     lost_reason: str | None
     next_action_at: datetime | None
     last_activity_at: datetime | None
@@ -159,8 +160,10 @@ async def _cards(db: DB, actor: Actor, leads: list[Lead]) -> list[LeadCard]:
         .where(ExternalContact.lead_id.in_([x.id for x in leads]))
     )).all()
     by_lead = {r[4]: r for r in conv_rows}
-    trial_at = dict((await db.execute(select(Lesson.id, Lesson.starts_at).where(
-        Lesson.id.in_({x.trial_lesson_id for x in leads if x.trial_lesson_id})))).all())
+    trials = {r[0]: r for r in (await db.execute(
+        select(Lesson.id, Lesson.starts_at, User.full_name)
+        .outerjoin(User, User.id == func.coalesce(Lesson.actual_teacher_id, Lesson.teacher_id))
+        .where(Lesson.id.in_({x.trial_lesson_id for x in leads if x.trial_lesson_id})))).all()}
     warn_min = int(await setting(db, "lead_first_reply_warn_min") or 30)
     out = []
     t = now()
@@ -171,7 +174,8 @@ async def _cards(db: DB, actor: Actor, leads: list[Lead]) -> list[LeadCard]:
         c.owner_name = owners.get(x.owner_id)
         c.assignee_name = owners.get(x.assignee_id)
         c.can_edit = stage_editable(actor, x.stage_id)
-        c.trial_at = trial_at.get(x.trial_lesson_id)
+        if tr := trials.get(x.trial_lesson_id):
+            c.trial_at, c.trial_teacher = tr[1], tr[2]
         conv = by_lead.get(x.id)
         if conv:
             c.conversation_id, c.channel = conv[0], conv[1]
@@ -449,6 +453,7 @@ async def _book_trial(db: DB, actor: Actor, lead: Lead, lesson: Lesson, notify: 
     """Put the lead on this lesson as a trial visitor: stage, history, the WhatsApp note."""
     old_id = lead.trial_lesson_id
     lead.trial_lesson_id = lesson.id
+    lead.lost_reason = None  # a lead from «Отказ» booked again is back in work; the refusal stays in the history
     if old_id and old_id != lesson.id:
         # an individual trial made just for this lead and now moved: its old slot is released
         old = await db.get(Lesson, old_id)

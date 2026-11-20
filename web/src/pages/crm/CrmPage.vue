@@ -232,7 +232,7 @@ function onCardKey(e: KeyboardEvent, l: Lead) {
               </div>
               <div class="meta">
                 <template v-if="l.lost_reason">{{ t('crm.reason', { r: l.lost_reason }) }}</template>
-                <template v-else-if="l.trial_at">{{ t('crm.trialAt', { when: `${dayLabel(l.trial_at, locale as Locale, { day: 'numeric', month: 'short' })}, ${hm(l.trial_at, locale as Locale)}` }) }}</template>
+                <template v-else-if="l.trial_at">{{ t('crm.trialAt', { when: `${dayLabel(l.trial_at, locale as Locale, { day: 'numeric', month: 'short' })}, ${hm(l.trial_at, locale as Locale)}` }) }}<template v-if="l.trial_teacher"> · {{ l.trial_teacher }}</template></template>
                 <template v-else-if="l.phone">{{ formatPhone(l.phone) }}</template>
                 <template v-else-if="l.age">{{ t('students.age', { n: l.age }) }}</template>
               </div>

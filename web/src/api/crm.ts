@@ -51,6 +51,7 @@ export interface Lead {
   placement_score: number | null
   trial_lesson_id: number | null
   trial_at: string | null
+  trial_teacher?: string | null
   lost_reason: string | null
   next_action_at: string | null
   last_activity_at: string | null

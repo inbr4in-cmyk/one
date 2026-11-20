@@ -93,9 +93,11 @@ async def _out(db: DB, actor, u: User) -> ProfileOut:
 
 @router.get("/profiles/{user_id}", response_model=ProfileOut)
 async def get_profile(user_id: int, db: DB, actor: CurrentActor) -> ProfileOut:
-    """Open to every signed-in user of the school (staff, students, parents), never to the public."""
+    """Open to the staff and to parents signed in to the cabinet; not to students and never to the public."""
     ensure_staff_mfa(actor)
     await ensure_user_access(db, actor.user)
+    if actor.user.kind == UserKind.STUDENT:
+        raise forbidden("Профиль учителя открыт сотрудникам и родителям")
     return await _out(db, actor, await _staff(db, user_id))
 
 
