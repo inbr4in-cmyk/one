@@ -197,3 +197,45 @@ async def test_whatsapp_through_360dialog_in_out_and_answers_from_the_phone(clie
     # Instagram payloads are not taken on this address
     r = await client.post(url, content=json.dumps({"object": "instagram", "entry": []}), headers={**jh, "X-OE-Webhook-Secret": secret})
     assert r.json()["stored"] == 0
+
+
+async def test_schedule_of_a_working_group_is_changed_from_a_past_day(client, db, owner_h):
+    from app.models.learning import LessonStatus
+    from app.services.clock import now
+    from tests.test_core_learning import _setup, _student
+
+    bid, teacher, room, g = await _setup(db, client, owner_h)
+    start = today() - timedelta(days=10)
+    daily = {"weekdays": list(range(7)), "room_id": room.id}
+    r = await client.post(f"/api/groups/{g['id']}/schedule", headers=owner_h,
+                          json={**daily, "start_time": "07:00", "end_time": "07:30", "valid_from": start.isoformat()})
+    assert r.status_code == 201, r.text
+    rule_id = r.json()["rule_id"]
+    s = await _student(db, client, owner_h, bid, "Смена Расписания", "+77051116070")
+    await client.post(f"/api/groups/{g['id']}/members", headers=owner_h, json={"student_id": s["id"], "joined_on": start.isoformat()})
+    lessons = list(await db.scalars(select(Lesson).where(Lesson.group_id == g["id"]).order_by(Lesson.starts_at)))
+    since = today() - timedelta(days=5)
+    marked = next(x for x in lessons if local(x.starts_at).date() == since + timedelta(days=1))
+    r = await client.put(f"/api/lessons/{marked.id}/attendance", headers=owner_h,
+                         json={"marks": [{"student_id": s["id"], "status": "present"}], "reason": "внесено позже"})
+    assert r.status_code == 200, r.text
+
+    ch = f"/api/schedule-rules/{rule_id}/change"
+    new = {**daily, "start_time": "08:00", "end_time": "08:30"}
+    old = (today() - timedelta(days=40)).isoformat()
+    assert (await client.post(ch, headers=owner_h, json={**new, "valid_from": old})).status_code == 400
+    r = await client.post(ch, headers=owner_h, json={**new, "valid_from": since.isoformat()})
+    assert r.status_code == 200, r.text
+    assert r.json()["past"] == 4  # five past days by the new time, minus the day already held
+    db.expire_all()
+    rows = list(await db.scalars(select(Lesson).where(Lesson.group_id == g["id"]).order_by(Lesson.starts_at)))
+    live = [x for x in rows if x.status != LessonStatus.CANCELLED]
+    by_day = {}
+    for x in live:
+        by_day.setdefault(local(x.starts_at).date(), []).append(local(x.starts_at).hour)
+    assert by_day[since - timedelta(days=1)] == [7]            # before the change: the old time
+    assert by_day[since] == [8]                                # from the change: the new time, the old lesson is cancelled
+    assert by_day[since + timedelta(days=1)] == [7]            # the held lesson is kept, no second lesson that day
+    assert all(h == [8] for d, h in by_day.items() if d >= today())
+    kept = await db.get(Lesson, marked.id)
+    assert kept.status == LessonStatus.DONE and kept.attendance_marked_at is not None

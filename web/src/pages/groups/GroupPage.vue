@@ -139,7 +139,7 @@ async function addRule() {
   try {
     if (changing.value !== null) {
       const r = await academicsApi.changeRule(changing.value, { weekdays: rule.weekdays, start_time: rule.start, end_time: rule.end, room_id: rule.room_id, valid_from: rule.from })
-      toast.ok(t('nv.sched.changed', { n: r.created }))
+      toast.ok(r.past ? t('nv.rulePast', { n: r.created, p: r.past }) : t('nv.sched.changed', { n: r.created }))
       modal.value = null
       load()
       return
@@ -337,7 +337,7 @@ const lessonState = (l: Lesson) => (l.status === 'cancelled' ? 'red' : l.attenda
           <UiInput v-model="rule.end" type="time" :label="t('groups.rule.end2')" />
         </div>
         <UiField :label="t('groups.room')"><UiSelect v-model="rule.room_id" :options="roomOptions" :label="t('groups.room')" block /></UiField>
-        <UiInput v-if="changing !== null" v-model="rule.from" type="date" :min="todayIso()" :label="t('nv.sched.from')" />
+        <UiInput v-if="changing !== null" v-model="rule.from" type="date" :min="isoDate(addDays(schoolNow(), -31))" :label="t('nv.sched.from')" />
         <div v-else class="form-2">
           <UiInput v-model="rule.from" type="date" :min="isoDate(addDays(schoolNow(), -31))" :label="t('groups.rule.from')" />
           <UiInput v-model="rule.to" type="date" :min="rule.from" :label="t('groups.rule.to')" />

@@ -404,8 +404,8 @@ async def change_rule(rule_id: int, body: RuleChangeIn, db: DB, actor: Actor = r
     actor.ensure_branch("students", "archive", g.branch_id)
     if old.archived_at is not None or (old.valid_to is not None and old.valid_to < today()):
         raise bad_request("Это расписание уже завершено")
-    if not (today() <= body.valid_from <= today() + timedelta(days=60)):
-        raise bad_request("Новое расписание начинается сегодня или позже, не дальше чем через 2 месяца")
+    if not (today() - timedelta(days=BACKDATE_DAYS) <= body.valid_from <= today() + timedelta(days=60)):
+        raise bad_request("Новое расписание: не раньше чем месяц назад и не дальше чем через 2 месяца")
     if old.valid_to is not None and body.valid_from > old.valid_to:
         raise bad_request("Дата позже окончания текущего расписания")
     room = await db.get(Room, body.room_id)
@@ -418,8 +418,8 @@ async def change_rule(rule_id: int, body: RuleChangeIn, db: DB, actor: Actor = r
     start = at_local(body.valid_from, time(0))
     replaced = 0
     for lesson in await db.scalars(select(Lesson).where(
-            Lesson.rule_id == old.id, Lesson.starts_at >= start, Lesson.starts_at > now(),
-            Lesson.status == LessonStatus.PLANNED, Lesson.attendance_marked_at.is_(None))):
+            Lesson.rule_id == old.id, Lesson.starts_at >= start,
+            Lesson.status == LessonStatus.PLANNED, Lesson.attendance_marked_at.is_(None))):  # past unmarked ones too
         lesson.status, lesson.cancel_reason = LessonStatus.CANCELLED, "Расписание изменено"
         replaced += 1
     old.valid_to = body.valid_from - timedelta(days=1)
@@ -431,6 +431,20 @@ async def change_rule(rule_id: int, body: RuleChangeIn, db: DB, actor: Actor = r
     db.add(rule)
     await db.flush()
     created, problems = await sched.generate(db, rule, g)
+    past = 0
+    if body.valid_from < today():
+        # Changed late: the group has really studied by the new schedule since that day. Its past lessons appear,
+        # marked lessons of the old schedule stay as they are (a new lesson is not put over them).
+        past, p = await sched.backfill(db, rule, g, body.valid_from, today() - timedelta(days=1))
+        # A day that already has a held lesson of the group is not given a second one.
+        held = {local(x).date() for x in await db.scalars(select(Lesson.starts_at).where(
+            Lesson.group_id == g.id, Lesson.rule_id != rule.id, Lesson.starts_at >= start, Lesson.starts_at < now(),
+            Lesson.status != LessonStatus.CANCELLED, Lesson.attendance_marked_at.is_not(None)))}
+        for x in list(await db.scalars(select(Lesson).where(Lesson.rule_id == rule.id, Lesson.starts_at < now()))):
+            if local(x.starts_at).date() in held:
+                await db.delete(x)
+                past -= 1
+        created, problems = created + past, p + problems
     if problems:
         await db.rollback()
         raise conflict("Расписание не изменено, есть пересечения: " + "; ".join(problems[:3])
@@ -438,9 +452,9 @@ async def change_rule(rule_id: int, body: RuleChangeIn, db: DB, actor: Actor = r
     await write_audit(db, actor_id=actor.id, action="schedule.rule_change", entity="group", entity_id=g.id, branch_id=g.branch_id,
                       ip=actor.ip, before={"rule_id": old.id, "weekdays": old.weekdays, "time": f"{old.start_time}-{old.end_time}"},
                       after={"rule_id": rule.id, "weekdays": rule.weekdays, "time": f"{body.start_time}-{body.end_time}",
-                             "from": str(body.valid_from), "lessons": created, "replaced": replaced})
+                             "from": str(body.valid_from), "lessons": created, "past": past, "replaced": replaced})
     await db.commit()
-    return {"rule_id": rule.id, "created": created, "replaced": replaced}
+    return {"rule_id": rule.id, "created": created, "past": past, "replaced": replaced}
 
 
 @router.delete("/schedule-rules/{rule_id}", status_code=204)
