@@ -210,7 +210,16 @@ async def archive_group(group_id: int, db: DB, actor: Actor = require("students"
     for lesson in await db.scalars(select(Lesson).where(Lesson.group_id == g.id, Lesson.starts_at > now(),
                                                          Lesson.status == LessonStatus.PLANNED)):
         lesson.status, lesson.cancel_reason = LessonStatus.CANCELLED, "Группа закрыта"
-    await write_audit(db, actor_id=actor.id, action="group.archive", entity="group", entity_id=g.id, branch_id=g.branch_id, ip=actor.ip)
+    # «Завершить»: nobody stays a member of an archived group, and its schedule stops making lessons.
+    closed = 0
+    for m in await db.scalars(select(GroupMember).where(GroupMember.group_id == g.id, GroupMember.left_on.is_(None))):
+        m.left_on = max(today(), m.joined_on)
+        closed += 1
+    for r in await db.scalars(select(ScheduleRule).where(ScheduleRule.group_id == g.id)):
+        if r.valid_to is None or r.valid_to > today():
+            r.valid_to = max(today(), r.valid_from)
+    await write_audit(db, actor_id=actor.id, action="group.archive", entity="group", entity_id=g.id, branch_id=g.branch_id, ip=actor.ip,
+                      after={"members_closed": closed})
     await db.commit()
 
 

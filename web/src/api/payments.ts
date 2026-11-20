@@ -63,7 +63,7 @@ export const paymentsApi = {
   edit: (id: number, body: { method?: PaymentMethod; note?: string | null; paid_on?: string; lessons?: number; level_id?: number; amount?: number }) =>
     http.patch<Payment>(`/payments/${id}`, body, { silent: true }),
   refundable: (id: number) => http.get<{ lessons_max: number; amount_max: number; amount_left: number }>(`/payments/${id}/refundable`, { silent: true }),
-  list: (p: { student_id?: number; branch_id?: number | null; date_from?: string; date_to?: string; limit?: number; offset?: number }) =>
+  list: (p: { student_id?: number; branch_id?: number | null; date_from?: string; date_to?: string; limit?: number; offset?: number; category?: string }) =>
     http.get<Page<Payment>>(`/payments${qs(p)}`),
   remove: (id: number) => http.delete<{ lessons_left: number; money_balance: number; bonuses_reversed: number }>(`/payments/${id}`, { silent: true }),
   refund: (id: number, body: { lessons: number; amount: number; reason: string }) =>

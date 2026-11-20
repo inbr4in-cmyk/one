@@ -112,8 +112,9 @@ function onDragStart(e: DragEvent, l: Lead) {
 function onDragEnd() {
   dragId.value = dropStage.value = null
 }
+/** Owner's rule: «Записан на пробный», «Пришёл на пробный», «Оплатил» and «Отказ» are set only inside the lead card. */
 function canDrop(s: Stage) {
-  return s.code !== 'trial_done'
+  return !['trial_booked', 'trial_done', 'paid'].includes(s.code) && !s.is_won && !s.is_lost
 }
 function onDrop(s: Stage) {
   const id = dragId.value
@@ -121,7 +122,7 @@ function onDrop(s: Stage) {
   if (id === null) return
   const found = findLead(id)
   if (!found || found.lead.stage_id === s.id) return
-  if (s.code === 'trial_done') return toast.error(t('crm.trialDoneAuto'))
+  if (!canDrop(s)) return toast.error(t('nv.cardOnly', { stage: s.name }))
   if (s.is_lost) {
     lostMove.value = { lead: found.lead, stage: s }
     return

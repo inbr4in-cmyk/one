@@ -22,7 +22,7 @@ const refs = useRefsStore()
 const loc = computed(() => locale.value as Locale)
 
 const today = schoolNow()
-const f = reactive({ from: isoDate(new Date(today.getFullYear(), today.getMonth(), 1)), to: isoDate(today), offset: 0 })
+const f = reactive({ from: isoDate(new Date(today.getFullYear(), today.getMonth(), 1)), to: isoDate(today), offset: 0, category: '' })
 const rows = ref<Payment[]>([])
 const total = ref(0)
 const loading = ref(true)
@@ -51,7 +51,7 @@ async function load() {
   const my = ++seq
   loading.value = true
   try {
-    const page = await paymentsApi.list({ branch_id: branch.filterId, date_from: f.from || undefined, date_to: f.to || undefined, limit: LIMIT, offset: f.offset })
+    const page = await paymentsApi.list({ branch_id: branch.filterId, date_from: f.from || undefined, date_to: f.to || undefined, limit: LIMIT, offset: f.offset, category: f.category || undefined })
     if (my !== seq) return
     rows.value = page.items
     total.value = page.total
@@ -62,7 +62,7 @@ async function load() {
   }
 }
 
-watch(() => [f.from, f.to, branch.filterId], () => (f.offset === 0 ? load() : (f.offset = 0)))
+watch(() => [f.from, f.to, f.category, branch.filterId], () => (f.offset === 0 ? load() : (f.offset = 0)))
 watch(() => f.offset, load)
 onMounted(load)
 
@@ -93,6 +93,9 @@ const methodIco = (m: string) => (m === 'kaspi' ? 'K' : m === 'cash' ? '₸' : '
     <button type="button" class="tgl" @click="preset(1)">{{ t('payments.today') }}</button>
     <button type="button" class="tgl" @click="preset(7)">{{ t('payments.week') }}</button>
     <button type="button" class="tgl" @click="preset('month')">{{ t('payments.month') }}</button>
+    <span class="seg" role="group" :aria-label="t('nv.payType.label')">
+      <button v-for="c in ['', 'course', 'book']" :key="c" type="button" :aria-pressed="f.category === c" @click="f.category = c">{{ t(`nv.payType.${c || 'all'}`) }}</button>
+    </span>
     <span class="sp" />
     <span v-if="rows.length" class="muted num">{{ t('payments.pageSum') }}: <b class="ink">{{ money(pageSum, loc) }}</b></span>
   </div>

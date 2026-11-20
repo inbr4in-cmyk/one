@@ -282,7 +282,8 @@ async def _sale_facts(db: DB, s: Student, p: Payment, actor: Actor, was_left: bo
 async def list_payments(db: DB, actor: Actor = require("payments", "view"), student_id: int | None = Query(None, ge=1),
                         branch_id: int | None = Query(None, ge=1), date_from: str | None = Query(None, max_length=40),
                         date_to: str | None = Query(None, max_length=40), limit: int = Query(50, ge=1, le=200),
-                        offset: int = Query(0, ge=0)) -> Page[PaymentOut]:
+                        offset: int = Query(0, ge=0),
+                        category: str | None = Query(None, pattern="^(course|book|shop)$")) -> Page[PaymentOut]:
     """date_from / date_to are school-local calendar days, both inclusive (QA B-2): «today–today» is the whole day."""
     q = select(Payment, Student.full_name, Student.lessons_left).join(Student, Student.id == Payment.student_id)
     if actor.scope("payments", "view") != NETWORK:
@@ -291,6 +292,8 @@ async def list_payments(db: DB, actor: Actor = require("payments", "view"), stud
         q = q.where(Payment.student_id == student_id)
     if branch_id:
         q = q.where(Payment.branch_id == branch_id)
+    if category:
+        q = q.where(Payment.category == category)
     start, end = local_range(parse_day(date_from), parse_day(date_to))
     if start:
         q = q.where(Payment.paid_at >= start)

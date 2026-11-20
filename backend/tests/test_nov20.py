@@ -346,3 +346,26 @@ async def test_admin_deletes_a_mistaken_payment_completely(client, db, owner_h):
     assert stock.qty == 5
     assert (await client.delete(f"/api/payments/{p2['id']}", headers=owner_h)).status_code == 200
     assert await state() == (0, 0, 0)
+
+
+async def test_finished_group_goes_to_the_archive_and_lets_its_students_go(client, db, owner_h):
+    from tests.test_core_learning import _setup, _student
+
+    bid, teacher, room, g = await _setup(db, client, owner_h)
+    s = await _student(db, client, owner_h, bid, "Закончил Курс", "+77051116095")
+    await client.post(f"/api/groups/{g['id']}/members", headers=owner_h, json={"student_id": s["id"]})
+    await client.post(f"/api/groups/{g['id']}/schedule", headers=owner_h,
+                      json={"weekdays": list(range(7)), "start_time": "07:00", "end_time": "07:30", "room_id": room.id})
+    assert (await client.post(f"/api/groups/{g['id']}/archive", headers=owner_h)).status_code == 204
+    m = await db.scalar(select(GroupMember).where(GroupMember.group_id == g["id"]))
+    await db.refresh(m)
+    assert m.left_on == today()
+    from app.models.learning import LessonStatus
+    from app.services.clock import now
+    assert await db.scalar(select(Lesson.id).where(Lesson.group_id == g["id"], Lesson.starts_at > now(),
+                                                   Lesson.status == LessonStatus.PLANNED)) is None
+    await client.post("/api/payments", headers=owner_h, json={"student_id": s["id"], "lessons": 4, "method": "cash"})
+    rows = (await client.get("/api/payments", headers=owner_h, params={"student_id": s["id"], "category": "book"})).json()
+    assert rows["items"] == []
+    rows = (await client.get("/api/payments", headers=owner_h, params={"student_id": s["id"], "category": "course"})).json()
+    assert len(rows["items"]) == 1

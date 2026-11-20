@@ -1,6 +1,8 @@
 /** Requests of 14.11: leave via the methodist, book out of a payment, pay breakdown, finance by dates. */
 export default {
   nv: {
+    cardOnly: 'На этап «{stage}» лид переводится только из карточки лида',
+    payType: { label: 'Тип оплаты', all: 'Все', course: 'Курс', book: 'Книга' },
     move: { pickRoom: 'Выберите кабинет', freeRoom: 'Свободный кабинет', noRooms: 'В это время все кабинеты заняты', teacherBusy: 'У учителя в это время другой урок', reason: 'Причина (необязательно)' },
     payDel: { action: 'Удалить', title: 'Удалить оплату?', text: 'Вы действительно хотите удалить оплату {sum} от {date}? Она исчезнет из всех отчётов, её уроки и возвраты уберутся с баланса ученика. Вернуть её нельзя.', confirm: 'Удалить оплату', done: 'Оплата удалена' },
     payLessons: 'Уроков по оплате',
