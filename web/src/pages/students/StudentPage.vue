@@ -54,6 +54,22 @@ const refundOf = ref<Payment | null>(null)
 const editPay = ref<Payment | null>(null)
 const editG = ref<Guardian | null>(null)
 const delG = ref<Guardian | null>(null)
+/** Full removal of a mistaken payment: owner / branch admin only. */
+const delPay = ref<Payment | null>(null)
+const canDelPay = (p: Payment) => auth.can('students.archive') && p.source !== 'import'
+async function removePayment() {
+  if (!delPay.value) return
+  busy.value = true
+  try {
+    await paymentsApi.remove(delPay.value.id)
+    toast.ok(t('nv.payDel.done'))
+    delPay.value = null
+    await load()
+  } catch (e) {
+    toast.error(e instanceof ApiError ? e.detail || t('errors.generic') : t('errors.generic'))
+    delPay.value = null
+  } finally { busy.value = false }
+}
 async function removeGuardian() {
   if (!s.value || !delG.value) return
   busy.value = true
@@ -355,6 +371,7 @@ const canRefund = (p: Payment) => auth.can('payments.refund') && p.refunded < p.
           <template #cell-actions="{ row }">
             <UiButton v-if="auth.can('payments.create')" size="sm" variant="ghost" icon="edit" :title="t('payEdit.action')" @click="editPay = row as Payment">{{ t('common.edit') }}</UiButton>
             <UiButton v-if="canRefund(row)" size="sm" variant="ghost" icon="history" @click="refundOf = row">{{ t('payments.refund') }}</UiButton>
+            <UiButton v-if="canDelPay(row as Payment)" size="sm" variant="ghost" danger icon="delete" @click="delPay = row as Payment">{{ t('nv.payDel.action') }}</UiButton>
           </template>
           <template #empty><UiEmptyState icon="wallet" :title="t('students.noPayments')" /></template>
         </UiTable>
@@ -388,6 +405,9 @@ const canRefund = (p: Payment) => auth.can('payments.refund') && p.refunded < p.
     <RefundModal :payment="refundOf" @close="refundOf = null" @done="afterPayment" />
     <PaymentEditModal :payment="editPay" @close="editPay = null" @done="afterPayment" />
     <GuardianModal :open="editG !== null" :student="s" :guardian="editG" @update:open="(v) => !v && (editG = null)" @done="updated" />
+    <UiPrompt :open="delPay !== null" :title="t('nv.payDel.title')"
+      :text="delPay ? t('nv.payDel.text', { sum: money(delPay.amount, loc), date: dmy(delPay.paid_at, loc) }) : ''"
+      :confirm-label="t('nv.payDel.confirm')" danger :busy="busy" @update:open="(v) => !v && (delPay = null)" @confirm="removePayment" />
     <UiPrompt :open="delG !== null" :title="t('students.removeGuardian')" :text="t('students.removeGuardianText', { name: delG?.full_name ?? '' })"
       :confirm-label="t('students.removeGuardian')" danger :busy="busy" @update:open="(v) => !v && (delG = null)" @confirm="removeGuardian" />
     <UiPrompt :open="modal === 'unfreeze'" :title="t('students.unfreeze')" :text="t('students.unfreezeText')" :confirm-label="t('students.unfreeze')" :busy="busy" @update:open="(v) => !v && (modal = null)" @confirm="unfreeze" />

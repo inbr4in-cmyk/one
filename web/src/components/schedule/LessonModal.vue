@@ -34,11 +34,38 @@ const open = computed({ get: () => props.lesson !== null, set: (v) => !v && emit
 const l = computed(() => props.lesson)
 /** «Удалить урок»: admins only, for a lesson created by mistake (no marks yet). */
 const canDelete = computed(() => auth.can('students.archive') && !l.value?.attendance_marked_at)
+/** «Перенести»: any lesson that is not cancelled; a held one keeps its marks and only changes time and room. */
+const canMove = computed(() => auth.can('schedule.edit') && !!l.value && l.value.status !== 'cancelled')
 const canEdit = computed(() => auth.can('schedule.edit') && l.value?.status === 'planned')
 /** A substitute can be set for any lesson that is not cancelled, also after it was held: the pay follows. */
 const canSub = computed(() => auth.can('schedule.edit') && !!l.value && l.value.status !== 'cancelled')
 const past = computed(() => (l.value ? new Date(l.value.ends_at).getTime() < nowMs() : false))
-const roomOptions = computed(() => rooms.value.filter((r) => r.status === 'active').map((r) => ({ value: r.id, label: r.name })))
+/** Rooms busy at the picked time (from the server); the room list offers only the free ones. */
+const busyRooms = ref<number[] | null>(null)
+const teacherBusy = ref(false)
+const timeOk = computed(() => !!form.date && !!form.start && !!form.end && form.end > form.start)
+const roomOptions = computed(() => {
+  const free = rooms.value.filter((r) => r.status === 'active' && !busyRooms.value?.includes(r.id)).map((r) => ({ value: r.id, label: r.name }))
+  return free.length && !free.some((r) => r.value === form.room_id) ? [{ value: 0, label: t('nv.move.pickRoom') }, ...free] : free
+})
+let optSeq = 0
+watch(() => [mode.value, form.date, form.start, form.end], async () => {
+  const x = l.value
+  if (mode.value !== 'move' || !x) return
+  busyRooms.value = null
+  teacherBusy.value = false
+  if (!timeOk.value) return
+  const seq = ++optSeq
+  try {
+    const o = await academicsApi.moveOptions(x.id, schoolIso(form.date, form.start), schoolIso(form.date, form.end))
+    if (seq !== optSeq) return
+    busyRooms.value = o.busy_room_ids
+    teacherBusy.value = o.teacher_busy
+    if (o.busy_room_ids.includes(form.room_id)) form.room_id = 0
+  } catch {
+    if (seq === optSeq) busyRooms.value = []
+  }
+})
 const teacherOptions = computed(() => props.teachers.filter((x) => !l.value || !x.branchIds?.length || x.branchIds.includes(l.value.branch_id)).map((x) => ({ value: x.id, label: x.name })))
 const hhmm = (iso: string) => {
   const d = toSchool(iso)
@@ -81,7 +108,11 @@ async function submit() {
     }
     return
   }
-  if ((mode.value === 'cancel' || mode.value === 'move') && form.reason.trim().length < 3) {
+  if (mode.value === 'move' && !form.room_id) {
+    error.value = t('nv.move.pickRoom')
+    return
+  }
+  if (mode.value === 'cancel' && form.reason.trim().length < 3) {
     error.value = t('common.reasonRequired')
     return
   }
@@ -96,7 +127,7 @@ async function submit() {
         starts_at: schoolIso(form.date, form.start),
         ends_at: schoolIso(form.date, form.end),
         room_id: form.room_id || null,
-        reason: form.reason.trim(),
+        reason: form.reason.trim() || null,
       })
       toast.ok(t('schedule.movedToast'))
     } else if (mode.value === 'sub') {
@@ -118,7 +149,8 @@ async function submit() {
     <template v-if="l">
       <div class="stack">
         <div class="lsn-meta">
-          <div><UiIcon name="cal" :size="18" /><b class="num">{{ dayLabel(l.starts_at, loc, { weekday: 'long', day: 'numeric', month: 'long' }) }}, {{ hm(l.starts_at, loc) }}–{{ hm(l.ends_at, loc) }}</b></div>
+          <div><UiIcon name="cal" :size="18" /><b class="num">{{ dayLabel(l.starts_at, loc, { weekday: 'long', day: 'numeric', month: 'long' }) }}, {{ hm(l.starts_at, loc) }}–{{ hm(l.ends_at, loc) }}</b>
+            <UiButton v-if="canMove && mode === 'view'" size="sm" icon="cal" style="margin-left: auto" @click="start('move')">{{ t('schedule.move') }}</UiButton></div>
           <div><UiIcon name="door" :size="18" />{{ l.room_name ?? '—' }}</div>
           <div><UiIcon name="user" :size="18" />{{ l.teacher_name ?? '—' }}<UiChip v-if="l.actual_teacher_id" tone="info" small>{{ t('schedule.sub') }}</UiChip>
             <UiButton v-if="canSub && mode === 'view'" size="sm" icon="transfer" style="margin-left: auto" @click="start('sub')">{{ t('nv.sub.action') }}</UiButton></div>
@@ -140,13 +172,18 @@ async function submit() {
                 <UiInput v-model="form.start" type="time" :label="t('groups.rule.start')" />
                 <UiInput v-model="form.end" type="time" :label="t('groups.rule.end2')" />
               </div>
-              <UiField :label="t('groups.room')"><UiSelect v-model="form.room_id" :options="roomOptions" :label="t('groups.room')" block /></UiField>
+              <div v-if="teacherBusy" class="alert" role="status"><UiIcon name="alert" /><div class="grow"><span>{{ t('nv.move.teacherBusy') }}</span></div></div>
+              <UiField v-if="timeOk && busyRooms" :label="t('nv.move.freeRoom')">
+                <UiSelect v-if="roomOptions.length" v-model="form.room_id" :options="roomOptions" :label="t('nv.move.freeRoom')" block />
+                <span v-else class="redc">{{ t('nv.move.noRooms') }}</span>
+              </UiField>
+              <UiInput v-model="form.reason" :label="t('nv.move.reason')" />
             </template>
             <UiField v-if="mode === 'sub'" :label="t('schedule.subTeacher')">
               <UiSelect v-model="form.teacher_id" :options="teacherOptions" :label="t('schedule.subTeacher')" block />
             </UiField>
             <p v-if="mode === 'delete'" class="m0">{{ t('schedule.deleteText') }}</p>
-            <UiTextarea v-if="mode === 'cancel' || mode === 'move'" v-model="form.reason" :label="t('common.reason')" :rows="2" />
+            <UiTextarea v-if="mode === 'cancel'" v-model="form.reason" :label="t('common.reason')" :rows="2" />
           </form>
         </Transition>
         <div v-if="error" class="alert red" role="alert"><UiIcon name="alert" /><div class="grow"><b>{{ error }}</b></div></div>
@@ -158,7 +195,6 @@ async function submit() {
         <UiButton v-if="canDelete" variant="ghost" danger icon="delete" @click="start('delete')">{{ t('schedule.delete') }}</UiButton>
         <span class="sp" />
         <template v-if="canEdit && !past">
-          <UiButton variant="ghost" @click="start('move')">{{ t('schedule.move') }}</UiButton>
           <UiButton variant="ghost" danger @click="start('cancel')">{{ t('schedule.cancel') }}</UiButton>
         </template>
         <UiButton v-else @click="close">{{ t('common.close') }}</UiButton>

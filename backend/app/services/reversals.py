@@ -18,11 +18,12 @@ async def _already_reversed(db: AsyncSession, a: Accrual) -> int:
 
 
 async def reverse_for_payment(db: AsyncSession, p: Payment, s: Student, actor_id: int, *,
-                              share: tuple[int, int] = (1, 1), refund_id: int | None = None) -> int:
+                              share: tuple[int, int] = (1, 1), refund_id: int | None = None,
+                              with_lead: bool = True, what: str | None = None) -> int:
     """share = (refunded so far, total): 1/1 reverses everything; 3/8 reverses 3/8 of each bonus overall.
     Repeated partial refunds top the reversal up to the new share, never past the bonus itself."""
     refs = [("payment", p.id)]
-    if s.lead_id:
+    if s.lead_id and with_lead:
         refs.append(("lead", s.lead_id))
     done, total = share
     full = done >= total
@@ -34,7 +35,7 @@ async def reverse_for_payment(db: AsyncSession, p: Payment, s: Student, actor_id
             delta = target - await _already_reversed(db, a)
             if delta <= 0:
                 continue
-            what = "возврат оплаты" if full else f"частичный возврат {done}/{total}"
+            what = what or "возврат оплаты" if full else f"частичный возврат {done}/{total}"
             db.add(Accrual(user_id=a.user_id, kind="reversal", amount=-delta,
                            ref_type=f"refund:{refund_id}:{a.kind}" if refund_id else f"accrual:{a.kind}", ref_id=a.id,
                            period=period_of(today()), branch_id=a.branch_id, description=f"Отмена: {a.description} ({what})"[:255],

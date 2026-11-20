@@ -691,40 +691,94 @@ class MoveIn(In):
     starts_at: datetime
     ends_at: datetime
     room_id: int | None = None
-    reason: str = Field(min_length=3, max_length=255)
+    reason: str | None = Field(default=None, max_length=255)
+
+
+def _check_move_time(old: Lesson, starts_at: datetime, ends_at: datetime) -> None:
+    if ends_at <= starts_at:
+        raise bad_request("Время окончания должно быть позже начала")
+    if local(starts_at).date() < today() - timedelta(days=BACKDATE_DAYS):
+        raise bad_request(f"Перенести можно не дальше чем на {BACKDATE_DAYS} дней назад")
+    if old.status == LessonStatus.DONE or old.attendance_marked_at is not None:
+        # A held lesson keeps its marks and the teacher's pay, so it stays in its month and in the past.
+        a, b = local(old.starts_at), local(starts_at)
+        if (a.year, a.month) != (b.year, b.month):
+            raise bad_request("Проведённый урок переносят только внутри того же месяца")
+        if b.date() > today():
+            raise bad_request("Проведённый урок нельзя перенести на будущую дату")
+
+
+@router.get("/lessons/{lesson_id}/move-options")
+async def move_options(lesson_id: int, db: DB, starts_at: datetime, ends_at: datetime,
+                       actor: Actor = require("schedule", "edit")) -> dict:
+    """«Перенести»: the time is picked first, then one of the rooms that are free at that time."""
+    old = await _get_lesson(db, actor, lesson_id)
+    actor.ensure_branch("schedule", "edit", old.branch_id)
+    if ends_at <= starts_at:
+        raise bad_request("Время окончания должно быть позже начала")
+    teacher = old.actual_teacher_id or old.teacher_id
+    busy = (await db.execute(select(Lesson.room_id, func.coalesce(Lesson.actual_teacher_id, Lesson.teacher_id)).where(
+        Lesson.status != LessonStatus.CANCELLED, Lesson.id != old.id, Lesson.starts_at < ends_at, Lesson.ends_at > starts_at,
+        Lesson.branch_id == old.branch_id))).all()
+    teacher_busy = bool(await db.scalar(select(Lesson.id).where(
+        Lesson.status != LessonStatus.CANCELLED, Lesson.id != old.id, Lesson.starts_at < ends_at, Lesson.ends_at > starts_at,
+        func.coalesce(Lesson.actual_teacher_id, Lesson.teacher_id) == teacher).limit(1)))
+    return {"busy_room_ids": sorted({r for r, _ in busy if r}), "teacher_busy": teacher_busy}
 
 
 @router.post("/lessons/{lesson_id}/move", response_model=LessonOut)
 async def move_lesson(lesson_id: int, body: MoveIn, db: DB, actor: Actor = require("schedule", "edit")) -> LessonOut:
+    """One lesson to another time and, if needed, another room. A lesson that is not held yet is replaced by a new
+    one (the old one stays as cancelled «Перенос»); a held lesson just changes its time and room, marks and pay stay."""
     old = await _get_lesson(db, actor, lesson_id)
     actor.ensure_branch("schedule", "edit", old.branch_id)
-    if old.status != LessonStatus.PLANNED:
-        raise bad_request("Перенести можно только запланированный урок")
-    if body.ends_at <= body.starts_at:
-        raise bad_request("Время окончания должно быть позже начала")
+    if old.status == LessonStatus.CANCELLED:
+        raise bad_request("Урок отменён")
+    _check_move_time(old, body.starts_at, body.ends_at)
     room_id = body.room_id or old.room_id
+    if body.room_id and body.room_id != old.room_id:
+        room = await db.get(Room, body.room_id)
+        if room is None or room.branch_id != old.branch_id:
+            raise not_found("Кабинет")
     teacher = old.actual_teacher_id or old.teacher_id
     if c := await sched.conflicts(db, room_id=room_id, teacher_id=teacher, starts_at=body.starts_at, ends_at=body.ends_at,
                                   exclude_id=old.id):
         raise conflict(c[0])
-    old.status, old.cancel_reason = LessonStatus.CANCELLED, f"Перенос: {body.reason}"
+    reason = (body.reason or "").strip()
+    before = {"starts_at": old.starts_at.isoformat(), "room_id": old.room_id}
+    if old.status == LessonStatus.DONE or old.attendance_marked_at is not None:
+        old.starts_at, old.ends_at, old.room_id = body.starts_at, body.ends_at, room_id
+        try:
+            await db.flush()
+        except IntegrityError:
+            raise conflict("Кабинет или учитель заняты в это время") from None
+        await write_audit(db, actor_id=actor.id, action="lesson.move", entity="lesson", entity_id=old.id, branch_id=old.branch_id,
+                          ip=actor.ip, before=before, after={"starts_at": old.starts_at.isoformat(), "room_id": room_id, "held": True},
+                          note=reason or None)
+        await db.commit()
+        return (await _lesson_outs(db, [old]))[0]
+    old.status, old.cancel_reason = LessonStatus.CANCELLED, f"Перенос: {reason}" if reason else "Перенос"
     await db.flush()
     new = Lesson(branch_id=old.branch_id, group_id=old.group_id, student_id=old.student_id, level_id=old.level_id,
                  teacher_id=old.teacher_id, actual_teacher_id=old.actual_teacher_id, room_id=room_id,
                  starts_at=body.starts_at, ends_at=body.ends_at, moved_from_id=old.id, topic=old.topic)
+    new.is_support, new.is_trial = old.is_support, old.is_trial
     db.add(new)
     try:
         await db.flush()
     except IntegrityError:
         raise conflict("Кабинет или учитель заняты в это время") from None
+    for ls in await db.scalars(select(LessonStudent).where(LessonStudent.lesson_id == old.id)):
+        ls.lesson_id = new.id
     for lead in await db.scalars(select(Lead).where(Lead.trial_lesson_id == old.id)):
         lead.trial_lesson_id = new.id
-    g = await db.get(Group, old.group_id) if old.group_id else None
-    loc = local(new.starts_at)
-    await _notify_group(db, new, "lesson_move", {"group": g.name if g else "", "date": f"{loc:%d.%m}", "time": f"{loc:%H:%M}",
-                                                 "reason": body.reason})
+    if new.starts_at > now():
+        g = await db.get(Group, old.group_id) if old.group_id else None
+        loc = local(new.starts_at)
+        await _notify_group(db, new, "lesson_move", {"group": g.name if g else "", "date": f"{loc:%d.%m}", "time": f"{loc:%H:%M}",
+                                                     "reason": reason or "изменение расписания"})
     await write_audit(db, actor_id=actor.id, action="lesson.move", entity="lesson", entity_id=old.id, branch_id=old.branch_id,
-                      ip=actor.ip, before={"starts_at": old.starts_at.isoformat()}, after={"lesson_id": new.id, "starts_at": new.starts_at.isoformat()})
+                      ip=actor.ip, before=before, after={"lesson_id": new.id, "starts_at": new.starts_at.isoformat(), "room_id": room_id})
     await db.commit()
     return (await _lesson_outs(db, [new]))[0]
 

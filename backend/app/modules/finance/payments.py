@@ -5,7 +5,7 @@ from datetime import date, datetime, time, timedelta
 
 from fastapi import APIRouter, Header, Query, Response
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 
 from app.core.audit import write_audit
@@ -13,7 +13,7 @@ from app.core.deps import DB, Actor, require
 from app.core.errors import bad_request, conflict, forbidden, not_found
 from app.core.permissions import NETWORK
 from app.core.schemas import In, ORM, Page
-from app.models import Attendance, Lead, Lesson, Level, Payment, Refund, Student, SubscriptionPackage
+from app.models import Attendance, BalanceEntry, BookMovement, BookStock, Lead, Lesson, Level, Payment, Refund, Student, SubscriptionPackage
 from app.services.reversals import reverse_for_payment
 from app.models.finance import PaymentMethod
 from app.models.learning import AttendanceStatus, StudentStatus
@@ -62,6 +62,7 @@ class PaymentOut(ORM):
     refunded: int
     is_first: bool
     note: str | None
+    source: str | None = None
     package_id: int | None = None
     valid_to: date | None = None
     student_name: str | None = None
@@ -464,6 +465,65 @@ async def refund(payment_id: int, body: RefundIn, db: DB, actor: Actor = require
 
 
 # ---- Subscription packages (абонементы), edited on the Справочники page ----
+
+@router.delete("/payments/{payment_id}")
+async def delete_payment(payment_id: int, db: DB, actor: Actor = require("students", "archive")) -> dict:
+    """A payment typed in by mistake is removed completely (owner / branch admin only): it leaves every report, its
+    refunds go with it, the balance gets one line that takes back what the payment gave, the sale bonus is cancelled.
+    The lessons the student attended stay, so the balance may go below zero until the right payment is entered."""
+    p = await db.get(Payment, payment_id, with_for_update=True, populate_existing=True)
+    if p is None:
+        raise not_found("Оплата")
+    actor.ensure_branch("students", "archive", p.branch_id)
+    if p.source == "import":
+        raise bad_request("Оплаты из старой CRM не удаляются")
+    s = await db.get(Student, p.student_id, with_for_update=True, populate_existing=True)
+    if p.category == "course" and await db.scalar(select(Payment.id).where(
+            Payment.student_id == s.id, Payment.category == "book", Payment.note.like(f"%(из оплаты №{p.id})")).limit(1)):
+        raise conflict("Из этой оплаты взята книга. Сначала удалите оплату за книгу")
+    refunds = list(await db.scalars(select(Refund).where(Refund.payment_id == p.id)))
+    before = {"student_id": s.id, "category": p.category, "amount": p.amount, "lessons": p.lessons, "method": p.method,
+              "paid_on": local(p.paid_at).date().isoformat(), "refunded": p.refunded, "note": p.note,
+              "refunds": [{"amount": r.amount, "lessons": r.lessons_removed} for r in refunds],
+              "lessons_left": s.lessons_left, "money_balance": s.money_balance}
+    entries = list(await db.scalars(select(BalanceEntry).where(BalanceEntry.student_id == s.id, or_(
+        (BalanceEntry.ref_type == "payment") & (BalanceEntry.ref_id == p.id),
+        (BalanceEntry.ref_type == "refund") & BalanceEntry.ref_id.in_([r.id for r in refunds] or [0])))))
+    lessons, money = sum(e.lessons_delta for e in entries), sum(e.money_delta for e in entries)
+    if p.category == "book":
+        # The book goes back to the shelf; a book taken «из оплаты» gives its price back to that course payment.
+        for m in list(await db.scalars(select(BookMovement).where(BookMovement.payment_id == p.id))):
+            st = await db.scalar(select(BookStock).where(BookStock.branch_id == m.branch_id, BookStock.book_id == m.book_id).with_for_update())
+            if st is not None:
+                st.qty += m.qty
+            await db.delete(m)
+        src_id = re.search(r"\(из оплаты №(\d+)\)$", p.note or "")
+        src = await db.get(Payment, int(src_id.group(1)), with_for_update=True) if src_id else None
+        if src is not None and src.student_id == s.id:
+            src.amount += p.amount
+            if src.lessons:
+                src.lesson_price = src.amount // src.lessons
+            if s.lessons_left > 0:
+                # rounded up: the price was rounded down when the book was taken out
+                s.balance_lesson_price = -(-(s.lessons_left * (s.balance_lesson_price or 0) + p.amount + money) // s.lessons_left)
+    price = s.balance_lesson_price
+    if lessons or money:
+        await bal.apply(db, s, "manual", lessons=-lessons, money=-money, ref=("payment_deleted", p.id), actor_id=actor.id,
+                        note=f"Оплата удалена как ошибочная: {p.amount} тг от {local(p.paid_at):%d.%m.%Y}")
+        s.balance_lesson_price = price
+    reversed_ = await reverse_for_payment(db, p, s, actor.id, with_lead=False, what="оплата удалена")
+    for r in refunds:
+        await db.delete(r)
+    await db.flush()
+    await db.delete(p)
+    await db.flush()
+    s.last_payment_at = await db.scalar(select(func.max(Payment.paid_at)).where(Payment.student_id == s.id, Payment.category == "course"))
+    await write_audit(db, actor_id=actor.id, action="payment.delete", entity="payment", entity_id=payment_id, branch_id=s.branch_id,
+                      ip=actor.ip, before=before, after={"lessons_left": s.lessons_left, "money_balance": s.money_balance,
+                                                         "bonuses_reversed": reversed_})
+    await db.commit()
+    return {"lessons_left": s.lessons_left, "money_balance": s.money_balance, "bonuses_reversed": reversed_}
+
 
 class PackageIn(In):
     name: str = Field(min_length=2, max_length=120)

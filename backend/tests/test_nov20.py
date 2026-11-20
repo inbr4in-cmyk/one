@@ -239,3 +239,110 @@ async def test_schedule_of_a_working_group_is_changed_from_a_past_day(client, db
     assert all(h == [8] for d, h in by_day.items() if d >= today())
     kept = await db.get(Lesson, marked.id)
     assert kept.status == LessonStatus.DONE and kept.attendance_marked_at is not None
+
+
+async def test_one_lesson_is_moved_to_another_time_and_a_free_room(client, db, owner_h):
+    from app.models import Attendance, Room
+    from app.models.learning import LessonStatus
+    from app.services.clock import at_local
+    from datetime import time
+    from tests.test_core_learning import _setup, _student
+
+    bid, teacher, room, g = await _setup(db, client, owner_h)
+    rooms = (await db.scalars(select(Room).where(Room.branch_id == bid).order_by(Room.id))).all()
+    other = next(x for x in rooms if x.id != room.id)
+    s = await _student(db, client, owner_h, bid, "Перенос Урока", "+77051116080")
+    await client.post(f"/api/groups/{g['id']}/members", headers=owner_h,
+                      json={"student_id": s["id"], "joined_on": (today() - timedelta(days=5)).isoformat()})
+    day = today() + timedelta(days=2)
+    a = Lesson(branch_id=bid, group_id=g["id"], level_id=g["level_id"], teacher_id=teacher.id, room_id=room.id,
+               starts_at=at_local(day, time(9, 0)), ends_at=at_local(day, time(10, 20)))
+    # another group's lesson holds the same room at 11:00
+    b = Lesson(branch_id=bid, teacher_id=(await make_staff(db, "teacher", [YANGI], "+77051116081", "Другой")).id, room_id=room.id,
+               student_id=s["id"], starts_at=at_local(day, time(11, 0)), ends_at=at_local(day, time(12, 0)))
+    db.add_all([a, b])
+    await db.flush()
+    aid = a.id
+    new = {"starts_at": at_local(day, time(11, 0)).isoformat(), "ends_at": at_local(day, time(12, 20)).isoformat()}
+    o = (await client.get(f"/api/lessons/{aid}/move-options", headers=owner_h, params=new)).json()
+    assert o == {"busy_room_ids": [room.id], "teacher_busy": False}
+    r = await client.post(f"/api/lessons/{aid}/move", headers=owner_h, json={**new, "room_id": room.id})
+    assert r.status_code == 409 and "занят" in r.json()["detail"]
+    r = await client.post(f"/api/lessons/{aid}/move", headers=owner_h, json={**new, "room_id": other.id})  # no reason needed
+    assert r.status_code == 200, r.text
+    moved = r.json()
+    assert moved["room_id"] == other.id and moved["id"] != aid
+    await db.refresh(a)
+    assert a.status == LessonStatus.CANCELLED and a.cancel_reason == "Перенос"
+
+    # a lesson already held: same lesson, marks and pay stay, only time and room change
+    past_day = today() - timedelta(days=1)
+    if past_day.month != today().month:
+        past_day = today()
+    h = Lesson(branch_id=bid, group_id=g["id"], level_id=g["level_id"], teacher_id=teacher.id, room_id=room.id,
+               starts_at=at_local(past_day, time(3, 0)), ends_at=at_local(past_day, time(3, 30)))
+    db.add(h)
+    await db.flush()
+    hid = h.id
+    r = await client.put(f"/api/lessons/{hid}/attendance", headers=owner_h,
+                         json={"marks": [{"student_id": s["id"], "status": "present"}], "reason": "внесено позже"})
+    assert r.status_code == 200, r.text
+    r = await client.post(f"/api/lessons/{hid}/move", headers=owner_h, json={
+        "starts_at": at_local(past_day, time(4, 0)).isoformat(), "ends_at": at_local(past_day, time(4, 30)).isoformat(), "room_id": other.id})
+    assert r.status_code == 200, r.text
+    assert r.json()["id"] == hid and r.json()["room_id"] == other.id and r.json()["status"] == "done"
+    assert await db.scalar(select(Attendance.id).where(Attendance.lesson_id == hid)) is not None
+    far = today() + timedelta(days=40)
+    r = await client.post(f"/api/lessons/{hid}/move", headers=owner_h, json={
+        "starts_at": at_local(far, time(4, 0)).isoformat(), "ends_at": at_local(far, time(4, 30)).isoformat()})
+    assert r.status_code == 400
+
+
+async def test_admin_deletes_a_mistaken_payment_completely(client, db, owner_h):
+    from app.models import BookStock, Payment, Refund, Student
+    from tests.conftest import login
+    from tests.test_core_learning import _setup, _student
+
+    bid, teacher, room, g = await _setup(db, client, owner_h)
+    s = await _student(db, client, owner_h, bid, "Ошибочная Оплата", "+77051116090")
+    sid = s["id"]
+    manager = await make_staff(db, "office_manager", [YANGI], "+77051116091", "Менеджер")
+    await db.commit()
+    mh = await login(client, manager.phone)
+
+    async def state():
+        st = await db.get(Student, sid)
+        await db.refresh(st)
+        return st.lessons_paid, st.lessons_left, st.money_balance
+
+    p1 = (await client.post("/api/payments", headers=mh, json={"student_id": sid, "amount": 33500, "method": "kaspi"})).json()
+    assert await state() == (11, 11, 500)
+    r = await client.post(f"/api/payments/{p1['id']}/refund", headers=owner_h, json={"lessons": 2, "amount": 6000, "reason": "ошибка"})
+    assert r.status_code == 201, r.text
+    assert await state() == (9, 9, 500)
+    assert (await client.delete(f"/api/payments/{p1['id']}", headers=mh)).status_code == 403  # managers cannot
+    r = await client.delete(f"/api/payments/{p1['id']}", headers=owner_h)
+    assert r.status_code == 200, r.text
+    assert await state() == (0, 0, 0)
+    assert await db.scalar(select(Payment.id).where(Payment.student_id == sid)) is None
+    assert await db.scalar(select(Refund.id).where(Refund.payment_id == p1["id"])) is None
+    assert (await client.get("/api/payments", headers=owner_h, params={"student_id": sid})).json()["items"] == []
+
+    # a book taken «из оплаты»: the course payment is protected until the book payment is deleted; the book returns to stock
+    p2 = (await client.post("/api/payments", headers=owner_h, json={"student_id": sid, "amount": 33000, "method": "cash"})).json()
+    b = (await client.post("/api/books", headers=owner_h, json={
+        "title": "Delete SB", "level_id": await level_id(db, "ELE"), "sale_price": 4000, "purchase_price": 2500})).json()
+    await client.post("/api/books/receive", headers=owner_h, json={"branch_id": bid, "book_id": b["id"], "qty": 5, "unit_price": 2500})
+    sale = (await client.post("/api/books/sell", headers=owner_h, json={"student_id": sid, "book_id": b["id"], "from_payment": True})).json()
+    assert (await client.delete(f"/api/payments/{p2['id']}", headers=owner_h)).status_code == 409
+    assert (await client.delete(f"/api/payments/{sale['payment_id']}", headers=owner_h)).status_code == 200
+    src = await db.get(Payment, p2["id"])
+    await db.refresh(src)
+    st = await db.get(Student, sid)
+    await db.refresh(st)
+    assert src.amount == 33000 and src.lesson_price == 3000 and st.balance_lesson_price == 3000
+    stock = await db.scalar(select(BookStock).where(BookStock.book_id == b["id"], BookStock.branch_id == bid))
+    await db.refresh(stock)
+    assert stock.qty == 5
+    assert (await client.delete(f"/api/payments/{p2['id']}", headers=owner_h)).status_code == 200
+    assert await state() == (0, 0, 0)
