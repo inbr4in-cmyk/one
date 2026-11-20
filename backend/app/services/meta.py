@@ -88,13 +88,19 @@ class SendResult:
         self.ok, self.external_id, self.error = ok, external_id, error
 
 
+D360 = "https://waba-v2.360dialog.io"
+
+
 async def _post(url: str, token: str, payload: dict) -> SendResult:
+    # 360dialog takes the same message body as Meta, with its own key header
+    headers = {"D360-API-KEY": token} if url.startswith(D360) else {"Authorization": f"Bearer {token}"}
     try:
         async with httpx.AsyncClient(timeout=15) as client:
-            r = await client.post(url, json=payload, headers={"Authorization": f"Bearer {token}"})
+            r = await client.post(url, json=payload, headers=headers)
         data = r.json()
         if r.status_code >= 400:
-            return SendResult(False, error=str(data.get("error", {}).get("message", r.status_code))[:250])
+            err = data.get("error") if isinstance(data, dict) else None
+            return SendResult(False, error=str(err.get("message", r.status_code) if isinstance(err, dict) else err or r.status_code)[:250])
         mid = (data.get("messages") or [{}])[0].get("id") or data.get("message_id")
         return SendResult(True, external_id=mid)
     except (httpx.HTTPError, ValueError) as e:  # network or bad JSON
@@ -103,7 +109,21 @@ async def _post(url: str, token: str, payload: dict) -> SendResult:
 
 def wa_configured() -> bool:
     s = get_settings()
-    return bool(s.wa_phone_number_id and s.wa_access_token)
+    return bool(s.wa_d360_api_key or (s.wa_phone_number_id and s.wa_access_token))
+
+
+def _wa_target() -> tuple[str, str]:
+    """Where WhatsApp messages go and with which key: 360dialog when its key is set, otherwise Meta directly."""
+    s = get_settings()
+    if s.wa_d360_api_key:
+        return f"{D360}/messages", s.wa_d360_api_key
+    return f"{_graph()}/{s.wa_phone_number_id}/messages", s.wa_access_token
+
+
+def verify_d360(header: str | None) -> bool:
+    """360dialog calls our webhook with the secret header we gave it when the webhook was set."""
+    secret = get_settings().wa_d360_webhook_secret
+    return bool(secret and len(secret) >= 24 and header and hmac.compare_digest(secret.encode(), header.encode()))
 
 
 def _not_configured(what: str, to: str) -> SendResult:
@@ -120,9 +140,9 @@ async def wa_send_text(to_phone: str, text: str) -> SendResult:
     if not wa_configured():
         return _not_configured("WA text", to_phone)
     return await _post(
-        f"{_graph()}/{s.wa_phone_number_id}/messages",
-        s.wa_access_token,
-        {"messaging_product": "whatsapp", "to": to_phone.lstrip("+"), "type": "text", "text": {"body": text}},
+        *_wa_target(),
+        {"messaging_product": "whatsapp", "recipient_type": "individual", "to": to_phone.lstrip("+"), "type": "text",
+         "text": {"body": text}},
     )
 
 
@@ -132,10 +152,10 @@ async def wa_send_template(to_phone: str, name: str, locale: str, params: list[s
         return _not_configured(f"WA template {name}", to_phone)
     lang = {"ru": "ru", "kk": "kk"}.get(locale, "ru")
     return await _post(
-        f"{_graph()}/{s.wa_phone_number_id}/messages",
-        s.wa_access_token,
+        *_wa_target(),
         {
             "messaging_product": "whatsapp",
+            "recipient_type": "individual",
             "to": to_phone.lstrip("+"),
             "type": "template",
             "template": {
@@ -154,10 +174,10 @@ async def wa_send_auth_code(to_phone: str, name: str, locale: str, code: str) ->
     if not wa_configured():
         return _not_configured(f"WA auth {name}", to_phone)
     return await _post(
-        f"{_graph()}/{s.wa_phone_number_id}/messages",
-        s.wa_access_token,
+        *_wa_target(),
         {
             "messaging_product": "whatsapp",
+            "recipient_type": "individual",
             "to": to_phone.lstrip("+"),
             "type": "template",
             "template": {

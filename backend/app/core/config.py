@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     meta_graph_version: str = "v24.0"
     wa_phone_number_id: str = ""
     wa_access_token: str = ""
+    # WhatsApp through the provider 360dialog (the number stays in the WhatsApp Business app too): its API key,
+    # and the secret 360dialog sends back in a header of every webhook call.
+    wa_d360_api_key: str = ""
+    wa_d360_webhook_secret: str = ""
     ig_access_token: str = ""
     # «Instagram API with Instagram login»: its webhooks are signed with the Instagram app secret, not the Meta one.
     ig_app_secret: str = ""

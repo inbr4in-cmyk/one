@@ -56,6 +56,27 @@ async def webhook(request: Request, db: DB) -> dict:
     return {"ok": True, "stored": n}
 
 
+@router.post("/webhooks/360dialog")
+async def webhook_360dialog(request: Request, db: DB) -> dict:
+    """WhatsApp through 360dialog: the same payload as Meta's, authenticated by our secret header."""
+    await hit(f"webhook:{client_ip(request)}", 600, 60)
+    body = await request.body()
+    if len(body) > 1_000_000:
+        raise HTTPException(413, "Слишком большой запрос")
+    if not meta.verify_d360(request.headers.get("x-oe-webhook-secret")):
+        log.warning("360dialog webhook without the secret from %s", client_ip(request))
+        raise HTTPException(401, "Неверная подпись")
+    try:
+        payload = json.loads(body)
+    except ValueError:
+        return {"ok": True, "stored": 0}
+    if not isinstance(payload, dict) or payload.get("object") != "whatsapp_business_account":
+        return {"ok": True, "stored": 0}  # this address takes WhatsApp only
+    n = await handle_meta_payload(db, payload)
+    await db.commit()
+    return {"ok": True, "stored": n}
+
+
 # ---------- conversations ----------
 class ConversationOut(BaseModel):
     id: int

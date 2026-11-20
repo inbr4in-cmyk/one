@@ -151,3 +151,49 @@ async def test_reaction_to_a_story_is_not_a_message_but_a_text_reply_is(client, 
     assert (await client.post("/api/webhooks/meta", content=body, headers=h)).json()["stored"] == 1
     convs = (await client.get("/api/inbox/conversations", headers=owner_h)).json()
     assert len(convs) == 1 and convs[0]["lead"] is not None
+
+
+async def test_whatsapp_through_360dialog_in_out_and_answers_from_the_phone(client, db, owner_h, monkeypatch):
+    import json
+
+    from app.core.config import get_settings
+    from app.services import meta
+    from tests.test_crm_inbox import wa_payload
+
+    secret = "s" * 40
+    monkeypatch.setattr(get_settings(), "wa_d360_api_key", "d360-key")
+    monkeypatch.setattr(get_settings(), "wa_d360_webhook_secret", secret)
+    url, jh = "/api/webhooks/360dialog", {"Content-Type": "application/json"}
+    body = json.dumps(wa_payload("77011116060", "wamid.in1", "Здравствуйте, сколько стоит?"))
+    assert (await client.post(url, content=body, headers=jh)).status_code == 401
+    assert (await client.post(url, content=body, headers={**jh, "X-OE-Webhook-Secret": "wrong" * 8})).status_code == 401
+    r = await client.post(url, content=body, headers={**jh, "X-OE-Webhook-Secret": secret})
+    assert r.status_code == 200 and r.json()["stored"] == 1
+    conv = (await client.get("/api/inbox/conversations", headers=owner_h)).json()[0]
+    assert conv["channel"] == "whatsapp" and conv["lead"] is not None and conv["unread"] == 1
+
+    sent = {}
+
+    async def fake(url, token, payload):
+        sent.update(url=url, token=token, payload=payload)
+        return meta.SendResult(True, external_id="wamid.out1")
+    monkeypatch.setattr(meta, "_post", fake)
+    r = await client.post(f"/api/inbox/conversations/{conv['id']}/messages", headers=owner_h, json={"text": "Добрый день!"})
+    assert r.status_code in (200, 201), r.text
+    assert sent["url"] == "https://waba-v2.360dialog.io/messages" and sent["token"] == "d360-key"
+    assert sent["payload"]["to"] == "77011116060" and sent["payload"]["text"]["body"] == "Добрый день!"
+
+    # an answer typed in the WhatsApp Business app on the phone appears in the same chat, once
+    echo = {"object": "whatsapp_business_account", "entry": [{"changes": [{"field": "smb_message_echoes", "value": {
+        "message_echoes": [{"from": "77000000000", "to": "77011116060", "id": "wamid.echo1", "timestamp": "1795000000",
+                            "type": "text", "text": {"body": "Ответ с телефона"}}]}}]}]}
+    for _ in range(2):
+        r = await client.post(url, content=json.dumps(echo), headers={**jh, "X-OE-Webhook-Secret": secret})
+        assert r.status_code == 200
+    msgs = (await client.get(f"/api/inbox/conversations/{conv['id']}/messages", headers=owner_h)).json()
+    msgs = msgs["items"] if isinstance(msgs, dict) else msgs
+    out = [m for m in msgs if m["direction"] == "out"]
+    assert [m["text"] for m in out].count("Ответ с телефона") == 1 and len(out) == 2
+    # Instagram payloads are not taken on this address
+    r = await client.post(url, content=json.dumps({"object": "instagram", "entry": []}), headers={**jh, "X-OE-Webhook-Secret": secret})
+    assert r.json()["stored"] == 0

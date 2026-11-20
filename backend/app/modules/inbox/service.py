@@ -154,6 +154,40 @@ async def _wa_message(db: AsyncSession, m: dict, names: dict) -> bool:
                          at=_ts(m.get("timestamp"))) is not None
 
 
+async def _wa_echo(db: AsyncSession, m: dict) -> bool:
+    """The number also lives in the WhatsApp Business app on the school's phone: an answer typed there is shown in
+    the chat on the site as an outgoing message. It makes no lead and no unread mark."""
+    to, mid = m.get("to"), m.get("id")
+    if not isinstance(to, str) or not isinstance(mid, str):
+        raise ValueError("echo without recipient or id")
+    if await db.scalar(select(ExternalMessage.id).where(ExternalMessage.external_message_id == mid)):
+        return False
+    kind = m.get("type", "text")
+    body = m.get(kind) if isinstance(m.get(kind), dict) else {}
+    text = body.get("body") if kind == "text" else body.get("caption")
+    mapped = {"image": "image", "audio": "audio", "voice": "audio", "document": "file", "video": "file"}.get(kind, "text")
+    contact, _ = await _contact(db, "whatsapp", to, None, None, normalize_phone(to))
+    conv = await db.scalar(select(Conversation).where(Conversation.contact_id == contact.id).order_by(Conversation.id.desc()))
+    if conv is None:
+        lead = await db.get(Lead, contact.lead_id) if contact.lead_id else None
+        conv = Conversation(contact_id=contact.id, channel="whatsapp", branch_id=lead.branch_id if lead else None,
+                            assignee_id=lead.assignee_id if lead else None)
+        db.add(conv)
+        await db.flush()
+    t = _ts(m.get("timestamp")) or now()
+    preview = (str(text)[:4000] if text else {"image": "Фото", "audio": "Голосовое", "file": "Файл"}.get(mapped, "Сообщение"))
+    db.add(ExternalMessage(conversation_id=conv.id, at=t, direction="out", external_message_id=mid, kind=mapped,
+                           text=str(text)[:4000] if text else None, media_url=body.get("id") if kind != "text" else None,
+                           status="sent"))
+    if conv.last_message_at is None or t >= conv.last_message_at:
+        conv.last_message_at, conv.last_preview = t, "С телефона: " + preview[:240]
+    conv.unread = 0  # answered from the phone
+    await db.flush()
+    for b in [conv.branch_id] if conv.branch_id else await db.scalars(select(Branch.id).where(Branch.archived_at.is_(None))):
+        await publish(f"inbox:branch:{b}", {"type": "inbox.message", "conversation_id": conv.id})
+    return True
+
+
 async def _wa_status(db: AsyncSession, st: dict) -> bool:
     msg = await db.scalar(select(ExternalMessage).where(ExternalMessage.external_message_id == st.get("id")))
     if msg and st.get("status") in ("sent", "delivered", "read", "failed"):
@@ -249,6 +283,9 @@ async def handle_meta_payload(db: AsyncSession, payload) -> int:
                     n += await _one(db, f"message {m.get('id')}", _wa_message(db, m, names))
                 for st in _dicts(value.get("statuses")):
                     await _one(db, f"status {st.get('id')}", _wa_status(db, st))
+                if change.get("field") == "smb_message_echoes":
+                    for m in _dicts(value.get("message_echoes")):
+                        await _one(db, f"echo {m.get('id')}", _wa_echo(db, m))
         elif obj == "instagram":
             for ev in _dicts(entry.get("messaging")):
                 n += await _one(db, f"event {ev.get('timestamp')}", _ig_event(db, ev))
