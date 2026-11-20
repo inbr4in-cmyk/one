@@ -519,7 +519,8 @@ async def audit_log(
 # ---------- settings & rates ----------
 @router.get("/settings")
 async def get_settings_(db: DB, actor: Actor = require("settings", "view")) -> dict:
-    return {s.key: s.value.get("v") for s in await db.scalars(select(Setting))}
+    from app.seed import DEFAULT_SETTINGS  # a setting added by a later release is shown with its default
+    return {**DEFAULT_SETTINGS, **{s.key: s.value.get("v") for s in await db.scalars(select(Setting))}}
 
 
 class SettingIn(In):
@@ -530,7 +531,12 @@ class SettingIn(In):
 async def put_setting(key: str, body: SettingIn, db: DB, actor: Actor = require("settings", "edit")) -> None:
     s = await db.scalar(select(Setting).where(Setting.key == key))
     if s is None:
-        raise not_found("Настройка")
+        from app.seed import DEFAULT_SETTINGS
+        if key not in DEFAULT_SETTINGS:
+            raise not_found("Настройка")
+        s = Setting(key=key, value={"v": DEFAULT_SETTINGS[key]})
+        db.add(s)
+        await db.flush()
     before = s.value
     s.value, s.updated_by = {"v": body.value}, actor.id
     await write_audit(db, actor_id=actor.id, action="settings.update", entity="setting", entity_id=s.id, ip=actor.ip,

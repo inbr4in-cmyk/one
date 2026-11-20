@@ -642,6 +642,7 @@ export default {
       left_after_days: 'Считать ушедшим без оплаты, дней',
       lead_first_reply_warn_min: 'Лид без ответа: предупреждать через, мин',
       lead_stale_hours: 'Лид «завис» через, часов',
+      ig_comment_lead_words: 'Комментарий Instagram создаёт лида, если есть слово (через запятую)',
       attendance_teacher_window: 'Окно отметки для учителя',
       coins: 'Коины',
     },

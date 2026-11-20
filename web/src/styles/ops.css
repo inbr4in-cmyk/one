@@ -221,3 +221,4 @@ button.list-row:hover{background:var(--navy-50)}
 .perm-mod,.perm-acts > *{min-width:0}
 .perm-act{flex-wrap:wrap}
 .perm-act > :first-child{min-width:0;overflow-wrap:break-word}
+.set-inp.wide{width:min(420px,100%);flex:1 1 260px}

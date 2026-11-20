@@ -644,6 +644,7 @@ const ops: typeof ru = {
       left_after_days: 'Төлемсіз кетті деп санау, күн',
       lead_first_reply_warn_min: 'Жауапсыз лид: ескерту, мин',
       lead_stale_hours: 'Лид «тұрып қалды», сағат',
+      ig_comment_lead_words: 'Instagram пікірі лид жасайды, егер осы сөз болса (үтір арқылы)',
       attendance_teacher_window: 'Мұғалімнің белгілеу терезесі',
       coins: 'Коиндер',
     },

@@ -14,7 +14,7 @@ type Val = boolean | number | string | Record<string, number> | null
 const GROUPS: Record<string, string[]> = {
   attendance: ['charge_unexcused_absence', 'charge_late', 'trial_counts_in_n', 'absence_notice_hours', 'attendance_reminder_min', 'attendance_admin_alert_min', 'attendance_teacher_window', 'notify_present', 'notify_late'],
   balance: ['low_balance_lessons', 'nonpayment_block_days', 'freeze_max_days', 'freeze_max_per_course', 'left_after_days'],
-  crm: ['lead_first_reply_warn_min', 'lead_stale_hours'],
+  crm: ['lead_first_reply_warn_min', 'lead_stale_hours', 'ig_comment_lead_words'],
   coins: ['coins'],
 }
 const { t, te, locale } = useI18n()
@@ -179,7 +179,7 @@ async function addRate() {
             </div>
             <form v-else-if="kind(values[k] ?? null) !== 'obj'" class="set-row" @submit.prevent="saveScalar(k)">
               <div class="grow"><b>{{ label(k) }}</b><span v-if="hint(k)">{{ hint(k) }}</span></div>
-              <input v-model="draft[k]" class="inp set-inp" :type="kind(values[k] ?? null) === 'num' ? 'number' : 'text'" min="0" :disabled="!canEdit" :aria-label="label(k)" />
+              <input v-model="draft[k]" class="inp set-inp" :class="{ wide: kind(values[k] ?? null) === 'str' }" :type="kind(values[k] ?? null) === 'num' ? 'number' : 'text'" min="0" :disabled="!canEdit" :aria-label="label(k)" />
               <UiButton v-if="canEdit && dirty(k)" type="submit" size="sm" variant="navy" :loading="saving === k">{{ t('common.save') }}</UiButton>
             </form>
             <form v-else class="stack" @submit.prevent="saveObj(k)">

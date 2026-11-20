@@ -85,6 +85,8 @@ DEFAULT_SETTINGS = {
     "notify_late": False,
     "lead_first_reply_warn_min": 30,
     "lead_stale_hours": 1,
+    # An Instagram comment makes a lead only when it has one of these words (comma-separated; empty = every comment).
+    "ig_comment_lead_words": "цена, цену, цены, сколько, стоимость, стоит, почём, хочу, запись, записаться, подробнее, инфо, +, баға, қанша, жазыл",
     "trial_counts_in_n": True,
     "nonpayment_block_days": 5,
     "freeze_max_days": 31,

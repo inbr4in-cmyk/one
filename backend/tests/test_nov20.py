@@ -100,3 +100,54 @@ async def test_refused_lead_is_booked_on_a_trial_again_and_the_card_shows_the_te
     assert card["stage_id"] == booked.id and card["lost_reason"] is None and card["trial_teacher"] == teacher.full_name
     events = (await client.get(f"/api/crm/leads/{lead['id']}", headers=owner_h)).json()["events"]
     assert any("Дорого" in (e["text"] or "") for e in events)  # the refusal stays in the history
+
+
+async def test_instagram_comment_makes_a_lead_only_when_it_asks_for_something(client, db, owner_h):
+    from app.modules.inbox.service import comment_kind
+    from tests.test_crm_inbox import signed
+
+    words = "цена, сколько, +"
+    assert comment_kind("😍🔥🔥", words) == "noise" and comment_kind("@aigerim @dana 👍", words) == "noise"
+    assert comment_kind("+", words) == "lead" and comment_kind("Сколько стоит?", words) == "lead"
+    assert comment_kind("Красиво получилось", words) == "plain" and comment_kind("Красиво", "") == "lead"
+
+    def c(cid, text, who):
+        return {"field": "comments", "value": {"id": cid, "text": text, "from": {"id": who, "username": f"u{who}"}}}
+
+    body, h = signed({"object": "instagram", "entry": [{"id": "17841499999999999", "time": 1, "changes": [
+        c("f1", "😍😍", "9101"), c("f2", "Молодцы, красиво!", "9102"), c("f3", "Хочу цену", "9103")]}]})
+    r = await client.post("/api/webhooks/meta", content=body, headers=h)
+    assert r.json()["stored"] == 2  # the emoji is dropped
+    convs = {x["contact"]["username"]: x for x in (await client.get("/api/inbox/conversations", headers=owner_h)).json()}
+    assert set(convs) == {"u9102", "u9103"}
+    assert convs["u9102"]["lead"] is None and convs["u9103"]["lead"]["source"] == "instagram"
+    # the same person asks later: now a lead
+    body, h = signed({"object": "instagram", "entry": [{"id": "17841499999999999", "time": 2, "changes": [c("f4", "+", "9102")]}]})
+    await client.post("/api/webhooks/meta", content=body, headers=h)
+    convs = {x["contact"]["username"]: x for x in (await client.get("/api/inbox/conversations", headers=owner_h)).json()}
+    assert convs["u9102"]["lead"] is not None
+    s = (await client.get("/api/settings", headers=owner_h)).json()
+    assert "цена" in s["ig_comment_lead_words"]
+    assert (await client.put("/api/settings/ig_comment_lead_words", headers=owner_h, json={"value": "цена, +"})).status_code == 204
+
+
+async def test_reaction_to_a_story_is_not_a_message_but_a_text_reply_is(client, db, owner_h, monkeypatch):
+    from app.services import meta
+    from tests.test_crm_inbox import ig_payload, signed
+
+    async def no_profile(_):
+        return None, None
+    monkeypatch.setattr(meta, "ig_profile", no_profile)
+
+    def story(sender, mid, text):
+        p = ig_payload(sender, mid, text)
+        p["entry"][0]["messaging"][0]["message"]["reply_to"] = {"story": {"id": "s1", "url": "https://example.com/s"}}
+        return p
+
+    body, h = signed(story("9201", "st.1", "❤️"))
+    assert (await client.post("/api/webhooks/meta", content=body, headers=h)).json()["stored"] == 0
+    assert (await client.get("/api/inbox/conversations", headers=owner_h)).json() == []
+    body, h = signed(story("9201", "st.2", "Сколько стоит?"))
+    assert (await client.post("/api/webhooks/meta", content=body, headers=h)).json()["stored"] == 1
+    convs = (await client.get("/api/inbox/conversations", headers=owner_h)).json()
+    assert len(convs) == 1 and convs[0]["lead"] is not None

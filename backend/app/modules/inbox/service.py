@@ -1,6 +1,7 @@
 """Unified Instagram + WhatsApp inbox. Every new person who writes becomes a lead (DECISIONS.md №5)."""
 
 import logging
+import re
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
@@ -14,6 +15,7 @@ from app.services import meta
 from app.services.clock import now
 from app.services.messaging import notify_user
 from app.services.realtime import publish
+from app.services.values import setting
 
 log = logging.getLogger("inbox")
 WINDOW = timedelta(hours=24)
@@ -73,7 +75,7 @@ async def _link_lead(db: AsyncSession, contact: ExternalContact, branch_id: int)
 
 async def receive(db: AsyncSession, *, channel: str, external_id: str, message_id: str, text: str | None,
                   kind: str = "text", media_url: str | None = None, name: str | None = None, username: str | None = None,
-                  phone: str | None = None, at: datetime | None = None) -> ExternalMessage | None:
+                  phone: str | None = None, at: datetime | None = None, make_lead: bool = True) -> ExternalMessage | None:
     """Store one inbound message idempotently (Meta retries webhooks)."""
     if await db.scalar(select(ExternalMessage.id).where(ExternalMessage.external_message_id == message_id)):
         return None
@@ -82,7 +84,10 @@ async def receive(db: AsyncSession, *, channel: str, external_id: str, message_i
     conv = await db.scalar(select(Conversation).where(Conversation.contact_id == contact.id).order_by(Conversation.id.desc()))
     # A new person has no branch yet: staff pick it when they get in touch or book the trial (owner, 18.11.2026).
     branch_id = conv.branch_id if conv else None
-    lead = await _link_lead(db, contact, branch_id)
+    if make_lead:
+        lead = await _link_lead(db, contact, branch_id)
+    else:  # a comment without a request: it is shown in «Входящие», a lead is not made for it
+        lead = await db.get(Lead, contact.lead_id) if contact.lead_id else None
     if lead:
         branch_id = lead.branch_id
         if lead.full_name == NO_NAME and (contact.display_name or contact.username):
@@ -166,6 +171,9 @@ async def _ig_event(db: AsyncSession, ev: dict) -> bool:
     kind = {"image": "image", "audio": "audio", "file": "file", "video": "file"}.get(att.get("type"), "text")
     if (m.get("reply_to") or {}).get("story"):
         kind = "story_reply"
+        text = str(m.get("text") or "")
+        if "+" not in text and not any(ch.isalnum() for ch in text):
+            return False  # a reaction to a story (an emoji, a heart): not a message from a client, not stored
     sender = (ev.get("sender") or {}).get("id")
     if not isinstance(sender, str) or not isinstance(m.get("mid"), str):
         raise ValueError("event without sender or id")
@@ -182,6 +190,17 @@ async def _ig_event(db: AsyncSession, ev: dict) -> bool:
 COMMENT_PREFIX = "igc_"
 
 
+def comment_kind(text: str, words) -> str:
+    """Owner, 20.11.2026: not every comment is a client. "noise" — nothing but emoji, stickers or @friends;
+    "lead" — it has one of the request words from the settings («цена», «сколько», «+»…); "plain" — any other text.
+    An empty word list means every comment with text makes a lead, as before."""
+    body = re.sub(r"@[\w.]+", " ", text).lower()
+    if "+" not in body and not any(ch.isalnum() for ch in body):
+        return "noise"
+    keys = [w.strip().lower() for w in re.split(r"[,;\n]", words if isinstance(words, str) else "") if w.strip()]
+    return "lead" if not keys or any(k in body for k in keys) else "plain"
+
+
 async def _ig_comment(db: AsyncSession, value: dict, own_id) -> bool:
     """A comment under the school's post or Reels: its author becomes a contact (and a lead) like someone who wrote
     to Direct. The school's own comments and answers are skipped."""
@@ -191,10 +210,13 @@ async def _ig_comment(db: AsyncSession, value: dict, own_id) -> bool:
         raise ValueError("comment without id or author")
     if sender == str(own_id) or not str(value.get("text") or "").strip():
         return False
+    what = comment_kind(str(value["text"]), await setting(db, "ig_comment_lead_words"))
+    if what == "noise":
+        return False  # only emoji, stickers or tagged friends: not a request, not stored
     username = author.get("username") if isinstance(author.get("username"), str) else None
     return await receive(db, channel="instagram", external_id=sender, message_id=COMMENT_PREFIX + cid,
                          text=f"Комментарий: {str(value['text'])[:3900]}", username=username,
-                         name=f"@{username}" if username else None) is not None
+                         name=f"@{username}" if username else None, make_lead=what == "lead") is not None
 
 
 async def comment_to_answer(db: AsyncSession, conv: Conversation) -> str | None:
