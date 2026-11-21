@@ -9,6 +9,7 @@ import LinkStudentModal from './LinkStudentModal.vue'
 import TrialPicker from './TrialPicker.vue'
 import { crmApi, type Lead, type LeadDetails, type Pipeline, type Stage } from '@/api/crm'
 import type { Lesson } from '@/api/academics'
+import { ApiError } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
 import { useRefsStore } from '@/stores/refs'
 import { useToastStore } from '@/stores/toast'
@@ -58,7 +59,6 @@ async function load(id: number) {
     emit('close')
   }
 }
-watch(() => props.leadId, (id) => id && load(id), { immediate: true })
 
 function updated(l: Lead) {
   if (d.value) d.value = { ...d.value, lead: l }
@@ -246,6 +246,41 @@ async function toggleHot() {
   updated(await crmApi.patch(l.id, { is_hot: !l.is_hot }))
 }
 
+/** Owner / branch admin: remove a wrongly entered history line or a wrong trial booking. */
+const isAdmin = computed(() => auth.can('students.archive'))
+const delEvent = ref<{ id: number; text: string } | null>(null)
+const delTrial = ref(false)
+async function removeEvent() {
+  const l = lead.value
+  if (!l || !delEvent.value) return
+  busy.value = true
+  try {
+    await crmApi.removeEvent(l.id, delEvent.value.id)
+    if (d.value) d.value.events = d.value.events.filter((e) => e.id !== delEvent.value?.id)
+    toast.ok(t('nv.leadDel.eventDone'))
+  } catch (e) {
+    toast.error(e instanceof ApiError ? e.detail || t('errors.generic') : t('errors.generic'))
+  } finally {
+    delEvent.value = null
+    busy.value = false
+  }
+}
+async function removeTrial() {
+  const l = lead.value
+  if (!l) return
+  busy.value = true
+  try {
+    const fresh = await crmApi.removeTrial(l.id)
+    d.value = await crmApi.get(l.id)
+    emit('changed', fresh)
+    toast.ok(t('nv.leadDel.trialDone'))
+  } catch (e) {
+    toast.error(e instanceof ApiError ? e.detail || t('errors.generic') : t('errors.generic'))
+  } finally {
+    delTrial.value = false
+    busy.value = false
+  }
+}
 async function archive() {
   const l = lead.value
   if (!l) return
@@ -263,6 +298,8 @@ async function archive() {
 
 const EVENT_ICONS: Record<string, string> = { call: 'call', note: 'note', meeting: 'users', stage: 'arrow', sale: 'wallet', trial: 'cal', message: 'chat', created: 'zap', test: 'tests' }
 const eventOptions = computed(() => (['call', 'note', 'meeting'] as const).map((k) => ({ value: k, label: t(`crm.event.${k}`) })))
+// Kept last: an immediate load (card opened by a link) touches refs declared above.
+watch(() => props.leadId, (id) => id && load(id), { immediate: true })
 </script>
 
 <template>
@@ -325,7 +362,8 @@ const eventOptions = computed(() => (['call', 'note', 'meeting'] as const).map((
           <UiSelect v-if="canEdit && !lead.student_id" :model-value="lead.branch_id ?? 0" :options="branchOptions" :label="t('branch.label')" size="sm" @update:model-value="setBranch" />
           <template v-else>{{ lead.branch_id ? refs.branchName(lead.branch_id) : t('nv.noBranch') }}</template>
         </dd>
-        <template v-if="lead.trial_at"><dt>{{ t('crm.trial') }}</dt><dd class="num">{{ dayLabel(lead.trial_at, loc) }} · {{ hm(lead.trial_at, loc) }}</dd></template>
+        <template v-if="lead.trial_at"><dt>{{ t('crm.trial') }}</dt><dd class="num">{{ dayLabel(lead.trial_at, loc) }} · {{ hm(lead.trial_at, loc) }}
+          <UiButton v-if="isAdmin" size="sm" variant="ghost" danger icon="delete" :aria-label="t('nv.leadDel.trial')" :title="t('nv.leadDel.trial')" @click="delTrial = true" /></dd></template>
         <template v-if="lead.trial_at && lead.trial_teacher"><dt>{{ t('nv.profile.teacher') }}</dt><dd>{{ lead.trial_teacher }}</dd></template>
       </dl>
       <form v-if="canEdit && !lead.phone && !lead.student_id" style="display: flex; gap: 8px; align-items: end" @submit.prevent="savePhone">
@@ -348,11 +386,14 @@ const eventOptions = computed(() => (['call', 'note', 'meeting'] as const).map((
         <li v-for="e in d?.events ?? []" :key="e.id">
           <UiIcon :name="EVENT_ICONS[e.kind] ?? 'note'" :size="16" />
           <div>{{ e.text ?? (te(`crm.event.${e.kind}`) ? t(`crm.event.${e.kind}`) : e.kind) }}<span>{{ e.actor_name ?? t('nv.byClient') }} · {{ dmy(e.at, loc) }} {{ hm(e.at, loc) }}</span></div>
+          <UiButton v-if="isAdmin && e.kind !== 'created'" size="sm" variant="ghost" danger icon="delete" style="margin-left: auto" :aria-label="t('nv.leadDel.event')" :title="t('nv.leadDel.event')" @click="delEvent = { id: e.id, text: e.text ?? '' }" />
         </li>
       </ul>
       <UiButton v-if="auth.can('crm.archive')" size="sm" variant="ghost" danger icon="archive" @click="archivePrompt = true">{{ t('crm.archive') }}</UiButton>
     </div>
   </UiDrawer>
+  <UiPrompt :open="delEvent !== null" :title="t('nv.leadDel.event')" :text="t('nv.leadDel.eventText', { text: delEvent?.text ?? '' })" :confirm-label="t('nv.payDel.action')" danger :busy="busy" @update:open="(v) => !v && (delEvent = null)" @confirm="removeEvent" />
+  <UiPrompt :open="delTrial" :title="t('nv.leadDel.trial')" :text="t('nv.leadDel.trialText')" :confirm-label="t('nv.payDel.action')" danger :busy="busy" @update:open="(v) => !v && (delTrial = false)" @confirm="removeTrial" />
   <UiPrompt :open="lostPrompt !== null" :title="t('crm.lostTitle')" :text="t('crm.lostText')" :label="t('crm.lostReason')" reason required :confirm-label="t('crm.markLost')" danger :busy="busy" @update:open="(v) => !v && (lostPrompt = null)" @confirm="confirmLost" />
   <UiModal :open="editOpen" :title="t('nv.leadEdit')" @update:open="(v) => (editOpen = v)">
     <form id="lead-edit" class="stack" @submit.prevent="saveEdit">

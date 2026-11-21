@@ -13,7 +13,7 @@ from app.core.permissions import NETWORK
 from app.core.schemas import In, ORM
 from app.core.security import mask_phone, normalize_phone
 from app.models import (
-    Attempt, Conversation, ExternalContact, GroupMember, Lead, LeadEvent, LeadStage, LeadStageAccess, Lesson, Pipeline, Room,
+    Attendance, Attempt, Conversation, ExternalContact, GroupMember, Lead, LeadEvent, LeadStage, LeadStageAccess, Lesson, Pipeline, Room,
     Student, User, UserBranch,
 )
 from app.models.identity import Role, RolePermission, UserKind, UserRole
@@ -442,6 +442,52 @@ async def add_event(lead_id: int, body: EventIn, db: DB, actor: Actor = require(
             await crm_svc.move(db, lead, contacted, actor.id)
     await db.commit()
     return EventOut.model_validate(e)
+
+
+@router.delete("/leads/{lead_id}/events/{event_id}", status_code=204)
+async def delete_event(lead_id: int, event_id: int, db: DB, actor: Actor = require("students", "archive")) -> None:
+    """A wrongly entered action leaves the lead's history (owner / branch admin only); the audit log keeps who removed what."""
+    lead = await get_lead_scoped(db, actor, lead_id)
+    e = await db.get(LeadEvent, event_id)
+    if e is None or e.lead_id != lead.id:
+        raise not_found("Запись истории")
+    if e.kind == "created":
+        raise bad_request("Запись о создании лида не удаляется")
+    await write_audit(db, actor_id=actor.id, action="lead.event_delete", entity="lead", entity_id=lead.id, branch_id=lead.branch_id,
+                      ip=actor.ip, before={"event_id": e.id, "kind": e.kind, "text": e.text, "at": e.at.isoformat(), "actor_id": e.actor_id})
+    await db.delete(e)
+    await db.commit()
+
+
+@router.delete("/leads/{lead_id}/trial", response_model=LeadCard)
+async def delete_trial(lead_id: int, db: DB, actor: Actor = require("students", "archive")) -> LeadCard:
+    """A trial booked by mistake is removed (owner / branch admin only): the lead is free to be booked again."""
+    lead = await get_lead_scoped(db, actor, lead_id)
+    if not lead.trial_lesson_id:
+        raise bad_request("У лида нет записи на пробный")
+    lesson = await db.get(Lesson, lead.trial_lesson_id)
+    if await db.scalar(select(Attendance.id).where(Attendance.lesson_id == lead.trial_lesson_id, Attendance.lead_id == lead.id).limit(1)):
+        raise conflict("Лид уже отмечен в посещаемости этого урока. Сначала уберите отметку")
+    others = await db.scalar(select(func.count()).select_from(Lead).where(Lead.trial_lesson_id == lead.trial_lesson_id, Lead.id != lead.id))
+    if lesson is not None and lesson.is_trial and lesson.status == LessonStatus.PLANNED and not others:
+        lesson.status, lesson.cancel_reason = LessonStatus.CANCELLED, "Запись на пробный удалена"
+    before = {"lesson_id": lead.trial_lesson_id, "stage_id": lead.stage_id}
+    lead.trial_lesson_id = None
+    # the wrong booking and its stage lines leave the visible history
+    for e in await db.scalars(select(LeadEvent).where(LeadEvent.lead_id == lead.id, LeadEvent.kind.in_(("trial", "stage")))):
+        if (e.text or "").startswith(("Записан на пробный", "Пробный перенесён")):
+            await db.delete(e)
+    cur = await db.get(LeadStage, lead.stage_id)
+    if cur is not None and cur.code in ("trial_booked", "trial_done"):
+        back = await db.scalar(select(LeadStage).where(LeadStage.pipeline_id == lead.pipeline_id, LeadStage.code == "contacted",
+                                                       LeadStage.archived_at.is_(None)))
+        if back is not None:
+            lead.stage_id, lead.stage_changed_at = back.id, now()
+    db.add(LeadEvent(lead_id=lead.id, at=now(), kind="note", text="Запись на пробный удалена как ошибочная", actor_id=actor.id, meta={}))
+    await write_audit(db, actor_id=actor.id, action="lead.trial_delete", entity="lead", entity_id=lead.id, branch_id=lead.branch_id,
+                      ip=actor.ip, before=before, after={"stage_id": lead.stage_id})
+    await db.commit()
+    return (await _cards(db, actor, [lead]))[0]
 
 
 class TrialIn(In):

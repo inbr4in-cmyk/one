@@ -162,6 +162,8 @@ export const crmApi = {
     http.get<TrialSlot[]>(`/crm/trial-slots${qs({ teacher_id, branch_id, day, minutes })}`),
   trialIndividual: (id: number, body: { teacher_id: number; branch_id: number; starts_at: string; minutes: number }) =>
     http.post<Lead>(`/crm/leads/${id}/trial-individual`, body),
+  removeEvent: (id: number, eventId: number) => http.delete<null>(`/crm/leads/${id}/events/${eventId}`, { silent: true }),
+  removeTrial: (id: number) => http.delete<Lead>(`/crm/leads/${id}/trial`, { silent: true }),
   trial: (id: number, lesson_id: number, notify = true) => http.post<Lead>(`/crm/leads/${id}/trial`, { lesson_id, notify }),
   convert: (id: number) => http.post<{ student_id: number }>(`/crm/leads/${id}/convert`, { create_account: true }),
   stageAccess: () => http.get<StageAccess>('/crm/stage-access'),

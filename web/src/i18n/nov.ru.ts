@@ -1,6 +1,7 @@
 /** Requests of 14.11: leave via the methodist, book out of a payment, pay breakdown, finance by dates. */
 export default {
   nv: {
+    leadDel: { event: 'Удалить запись истории', eventText: 'Вы точно хотите удалить запись «{text}»? Она исчезнет из истории лида.', eventDone: 'Запись удалена', trial: 'Удалить запись на пробный', trialText: 'Вы точно хотите удалить запись на пробный? Лид вернётся на этап «Связались», и его можно будет записать заново.', trialDone: 'Запись на пробный удалена' },
     cardOnly: 'На этап «{stage}» лид переводится только из карточки лида',
     payType: { label: 'Тип оплаты', all: 'Все', course: 'Курс', book: 'Книга' },
     move: { pickRoom: 'Выберите кабинет', freeRoom: 'Свободный кабинет', noRooms: 'В это время все кабинеты заняты', teacherBusy: 'У учителя в это время другой урок', reason: 'Причина (необязательно)' },
