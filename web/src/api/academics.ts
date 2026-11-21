@@ -187,6 +187,7 @@ export const academicsApi = {
   backfill: (body: { date_from: string; date_to: string; branch_id?: number | null; members_from_start: boolean }) =>
     http.post<{ created: number; groups: number; members: number; conflicts: string[] }>('/schedule/backfill', body, { silent: true }),
   deleteLesson: (id: number) => http.delete<void>(`/lessons/${id}`, { silent: true }),
+  lessonRights: () => http.get<{ reschedule: boolean }>('/lesson-rights', { silent: true }),
   moveOptions: (id: number, starts_at: string, ends_at: string) =>
     http.get<{ busy_room_ids: number[]; teacher_busy: boolean }>(`/lessons/${id}/move-options?starts_at=${encodeURIComponent(starts_at)}&ends_at=${encodeURIComponent(ends_at)}`, { silent: true }),
   move: (id: number, body: { starts_at: string; ends_at: string; room_id?: number | null; reason?: string | null }) =>

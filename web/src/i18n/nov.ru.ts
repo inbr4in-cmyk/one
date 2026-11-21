@@ -1,6 +1,8 @@
 /** Requests of 14.11: leave via the methodist, book out of a payment, pay breakdown, finance by dates. */
 export default {
   nv: {
+    join: { title: 'Добавить в группу', since: 'В группе с', action: 'Добавить', done: 'Ученик добавлен в группу' },
+    cal: { month: 'Месяц', year: 'Год', frozen: 'Заморозка' },
     payp: {
       total: 'Начислено за месяц', lessons: 'За уроки · {n}', other: 'Оклад, KPI, премии, удержания', paid: 'Выплачено', left: 'Осталось выплатить',
       byGroup: 'Уроки по группам и дням', group: 'Группа', nLessons: '{n} ур.', perDay: 'Итого за день', noLessons: 'В этом месяце уроков нет',

@@ -35,10 +35,13 @@ const l = computed(() => props.lesson)
 /** «Удалить урок»: admins only, for a lesson created by mistake (no marks yet). */
 const canDelete = computed(() => auth.can('students.archive') && !l.value?.attendance_marked_at)
 /** «Перенести»: any lesson that is not cancelled; a held one keeps its marks and only changes time and room. */
-const canMove = computed(() => auth.can('schedule.edit') && !!l.value && l.value.status !== 'cancelled')
+/** Moving a lesson and setting a substitute: the admin and the methodist only (asked from the server once). */
+const mayReschedule = ref(false)
+academicsApi.lessonRights().then((r) => (mayReschedule.value = r.reschedule), () => undefined)
+const canMove = computed(() => mayReschedule.value && !!l.value && l.value.status !== 'cancelled')
 const canEdit = computed(() => auth.can('schedule.edit') && l.value?.status === 'planned')
 /** A substitute can be set for any lesson that is not cancelled, also after it was held: the pay follows. */
-const canSub = computed(() => auth.can('schedule.edit') && !!l.value && l.value.status !== 'cancelled')
+const canSub = computed(() => mayReschedule.value && !!l.value && l.value.status !== 'cancelled')
 const past = computed(() => (l.value ? new Date(l.value.ends_at).getTime() < nowMs() : false))
 /** Rooms busy at the picked time (from the server); the room list offers only the free ones. */
 const busyRooms = ref<number[] | null>(null)

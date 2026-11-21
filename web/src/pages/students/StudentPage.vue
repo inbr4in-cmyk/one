@@ -8,6 +8,7 @@ import StatusChip from '@/components/students/StatusChip.vue'
 import LevelTag from '@/components/students/LevelTag.vue'
 import PaymentModal from '@/components/students/PaymentModal.vue'
 import TransferModal from '@/components/students/TransferModal.vue'
+import JoinGroupModal from '@/components/students/JoinGroupModal.vue'
 import FreezeModal from '@/components/students/FreezeModal.vue'
 import GuardianModal from '@/components/students/GuardianModal.vue'
 import RefundModal from '@/components/students/RefundModal.vue'
@@ -53,6 +54,7 @@ const modal = ref<'pay' | 'package' | 'transfer' | 'freeze' | 'guardian' | 'unfr
 const refundOf = ref<Payment | null>(null)
 const editPay = ref<Payment | null>(null)
 const editG = ref<Guardian | null>(null)
+const joinOpen = ref(false)
 const delG = ref<Guardian | null>(null)
 /** Full removal of a mistaken payment: owner / branch admin only. */
 const delPay = ref<Payment | null>(null)
@@ -284,6 +286,9 @@ const canRefund = (p: Payment) => auth.can('payments.refund') && p.refunded < p.
           </UiCard>
 
           <UiCard :title="t('students.groups')">
+            <template v-if="auth.can('students.edit') && !['frozen', 'left'].includes(s.status)" #actions>
+              <UiButton size="sm" icon="plus" @click="joinOpen = true">{{ t('nv.join.title') }}</UiButton>
+            </template>
             <div v-if="activeGroups.length" class="lr-list">
               <component :is="auth.can('schedule.view') ? 'RouterLink' : 'div'" v-for="g in activeGroups" :key="g.id" :to="`/groups/${g.id}`" class="list-row">
                 <span class="av" :style="{ borderRadius: '10px' }">{{ g.name.slice(0, 2) }}</span>
@@ -297,7 +302,7 @@ const canRefund = (p: Payment) => auth.can('payments.refund') && p.refunded < p.
             </div>
           </UiCard>
 
-          <AttendanceCard :marks="marks" />
+          <AttendanceCard :student-id="s.id" />
 
           <UiCard :title="t('students.guardians')">
             <template v-if="auth.can('students.edit')" #actions>
@@ -397,6 +402,7 @@ const canRefund = (p: Payment) => auth.can('payments.refund') && p.refunded < p.
 
     <PaymentModal :open="modal === 'pay'" :student="s" @update:open="(v) => !v && (modal = null)" @paid="afterPayment" />
     <PaymentModal :open="modal === 'package'" :student="s" mode="package" @update:open="(v) => !v && (modal = null)" @paid="afterPayment" />
+    <JoinGroupModal v-model:open="joinOpen" :student="s" @done="load" />
     <TransferModal :open="modal === 'transfer'" :student="s" @update:open="(v) => !v && (modal = null)" @done="updated" />
     <FreezeModal :open="modal === 'freeze'" :student="s" @update:open="(v) => !v && (modal = null)" @done="updated" />
     <StudentEditModal :open="modal === 'edit'" :student="s" @update:open="(v) => !v && (modal = null)" @done="updated" />

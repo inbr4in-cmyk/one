@@ -64,7 +64,8 @@ async function load() {
     auth.can('homework.view') ? academicsApi.homework(id.value).catch(() => []) : Promise.resolve([]),
   ])
   members.value = m
-  lessons.value = l
+  // a lesson that was moved shows once, at its new time: the old «Перенос» line is left out
+  lessons.value = l.filter((x) => !(x.status === 'cancelled' && (x.cancel_reason ?? '').startsWith('Перенос')))
   homework.value = h
 }
 watch(id, load, { immediate: true })

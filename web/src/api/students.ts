@@ -175,6 +175,8 @@ export const studentsApi = {
   archive: (id: number) => http.post<null>(`/students/${id}/archive`),
   restore: (id: number) => http.post<null>(`/students/${id}/restore`, {}, { silent: true }),
   tests: (id: number) => http.get<Attempt[]>(`/students/${id}/tests`, { silent: true }),
+  attendanceMonth: (id: number, month: string) =>
+    http.get<{ month: string; marks: (AttendanceMark & { date: string; time: string })[]; frozen: string[] }>(`/students/${id}/attendance-month?month=${month}`, { silent: true }),
   attendance: (id: number) => http.get<AttendanceMark[]>(`/students/${id}/attendance`, { silent: true }),
 }
 

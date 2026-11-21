@@ -696,6 +696,17 @@ async def delete_lesson(lesson_id: int, db: DB, actor: Actor = require("students
     await db.commit()
 
 
+async def _may_reschedule(db, actor: Actor) -> bool:
+    """Owner's rule (21.11.2026): moving a lesson and setting a substitute is for the admin (owner, branch admin)
+    and the methodist only."""
+    return actor.can("students", "archive") or await retention.is_methodist(db, actor.id)
+
+
+@router.get("/lesson-rights")
+async def lesson_rights(db: DB, actor: Actor = require_staff()) -> dict:
+    return {"reschedule": actor.can("schedule", "view") and await _may_reschedule(db, actor)}
+
+
 class MoveIn(In):
     starts_at: datetime
     ends_at: datetime
@@ -719,10 +730,10 @@ def _check_move_time(old: Lesson, starts_at: datetime, ends_at: datetime) -> Non
 
 @router.get("/lessons/{lesson_id}/move-options")
 async def move_options(lesson_id: int, db: DB, starts_at: datetime, ends_at: datetime,
-                       actor: Actor = require("schedule", "edit")) -> dict:
+                       actor: Actor = require("schedule", "view")) -> dict:
     """«Перенести»: the time is picked first, then one of the rooms that are free at that time."""
     old = await _get_lesson(db, actor, lesson_id)
-    actor.ensure_branch("schedule", "edit", old.branch_id)
+    actor.ensure_branch("schedule", "view", old.branch_id)
     if ends_at <= starts_at:
         raise bad_request("Время окончания должно быть позже начала")
     teacher = old.actual_teacher_id or old.teacher_id
@@ -736,11 +747,13 @@ async def move_options(lesson_id: int, db: DB, starts_at: datetime, ends_at: dat
 
 
 @router.post("/lessons/{lesson_id}/move", response_model=LessonOut)
-async def move_lesson(lesson_id: int, body: MoveIn, db: DB, actor: Actor = require("schedule", "edit")) -> LessonOut:
+async def move_lesson(lesson_id: int, body: MoveIn, db: DB, actor: Actor = require("schedule", "view")) -> LessonOut:
     """One lesson to another time and, if needed, another room. A lesson that is not held yet is replaced by a new
     one (the old one stays as cancelled «Перенос»); a held lesson just changes its time and room, marks and pay stay."""
     old = await _get_lesson(db, actor, lesson_id)
-    actor.ensure_branch("schedule", "edit", old.branch_id)
+    actor.ensure_branch("schedule", "view", old.branch_id)
+    if not await _may_reschedule(db, actor):
+        raise forbidden("Переносить уроки может только администратор или методист")
     if old.status == LessonStatus.CANCELLED:
         raise bad_request("Урок отменён")
     _check_move_time(old, body.starts_at, body.ends_at)
@@ -797,10 +810,12 @@ class SubstituteIn(In):
 
 
 @router.post("/lessons/{lesson_id}/substitute", response_model=LessonOut)
-async def substitute(lesson_id: int, body: SubstituteIn, db: DB, actor: Actor = require("schedule", "edit")) -> LessonOut:
+async def substitute(lesson_id: int, body: SubstituteIn, db: DB, actor: Actor = require("schedule", "view")) -> LessonOut:
     """ТЗ 4.2: the lesson is paid to the teacher who actually taught it."""
     lesson = await _get_lesson(db, actor, lesson_id)
-    actor.ensure_branch("schedule", "edit", lesson.branch_id)
+    actor.ensure_branch("schedule", "view", lesson.branch_id)
+    if not await _may_reschedule(db, actor):
+        raise forbidden("Ставить замену может только администратор или методист")
     await _check_teacher(db, body.teacher_id, lesson.branch_id)
     if lesson.status == LessonStatus.CANCELLED:
         raise bad_request("Урок отменён")

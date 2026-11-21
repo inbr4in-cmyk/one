@@ -105,3 +105,33 @@ async def test_one_excused_absence_a_month_is_free_and_the_next_is_charged(clien
     assert await state() == (6, [(True, 2000), (False, 0), (True, 1000)])
     await mark(ids[2], "absent")
     assert await state() == (6, [(True, 2000), (False, 0), (True, 1000)])
+
+
+async def test_only_admin_and_methodist_move_lessons_and_set_substitutes(client, db, owner_h):
+    from datetime import time
+
+    from app.models import Role, UserRole
+    from app.services.clock import at_local, today
+    from tests.test_core_learning import _setup
+
+    bid, teacher, room, g = await _setup(db, client, owner_h)
+    day = today() + timedelta(days=3)
+    x = Lesson(branch_id=bid, group_id=g["id"], level_id=g["level_id"], teacher_id=teacher.id, room_id=room.id,
+               starts_at=at_local(day, time(3, 0)), ends_at=at_local(day, time(3, 30)))
+    db.add(x)
+    office = await make_staff(db, "office_manager", [YANGI], "+77051117020", "Офис")
+    meth = await make_staff(db, "office_manager", [YANGI], "+77051117021", "Методист Филиала")
+    role = Role(code="methodist_t", name="Методист")
+    db.add(role)
+    await db.flush()
+    db.add(UserRole(user_id=meth.id, role_id=role.id))
+    await db.commit()
+    xid = x.id
+    oh, mh = await login(client, office.phone), await login(client, meth.phone)
+    body = {"starts_at": at_local(day, time(4, 0)).isoformat(), "ends_at": at_local(day, time(4, 30)).isoformat()}
+    assert (await client.get("/api/lesson-rights", headers=oh)).json() == {"reschedule": False}
+    assert (await client.post(f"/api/lessons/{xid}/move", headers=oh, json=body)).status_code == 403
+    assert (await client.post(f"/api/lessons/{xid}/substitute", headers=oh, json={"teacher_id": teacher.id})).status_code == 403
+    assert (await client.get("/api/lesson-rights", headers=mh)).json() == {"reschedule": True}
+    r = await client.post(f"/api/lessons/{xid}/move", headers=mh, json=body)
+    assert r.status_code == 200, r.text

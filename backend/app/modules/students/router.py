@@ -769,6 +769,38 @@ async def is_frozen_on(db: DB, student_id: int, d: date) -> bool:
     return await db.scalar(_current_freeze(student_id, d).with_only_columns(Freeze.id).limit(1)) is not None
 
 
+@router.get("/{student_id}/attendance-month")
+async def student_attendance_month(student_id: int, db: DB, month: str = Query(pattern=r"^\d{4}-\d{2}$"),
+                                   actor: Actor = require("students", "view")) -> dict:
+    """The card's calendar: every mark of the month and the days the student was frozen."""
+    from app.models import Attendance, Lesson
+    from app.services.clock import at_local, local
+
+    s = await get_student_scoped(db, actor, student_id)
+    y, m = int(month[:4]), int(month[5:])
+    if not (2000 <= y <= 2100 and 1 <= m <= 12):
+        raise bad_request("Месяц")
+    start = date(y, m, 1)
+    end = date(y + (m == 12), m % 12 + 1, 1)
+    rows = (await db.execute(
+        select(Attendance, Lesson.starts_at, Group.name).join(Lesson, Lesson.id == Attendance.lesson_id)
+        .outerjoin(Group, Group.id == Lesson.group_id)
+        .where(Attendance.student_id == s.id, Lesson.starts_at >= at_local(start, time(0)), Lesson.starts_at < at_local(end, time(0)))
+        .order_by(Lesson.starts_at))).all()
+    frozen: set[str] = set()
+    for f in await db.scalars(select(Freeze).where(Freeze.student_id == s.id, Freeze.starts_on < end,
+                                                   func.coalesce(Freeze.ended_early_on, Freeze.ends_on) > start)):
+        d, last = max(f.starts_on, start), min(f.ended_early_on or f.ends_on, end)
+        while d < last:
+            frozen.add(d.isoformat())
+            d += timedelta(days=1)
+    return {"month": month,
+            "marks": [{"lesson_id": a.lesson_id, "at": at, "date": local(at).date().isoformat(), "time": f"{local(at):%H:%M}",
+                       "group": g, "status": a.status, "charged": a.charged, "grade": a.grade, "comment": a.comment}
+                      for a, at, g in rows],
+            "frozen": sorted(frozen)}
+
+
 @router.get("/{student_id}/attendance")
 async def student_attendance(student_id: int, db: DB, actor: Actor = require("students", "view"), limit: int = Query(60, ge=1, le=300)) -> list[dict]:
     """Attendance history for the card (dots), newest first."""

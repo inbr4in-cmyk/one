@@ -1,5 +1,7 @@
 export default {
   nv: {
+    join: { title: 'Топқа қосу', since: 'Топта қай күннен', action: 'Қосу', done: 'Оқушы топқа қосылды' },
+    cal: { month: 'Ай', year: 'Жыл', frozen: 'Тоқтатылған' },
     payp: {
       total: 'Ай бойынша есептелді', lessons: 'Сабақтар үшін · {n}', other: 'Жалақы, KPI, сыйақы, ұстап қалу', paid: 'Төленді', left: 'Төлеу қалды',
       byGroup: 'Топтар мен күндер бойынша сабақтар', group: 'Топ', nLessons: '{n} сабақ', perDay: 'Күн бойынша', noLessons: 'Бұл айда сабақ жоқ',
