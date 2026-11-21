@@ -1,6 +1,32 @@
 /** Requests of 14.11: leave via the methodist, book out of a payment, pay breakdown, finance by dates. */
 export default {
   nv: {
+    sv: {
+      title: 'Оценка урока',
+      group: 'Группа',
+      pickGroup: 'Выберите группу',
+      lessonAt: 'урок {when}',
+      answersN: 'ответов: {n}',
+      questions: 'Вопросы',
+      questionN: 'Вопрос {n}',
+      kind: 'Тип ответа',
+      stars: 'оценка 1–5',
+      text: 'текст',
+      addQuestion: 'Добавить вопрос',
+      byTeacher: 'Оценки учителей за 30 дней',
+      byLesson: 'Уроки',
+      teacher: 'Учитель',
+      lesson: 'Урок',
+      lessons: 'Уроков',
+      answers: 'Ответов',
+      avg: 'Средняя',
+      noAnswers: 'Ответов пока нет',
+      needStars: 'Поставьте оценку в каждом вопросе',
+      send: 'Отправить',
+      thanks: 'Спасибо!',
+      thanksText: 'Ваш ответ принят',
+      closed: 'Опрос по этому уроку закрыт',
+    },
     udoc: {
       title: 'Документы для пользователей',
       audience: 'Для кого',

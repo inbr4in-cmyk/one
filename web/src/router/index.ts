@@ -57,6 +57,7 @@ const portalRoutes: RouteRecordRaw[] = [
 const routes: RouteRecordRaw[] = [
   { path: '/login', name: 'login', component: () => import('@/pages/LoginPage.vue'), meta: { public: true, title: 'login.title' } },
   // Public QR placement test (ТЗ 6): no login, opened from the QR code in a branch.
+  { path: '/r/:token', name: 'lesson-survey', component: () => import('@/pages/public/LessonSurveyPage.vue'), meta: { public: true, title: 'nv.sv.title' } },
   { path: '/t/:token', name: 'placement', component: () => import('@/pages/public/PlacementTestPage.vue'), meta: { public: true, title: 'placement.title' } },
   { path: '/2fa', name: 'setup-2fa', component: () => import('@/pages/TwoFactorSetupPage.vue'), meta: { title: 'setup2fa.title' } },
   { path: '/portal', component: () => import('@/components/portal/PortalShell.vue'), children: portalRoutes },

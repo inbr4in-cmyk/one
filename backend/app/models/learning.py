@@ -1,7 +1,7 @@
 
 
 from sqlalchemy import BigInteger, Boolean, Index, String, UniqueConstraint, text
-from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import ArchiveMixin, Base, IdMixin, TimestampMixin
@@ -265,3 +265,26 @@ class LessonRating(IdMixin, TimestampMixin, Base):
     user_id: Mapped[int] = fk("users.id")
     stars: Mapped[int]
     comment: Mapped[StrN]
+
+
+class LessonSurvey(IdMixin, TimestampMixin, Base):
+    """«Оценка урока» by QR (owner, 21.11.2026): one link per lesson, the students answer a few questions in class
+    without logging in. Only the owner and branch admins see the answers."""
+
+    __tablename__ = "lesson_surveys"
+    __table_args__ = (UniqueConstraint("lesson_id"),)
+
+    lesson_id: Mapped[int] = fk("lessons.id", index=False)
+    token: Mapped[str] = mapped_column(String(40), unique=True)
+    created_by: Mapped[int] = fk("users.id")
+    closes_at: Mapped[DT]
+    # the questions as they were when the link was made: [{"text": "...", "kind": "stars" | "text"}]
+    questions: Mapped[list] = mapped_column(JSONB, default=list)
+
+
+class LessonSurveyAnswer(IdMixin, Base):
+    __tablename__ = "lesson_survey_answers"
+
+    survey_id: Mapped[int] = fk("lesson_surveys.id")
+    at: Mapped[DT]
+    answers: Mapped[list] = mapped_column(JSONB, default=list)  # one value per question: 1..5 or a text

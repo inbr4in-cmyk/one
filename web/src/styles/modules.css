@@ -546,3 +546,16 @@ button.pinned{width:100%;border:0;border-bottom:1px solid var(--line);text-align
 .udoc .grow{display:grid;min-width:0;flex:1}
 .udoc .grow b,.udoc .grow span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .udoc .grow span{font-size:12.5px}
+
+/* Lesson rating by QR */
+.sv-h{display:flex;align-items:center;gap:8px;margin:18px 0 8px}
+.sv-q{margin:0;padding-left:20px;display:grid;gap:4px}
+.sv-edit{display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap}
+.sv-edit > :first-child{flex:1;min-width:220px}
+.sv-res{display:grid;gap:2px;padding:6px 0}
+.sv-res ul{margin:0;padding-left:18px}
+.sv-ask{display:grid;gap:8px}
+.sv-stars{display:flex;gap:6px}
+.sv-stars button{font-size:38px;line-height:1;background:none;border:0;padding:2px 4px;cursor:pointer;color:var(--line)}
+.sv-stars button.on{color:#F5A623}
+.sv-stars button:focus-visible{outline:2px solid var(--info);outline-offset:2px;border-radius:6px}

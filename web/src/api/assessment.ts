@@ -1,4 +1,4 @@
-import { http } from './http'
+import { http, qs } from './http'
 
 /** Test builder (backend/app/modules/assessment/router.py) and the public QR placement test. */
 export type TestKind = 'placement' | 'final' | 'training'
@@ -91,4 +91,47 @@ export const placementApi = {
     http.post<{ attempt_id: number; attempt_token: string }>(`/public/placement/${encodeURIComponent(token)}/start`, body, pub),
   submit: (attemptToken: string, answers: Answers) =>
     http.post<PlacementResult>('/public/placement/submit', { attempt_token: attemptToken, answers }, pub),
+}
+
+/** «Оценка урока» by QR: staff make a link for a group's lesson, students answer without logging in. */
+export interface SurveyQuestion {
+  text: string
+  kind: 'stars' | 'text'
+}
+export interface SurveyLink {
+  token: string
+  path: string
+  lesson_id: number
+  lesson: string
+  group: string
+  answers: number
+}
+export interface PublicSurvey {
+  group: string | null
+  teacher: string | null
+  lesson: string
+  open: boolean
+  questions: SurveyQuestion[]
+}
+export interface SurveyResults {
+  lessons: {
+    survey_id: number
+    lesson_id: number
+    at: string
+    group: string | null
+    teacher: string | null
+    answers: number
+    avg: number | null
+    questions: { text: string; kind: 'stars' | 'text'; avg?: number | null; count?: number; comments?: string[] }[]
+  }[]
+  teachers: { teacher_id: number; teacher: string | null; lessons: number; answers: number; avg: number | null }[]
+}
+export const surveyApi = {
+  questions: () => http.get<SurveyQuestion[]>('/lesson-surveys/questions'),
+  setQuestions: (questions: SurveyQuestion[]) => http.put<SurveyQuestion[]>('/lesson-surveys/questions', { questions }, { silent: true }),
+  open: (group_id: number) => http.post<SurveyLink>('/lesson-surveys', { group_id }, { silent: true }),
+  results: (p: { branch_id?: number | null } = {}) => http.get<SurveyResults>(`/lesson-surveys/results${qs(p)}`),
+  get: (token: string) => http.get<PublicSurvey>(`/public/lesson-survey/${encodeURIComponent(token)}`, pub),
+  answer: (token: string, answers: (number | string | null)[]) =>
+    http.post<{ ok: boolean }>(`/public/lesson-survey/${encodeURIComponent(token)}`, { answers }, pub),
 }

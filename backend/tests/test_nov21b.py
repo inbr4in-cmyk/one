@@ -211,3 +211,39 @@ async def test_files_for_a_kind_of_users_are_accepted_once_and_kept_in_the_journ
     journal = (await client.get("/api/user-docs/journal", headers=owner_h)).json()
     assert len(journal) == 2 and sum(j["removed"] for j in journal) == 1
     assert [d["accepted"] for d in (await client.get("/api/user-docs", headers=owner_h)).json()["docs"]] == [1]
+
+
+async def test_lesson_rating_by_qr_three_questions_and_only_admins_see_the_answers(client, db, owner_h):
+    bid = await branch_id(db, YANGI)
+    teacher = await make_staff(db, "teacher", [YANGI], "+77052227071", "Учитель Оценка")
+    await db.commit()
+    th = await login(client, teacher.phone)
+    g = (await client.post("/api/groups", headers=owner_h, json={"name": "RATE-1", "branch_id": bid,
+                                                                 "level_id": await level_id(db, "ELE"), "teacher_id": teacher.id})).json()
+    assert (await client.post("/api/lesson-surveys", headers=th, json={"group_id": g["id"]})).status_code == 409  # no lesson yet
+    room = await db.scalar(select(Room).where(Room.branch_id == bid))
+    lesson = Lesson(branch_id=bid, group_id=g["id"], level_id=g["level_id"], teacher_id=teacher.id, room_id=room.id,
+                    starts_at=now() - timedelta(minutes=40), ends_at=now() + timedelta(minutes=20))
+    db.add(lesson)
+    await db.flush()
+    r = await client.post("/api/lesson-surveys", headers=th, json={"group_id": g["id"]})
+    assert r.status_code == 200, r.text
+    token = r.json()["token"]
+    assert (await client.post("/api/lesson-surveys", headers=owner_h, json={"group_id": g["id"]})).json()["token"] == token
+    pub = (await client.get(f"/api/public/lesson-survey/{token}")).json()
+    assert pub["open"] and len(pub["questions"]) == 3 and pub["teacher"] == "Учитель Оценка"
+    assert (await client.get("/api/public/lesson-survey/nope-nope-nope")).status_code == 404
+    assert (await client.post(f"/api/public/lesson-survey/{token}", json={"answers": [5, 9, "x"]})).status_code == 400
+    assert (await client.post(f"/api/public/lesson-survey/{token}", json={"answers": [5, 4, "Больше игр"]})).status_code == 201
+    assert (await client.post(f"/api/public/lesson-survey/{token}", json={"answers": [3, 4, None]})).status_code == 201
+    assert (await client.get("/api/lesson-surveys/results", headers=th)).status_code == 403  # the teacher never sees them
+    res = (await client.get("/api/lesson-surveys/results", headers=owner_h)).json()
+    row = res["lessons"][0]
+    assert row["answers"] == 2 and row["avg"] == 4.0 and row["questions"][0]["avg"] == 4.0
+    assert row["questions"][2]["comments"] == ["Больше игр"]
+    assert res["teachers"][0]["teacher"] == "Учитель Оценка" and res["teachers"][0]["avg"] == 4.0
+    # the admin changes the questions: new links get them, the old link keeps its own
+    assert (await client.put("/api/lesson-surveys/questions", headers=th, json={"questions": [{"text": "Как урок?", "kind": "stars"}]})).status_code == 403
+    r = await client.put("/api/lesson-surveys/questions", headers=owner_h, json={"questions": [{"text": "Как урок?", "kind": "stars"}]})
+    assert r.status_code == 200 and len(r.json()) == 1
+    assert len((await client.get(f"/api/public/lesson-survey/{token}")).json()["questions"]) == 3
