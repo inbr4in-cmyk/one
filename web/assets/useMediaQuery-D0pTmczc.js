@@ -1,0 +1,1 @@
+import{O as e,nt as t}from"./UiIcon-QizZVj_1.js";function n(n){let r=window.matchMedia(n),i=t(r.matches),a=e=>i.value=e.matches;return r.addEventListener(`change`,a),e(()=>r.removeEventListener(`change`,a)),i}export{n as t};

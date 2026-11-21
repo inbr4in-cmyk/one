@@ -1,0 +1,1 @@
+import{r as e}from"./UiIcon-QizZVj_1.js";import{t}from"./sources-JsapYZQP.js";function n(){let{t:n,te:r}=e(),i=t();return i.load(),e=>e?i.byCode.get(e)?.name??(r(`crm.source.${e}`)?n(`crm.source.${e}`):e):``}export{n as t};

@@ -1,0 +1,1 @@
+import{A as e,l as t}from"./UiIcon-QizZVj_1.js";import{t as n}from"./refs-BdBC-sOF.js";function r(){let r=n();return e(()=>r.loadStaff()),t(()=>r.teachers.map(e=>({id:e.id,name:e.full_name,branchIds:e.branch_ids})).sort((e,t)=>e.name.localeCompare(t.name)))}export{r as t};

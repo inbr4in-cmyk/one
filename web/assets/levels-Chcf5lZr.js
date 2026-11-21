@@ -1,0 +1,1 @@
+var e={"#2e9a6e":`var(--lv-beg)`,"#1a6fd1":`var(--lv-ele)`,"#c9631a":`var(--lv-pre)`,"#7b52c7":`var(--lv-int)`,"#b08900":`var(--lv-up)`,"#c2417f":`var(--lv-ielts)`,"#0e8fa8":`var(--lv-kids)`,"#1e8e5a":`var(--ok)`,"#c98a06":`var(--warn)`,"#5b6782":`var(--muted)`};function t(t){return t?e[t.toLowerCase()]??t:`var(--muted)`}export{t};

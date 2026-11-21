@@ -1,0 +1,1 @@
+import{t as e}from"./http-BusEcTyc.js";function t(t){return t instanceof e&&t.detail?t.detail:null}export{t};
