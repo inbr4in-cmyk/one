@@ -85,6 +85,8 @@ DEFAULT_SETTINGS = {
     "notify_late": False,
     "lead_first_reply_warn_min": 30,
     "lead_stale_hours": 1,
+    # A lead with no note and no task for this long: its manager is told to work it (0 = off).
+    "lead_idle_hours": 3,
     # An Instagram comment makes a lead only when it has one of these words (comma-separated; empty = every comment).
     "ig_comment_lead_words": "цена, цену, цены, сколько, стоимость, стоит, почём, хочу, запись, записаться, подробнее, инфо, +, баға, қанша, жазыл",
     "trial_counts_in_n": True,
@@ -143,7 +145,8 @@ async def seed_base(db: AsyncSession) -> None:
         await db.flush()
         for i, (sc, sn, color, won, lost, stale) in enumerate(stages):
             db.add(LeadStage(pipeline_id=p.id, code=sc, name=sn, color=color, order=i, is_won=won, is_lost=lost,
-                             stale_after_hours=stale))
+                             stale_after_hours=stale,
+                             work_hours={"trial_booked": 2, "trial_done": 1}.get(sc) if code == "main" else None))
     for code, (ru, kk) in TEMPLATES.items():
         db.add(MessageTemplate(code=code, locale="ru", body=ru, enabled=code not in ("present", "late")))
         db.add(MessageTemplate(code=code, locale="kk", body=kk, enabled=code not in ("present", "late")))

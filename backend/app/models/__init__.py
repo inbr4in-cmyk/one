@@ -10,6 +10,8 @@ from app.models.compliance import (
     Notification,
     OutboundMessage,
     Setting,
+    UserDoc,
+    UserDocAccept,
 )
 from app.models.crm import (
     Conversation, ExternalContact, ExternalMessage, Lead, LeadEvent, LeadStage, LeadStageAccess, Pipeline,

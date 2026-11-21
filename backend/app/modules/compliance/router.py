@@ -12,7 +12,9 @@ from app.core.deps import DB, Actor, CurrentActor, ensure_staff_mfa, require
 from app.core.ratelimit import hit
 from app.core.errors import bad_request, conflict, forbidden, not_found
 from app.core.schemas import In
-from app.models import Complaint, Consent, DocumentVersion, Role, Student, StudentGuardian, User, UserBranch, UserRole
+from app.models import (
+    Complaint, Consent, DocumentVersion, Role, Student, StudentGuardian, User, UserBranch, UserDoc, UserDocAccept, UserRole,
+)
 from app.models.identity import UserKind
 from app.modules.crm.service import crm_people
 from app.services.clock import local, now
@@ -133,6 +135,122 @@ async def consent_status(db: DB, actor: Actor = require("students", "view"), bra
                                                                     Consent.revoked_at.is_(None))))
     return [{"student_id": s.id, "full_name": s.full_name, "branch_id": s.branch_id}
             for s in await db.scalars(q.limit(2000)) if s.id not in signed and s.user_id not in signed_self]
+
+
+# ---------- files for kinds of users (owner, 21.11.2026) ----------
+MAX_USER_DOCS = 2
+PORTAL_AUDIENCES = {"parent": "Родители", "student": "Ученики"}
+
+
+class UserDocIn(In):
+    audience: str = Field(min_length=1, max_length=72)
+    title: str = Field(min_length=2, max_length=255)
+    file_key: str = Field(min_length=8, max_length=80)
+    file_name: str = Field(min_length=1, max_length=255)
+
+
+async def _audiences(db: DB) -> dict[str, str]:
+    """A staff role, parents or students: code → title."""
+    roles = (await db.execute(select(Role.code, Role.name).where(Role.archived_at.is_(None),
+                                                                  Role.code.not_in(("parent", "student"))).order_by(Role.id))).all()
+    return {**{code: name for code, name in roles}, **PORTAL_AUDIENCES}
+
+
+def _my_audiences(actor) -> set[str]:
+    if actor.user.kind == UserKind.PARENT:
+        return {"parent"}
+    if actor.user.kind == UserKind.STUDENT:
+        return {"student"}
+    return set(actor.role_codes) - set(PORTAL_AUDIENCES)
+
+
+def _doc_out(d: UserDoc) -> dict:
+    return {"id": d.id, "audience": d.audience, "title": d.title, "file_name": d.file_name,
+            "url": files.signed_url(d.file_key, ttl=3600, name=d.file_name), "created_at": d.created_at}
+
+
+@router.get("/user-docs")
+async def user_docs(db: DB, actor: Actor = require("settings", "view")) -> dict:
+    docs = list(await db.scalars(select(UserDoc).where(UserDoc.archived_at.is_(None)).order_by(UserDoc.id)))
+    counts: dict[int, int] = {}
+    for doc_id in await db.scalars(select(UserDocAccept.doc_id).where(UserDocAccept.doc_id.in_([d.id for d in docs] or [-1]))):
+        counts[doc_id] = counts.get(doc_id, 0) + 1
+    return {"audiences": [{"code": c, "name": n} for c, n in (await _audiences(db)).items()], "max": MAX_USER_DOCS,
+            "docs": [{**_doc_out(d), "accepted": counts.get(d.id, 0)} for d in docs]}
+
+
+@router.post("/user-docs", status_code=201)
+async def add_user_doc(body: UserDocIn, db: DB, actor: Actor = require("settings", "edit")) -> dict:
+    if body.audience not in await _audiences(db):
+        raise bad_request("Выберите, для кого файл")
+    if files.path_of(body.file_key) is None:
+        raise bad_request("Файл не найден — загрузите его ещё раз")
+    live = len(list(await db.scalars(select(UserDoc.id).where(UserDoc.audience == body.audience, UserDoc.archived_at.is_(None)))))
+    if live >= MAX_USER_DOCS:
+        raise bad_request(f"Для одного типа пользователей — не больше {MAX_USER_DOCS} файлов. Удалите старый файл")
+    d = UserDoc(audience=body.audience, title=body.title.strip(), file_key=body.file_key, file_name=body.file_name, created_by=actor.id)
+    db.add(d)
+    await db.flush()
+    await write_audit(db, actor_id=actor.id, action="user_doc.add", entity="user_doc", entity_id=d.id, ip=actor.ip,
+                      after={"audience": d.audience, "title": d.title, "file": d.file_name})
+    await db.commit()
+    return _doc_out(d)
+
+
+@router.delete("/user-docs/{doc_id}", status_code=204)
+async def remove_user_doc(doc_id: int, db: DB, actor: Actor = require("settings", "edit")) -> None:
+    """The file is no longer shown to anybody; the journal keeps who accepted it."""
+    d = await db.get(UserDoc, doc_id)
+    if d is None or d.archived_at is not None:
+        raise not_found("Файл")
+    d.archived_at = now()
+    await write_audit(db, actor_id=actor.id, action="user_doc.remove", entity="user_doc", entity_id=d.id, ip=actor.ip,
+                      before={"audience": d.audience, "title": d.title})
+    await db.commit()
+
+
+@router.get("/user-docs/pending")
+async def pending_user_docs(db: DB, actor: CurrentActor) -> list[dict]:
+    """Files of my kind of user that I have not accepted yet. Asked once: an accepted file never comes back."""
+    mine = _my_audiences(actor)
+    if not mine:
+        return []
+    done = select(UserDocAccept.doc_id).where(UserDocAccept.user_id == actor.id)
+    docs = await db.scalars(select(UserDoc).where(UserDoc.audience.in_(mine), UserDoc.archived_at.is_(None),
+                                                  UserDoc.id.not_in(done)).order_by(UserDoc.id))
+    return [_doc_out(d) for d in docs]
+
+
+class UserDocAcceptIn(In):
+    doc_ids: list[int] = Field(min_length=1, max_length=20)
+
+
+@router.post("/user-docs/accept", status_code=204)
+async def accept_user_docs(body: UserDocAcceptIn, request: Request, db: DB, actor: CurrentActor) -> None:
+    mine = _my_audiences(actor)
+    done = set(await db.scalars(select(UserDocAccept.doc_id).where(UserDocAccept.user_id == actor.id)))
+    for d in await db.scalars(select(UserDoc).where(UserDoc.id.in_(body.doc_ids), UserDoc.archived_at.is_(None))):
+        if d.audience not in mine or d.id in done:
+            continue
+        db.add(UserDocAccept(doc_id=d.id, user_id=actor.id, accepted_at=now(), ip=actor.ip,
+                             user_agent=(request.headers.get("user-agent") or "")[:255]))
+        await write_audit(db, actor_id=actor.id, action="user_doc.accept", entity="user_doc", entity_id=d.id, ip=actor.ip,
+                          after={"title": d.title, "audience": d.audience})
+    await db.commit()
+
+
+@router.get("/user-docs/journal")
+async def user_docs_journal(db: DB, actor: Actor = require("settings", "view"), doc_id: int | None = None,
+                            limit: int = 500) -> list[dict]:
+    """Who accepted which file and when (removed files stay in the journal)."""
+    q = (select(UserDocAccept, UserDoc, User).join(UserDoc, UserDoc.id == UserDocAccept.doc_id)
+         .join(User, User.id == UserDocAccept.user_id).order_by(UserDocAccept.id.desc()).limit(max(1, min(limit, 2000))))
+    if doc_id:
+        q = q.where(UserDocAccept.doc_id == doc_id)
+    names = await _audiences(db)
+    return [{"id": a.id, "doc_id": d.id, "title": d.title, "audience": d.audience, "audience_name": names.get(d.audience, d.audience),
+             "removed": d.archived_at is not None, "user_id": u.id, "user_name": u.full_name, "accepted_at": a.accepted_at, "ip": a.ip}
+            for a, d, u in (await db.execute(q)).all()]
 
 
 # ---------- complaints ----------

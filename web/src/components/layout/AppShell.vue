@@ -7,20 +7,31 @@ import BottomNav from './BottomNav.vue'
 import { useUiStore } from '@/stores/ui'
 import { useCountersStore } from '@/stores/counters'
 import { useRefsStore } from '@/stores/refs'
-import { startRealtime, stopRealtime } from '@/composables/useRealtime'
+import { onRealtime, startRealtime, stopRealtime } from '@/composables/useRealtime'
+import { useToastStore } from '@/stores/toast'
 
 const ui = useUiStore()
 const route = useRoute()
 const counters = useCountersStore()
 const refs = useRefsStore()
+const toast = useToastStore()
+let offAlert: (() => void) | null = null
 
 onMounted(() => {
   refs.load()
   counters.start()
   startRealtime()
+  // A client's message for me, a free lead, a lead to work: shown on the screen until closed; a click opens it.
+  offAlert = onRealtime('alert', (e) => {
+    const link = typeof e.link === 'string' && e.link.startsWith('/') ? e.link : undefined
+    if (link && route.path === link) return
+    toast.show([e.title, e.body].filter(Boolean).join('. '), 'info', 0, link)
+    counters.refresh()
+  })
 })
 onBeforeUnmount(() => {
   counters.stop()
+  offAlert?.()
   stopRealtime()
 })
 
@@ -34,6 +45,7 @@ function onKey(e: KeyboardEvent) {
   if (e.key === 'Escape' && ui.sidebarOpen) ui.sidebarOpen = false
 }
 import RulesGate from '@/components/compliance/RulesGate.vue'
+import UserDocsGate from '@/components/compliance/UserDocsGate.vue'
 </script>
 
 <template>
@@ -54,5 +66,6 @@ import RulesGate from '@/components/compliance/RulesGate.vue'
     </div>
     <BottomNav />
     <RulesGate />
+    <UserDocsGate />
   </div>
 </template>

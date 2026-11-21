@@ -16,6 +16,7 @@ from app.core.schemas import In, ORM, Page
 from app.models import Attendance, BalanceEntry, BookMovement, BookStock, Lead, Lesson, Level, Payment, Refund, Student, SubscriptionPackage
 from app.services.reversals import reverse_for_payment
 from app.models.finance import PaymentMethod
+from app.models.identity import User, UserKind
 from app.models.learning import AttendanceStatus, StudentStatus
 from app.modules.students.scope import get_student_scoped
 from app.services import balance as bal
@@ -44,6 +45,8 @@ class PaymentIn(In):
     paid_on: date | None = None
     # A subscription bought earlier (before the school moved to this site): lessons of it already used up.
     used_lessons: int = Field(default=0, ge=0, le=1000)
+    # Who sold: the manager the sale bonus goes to (picked by the person taking the money). Empty = the one taking it.
+    seller_id: int | None = Field(default=None, ge=1)
 
 
 class PaymentOut(ORM):
@@ -58,6 +61,7 @@ class PaymentOut(ORM):
     lesson_price: int
     method: str
     received_by: int
+    seller_id: int | None = None
     paid_at: datetime
     refunded: int
     is_first: bool
@@ -199,6 +203,10 @@ async def take_payment(body: PaymentIn, db: DB, response: Response, actor: Actor
     if s.level_id is None and level is not None:
         # A student without a level (e.g. imported) gets the level chosen at the first payment.
         s.level_id = level.id
+    if body.seller_id:
+        seller = await db.get(User, body.seller_id)
+        if seller is None or seller.kind != UserKind.STAFF or not seller.is_active or seller.archived_at is not None:
+            raise bad_request("Продавцом может быть только работающий сотрудник")
     paid_day = body.paid_on if backdated else today()
     valid_to = (_add_months(paid_day, pkg.months) - timedelta(days=1)) if pkg else None
     prior = await db.scalar(select(func.count()).select_from(Payment).where(Payment.student_id == s.id, Payment.category == "course"))
@@ -207,7 +215,8 @@ async def take_payment(body: PaymentIn, db: DB, response: Response, actor: Actor
                 discount=q.discount, promo_code=body.promo_code, lessons=q.lessons, lesson_price=q.lesson_price,
                 method=body.method, received_by=actor.id, paid_at=at_local(body.paid_on, time(12, 0)) if backdated else now(),
                 is_first=prior == 0, note=body.note or (f"Абонемент «{pkg.name}» до {valid_to:%d.%m.%Y}" if pkg else None),
-                idempotency_key=idempotency_key, package_id=pkg.id if pkg else None, valid_to=valid_to)
+                idempotency_key=idempotency_key, package_id=pkg.id if pkg else None, valid_to=valid_to,
+                seller_id=body.seller_id)
     try:
         async with db.begin_nested():
             db.add(p)
@@ -271,7 +280,7 @@ async def _sale_facts(db: DB, s: Student, p: Payment, actor: Actor, was_left: bo
         Attendance.status.in_((AttendanceStatus.PRESENT, AttendanceStatus.LATE))))
     if trial is None or attended is None:
         return
-    await accrue_once(db, user_id=actor.id, kind="sale", amount=await rate(db, "office_sale", d), ref=("payment", p.id), on=d,
+    await accrue_once(db, user_id=p.seller_id or actor.id, kind="sale", amount=await rate(db, "office_sale", d), ref=("payment", p.id), on=d,
                       branch_id=s.branch_id, description=f"Продажа после пробного: {s.full_name}", created_by=actor.id)
     await accrue_once(db, user_id=trial.actual_teacher_id or trial.teacher_id, kind="trial_retention",
                       amount=await rate(db, "teacher_trial_retention", d), ref=("lead", lead.id), on=d,

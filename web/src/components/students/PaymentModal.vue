@@ -27,7 +27,7 @@ const levelOptions = computed(() => [{ value: 0, label: t('payments.pickLevel') 
 
 const PACKS = [8, 12, 24]
 const todayIso = () => isoDate(schoolNow())
-const form = reactive({ by: (props.mode ?? 'amount') as By, lessons: '12', amount: '', method: 'kaspi' as PaymentMethod, discount: '', promo: '', note: '', paid_on: todayIso(), used: '' })
+const form = reactive({ by: (props.mode ?? 'amount') as By, lessons: '12', amount: '', method: 'kaspi' as PaymentMethod, discount: '', promo: '', note: '', paid_on: todayIso(), used: '', seller: 0 })
 const byOptions = computed(() => [
   { value: 'amount' as By, label: t('payments.byAmount') },
   { value: 'lessons' as By, label: t('payments.byLessons') },
@@ -50,6 +50,10 @@ let seq = 0
 const methodOptions = computed(() => PAYMENT_METHODS.map((m) => ({ value: m, label: t(`payments.method.${m}`) })))
 const lessons = computed(() => Math.max(0, Math.floor(Number(form.lessons) || 0)))
 const byAmount = computed(() => form.by === 'amount')
+const sellerOptions = computed(() => [
+  { value: 0, label: t('nv.lw.sellerMe') },
+  ...refs.staff.filter((u) => u.id !== auth.user?.id && (!u.roles || u.roles.some((r) => r !== 'teacher'))).map((u) => ({ value: u.id, label: u.full_name })),
+])
 const body = computed(() => ({
   student_id: props.student.id,
   level_id: needLevel.value && levelPick.value ? levelPick.value : null,
@@ -60,13 +64,15 @@ const body = computed(() => ({
   discount: !byAmount.value && auth.can('payments.discount') ? Math.max(0, Number(form.discount) || 0) : 0,
   promo_code: form.promo.trim() || null,
   note: form.note.trim() || null,
+  seller_id: form.seller || null,
   paid_on: backdated.value ? form.paid_on : null,
   used_lessons: byPackage.value && backdated.value ? Math.max(0, Math.floor(Number(form.used) || 0)) : 0,
 }))
 
 watch(open, (v) => {
   if (!v) return
-  Object.assign(form, { by: props.mode ?? 'amount', lessons: '12', amount: '', method: 'kaspi', discount: '', promo: '', note: '', paid_on: todayIso(), used: '' })
+  Object.assign(form, { by: props.mode ?? 'amount', lessons: '12', amount: '', method: 'kaspi', discount: '', promo: '', note: '', paid_on: todayIso(), used: '', seller: 0 })
+  void refs.loadStaff()
   levelPick.value = 0
   pkgId.value = 0
   quote.value = null
@@ -77,7 +83,7 @@ watch(open, (v) => {
 })
 
 let timer: ReturnType<typeof setTimeout> | undefined
-watch([open, () => JSON.stringify({ ...body.value, method: '', note: '', paid_on: '' })], () => {
+watch([open, () => JSON.stringify({ ...body.value, method: '', note: '', paid_on: '', seller_id: null })], () => {
   if (!open.value) return
   clearTimeout(timer)
   timer = setTimeout(fetchQuote, 250)
@@ -174,6 +180,7 @@ async function submit() {
         <UiInput v-if="canBackdate" v-model="form.paid_on" type="date" :max="todayIso()" :label="t('payments.paidOn')" />
         <UiInput v-if="byPackage && backdated" v-model="form.used" type="number" inputmode="numeric" :min="0" :label="t('nv.usedLessons')" />
       </div>
+      <UiSelect v-model="form.seller" :options="sellerOptions" :label="t('nv.lw.seller')" block />
       <UiTextarea v-model="form.note" :label="t('payments.note')" :rows="2" />
 
       <div class="quote" aria-live="polite">

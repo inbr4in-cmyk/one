@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import UserDocsCard from '@/components/compliance/UserDocsCard.vue'
 import { UiButton, UiCard, UiField, UiInput, UiSegmented, UiSelect, UiSkeleton, UiSwitch } from '@/components/ui'
 import { adminApi, type Rate } from '@/api/admin'
 import { useAuthStore } from '@/stores/auth'
@@ -221,5 +222,6 @@ async function addRate() {
         <div><UiButton type="submit" variant="navy" :loading="rateBusy">{{ t('settingsPage.addRate') }}</UiButton></div>
       </form>
     </UiCard>
+    <UserDocsCard />
   </div>
 </template>

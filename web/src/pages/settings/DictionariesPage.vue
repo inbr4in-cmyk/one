@@ -234,19 +234,19 @@ const pipeline = computed(() => pipelines.value?.find((p) => p.id === pipelineId
 const pipelineOptions = computed(() => (pipelines.value ?? []).map((p) => ({ value: p.id, label: p.name })))
 const stageModal = ref(false)
 const stageId = ref<number | null>(null)
-const sf = reactive({ name: '', color: '#5B6782', stale: '' })
+const sf = reactive({ name: '', color: '#5B6782', stale: '', work: '', closed: false })
 async function loadPipelines() {
   pipelines.value = await crmApi.pipelines().catch(() => [])
   if (!pipeline.value) pipelineId.value = pipelines.value[0]?.id ?? 0
 }
 function openStage(s: Stage | null) {
   stageId.value = s?.id ?? null
-  Object.assign(sf, { name: s?.name ?? '', color: s?.color ?? '#5B6782', stale: s?.stale_after_hours ? String(s.stale_after_hours) : '' })
+  Object.assign(sf, { name: s?.name ?? '', color: s?.color ?? '#5B6782', stale: s?.stale_after_hours ? String(s.stale_after_hours) : '', work: s?.work_hours ? String(s.work_hours) : '', closed: !!s && (s.is_won || s.is_lost) })
   stageModal.value = true
 }
 async function saveStage() {
   if (!pipeline.value || !sf.name.trim()) return toast.error(t('dict.nameMin'))
-  const body = { name: sf.name.trim(), color: sf.color, stale_after_hours: sf.stale ? Math.max(1, Math.round(Number(sf.stale))) : null }
+  const body = { name: sf.name.trim(), color: sf.color, stale_after_hours: sf.stale ? Math.max(1, Math.round(Number(sf.stale))) : null, work_hours: sf.work ? Math.max(1, Math.round(Number(sf.work))) : null }
   busy.value = true
   try {
     if (stageId.value) await crmApi.editStage(stageId.value, body)
@@ -470,7 +470,7 @@ watch(tab, loadTab)
           <b>{{ s.name }}</b>
           <span>
             <template v-if="s.system">{{ t('dict.systemStage') }}</template>
-            <template v-if="s.stale_after_hours"> · {{ t('dict.staleAfter', { n: s.stale_after_hours }) }}</template>
+            <template v-if="s.stale_after_hours"> · {{ t('dict.staleAfter', { n: s.stale_after_hours }) }}</template><template v-if="s.work_hours"> · {{ t('nv.lw.workAfter', { n: s.work_hours }) }}</template>
           </span>
         </div>
         <div class="row-acts nowrap">
@@ -553,6 +553,7 @@ watch(tab, loadTab)
     <form id="stg-form" class="stack" @submit.prevent="saveStage">
       <UiInput v-model="sf.name" :label="t('dict.stageName')" :maxlength="120" autofocus />
       <UiInput v-model="sf.stale" type="number" inputmode="numeric" :min="1" :label="t('dict.stale')" />
+      <UiInput v-if="!sf.closed" v-model="sf.work" type="number" inputmode="numeric" :min="1" :label="t('nv.lw.workHours')" />
       <label class="color-row"><input v-model="sf.color" type="color" /> {{ t('dict.color') }}</label>
     </form>
     <template #footer="{ close }">

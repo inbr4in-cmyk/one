@@ -1,7 +1,9 @@
+from datetime import timedelta
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Lead, LeadEvent, LeadStage, Lesson, Pipeline
+from app.models import Conversation, ExternalContact, Lead, LeadEvent, LeadStage, Lesson, Pipeline, User
 from app.services.clock import local, now
 from app.services.messaging import notify_user
 from app.services.payroll import accrue_once
@@ -23,8 +25,47 @@ async def move(db: AsyncSession, lead: Lead, stage: LeadStage, actor_id: int | N
     lead.pipeline_id = stage.pipeline_id
     lead.stage_changed_at = now()
     lead.last_activity_at = now()
+    # The new stage's clock: the manager has work_hours to leave a note / call / book. On «Записан на пробный»
+    # it starts later, when the client did not come (jobs.lead_control).
+    timed = stage.work_hours and stage.code != "trial_booked" and not (stage.is_won or stage.is_lost)
+    lead.work_due_at = now() + timedelta(hours=stage.work_hours) if timed else None
+    if stage.is_won or stage.is_lost:
+        lead.free_since = None
     db.add(LeadEvent(lead_id=lead.id, at=now(), kind="stage", text=text or stage.name, actor_id=actor_id,
                      meta={"from": old, "to": stage.id}))
+
+
+MANUAL = ("note", "call", "meeting")  # what a manager writes himself; such events carry meta["result"]
+
+
+def manual_event():
+    return LeadEvent.kind.in_(MANUAL) & LeadEvent.meta.has_key("result")
+
+
+async def alert(db: AsyncSession, user_id: int, kind: str, title: str, body: str | None = None, link: str | None = None) -> None:
+    """A notification that also pops up on the person's screen right away."""
+    from app.services.realtime import publish
+
+    await notify_user(db, user_id, kind, title, body=body, link=link)
+    await publish(f"user:{user_id}", {"type": "alert", "kind": kind, "title": title, "body": body, "link": link})
+
+
+async def worked(db: AsyncSession, lead: Lead, actor_id: int | None) -> None:
+    """A manager worked the lead (note, call, trial booking, reply to the client): the deadline is met. If the lead
+    was free, the one who worked it becomes responsible — for the lead and for its Instagram/WhatsApp chat."""
+    lead.work_due_at = None
+    if lead.free_since is None or actor_id is None:
+        return
+    lead.free_since = None
+    if lead.assignee_id == actor_id:
+        return
+    lead.assignee_id = actor_id
+    who = await db.get(User, actor_id)
+    for conv in await db.scalars(select(Conversation).join(ExternalContact, ExternalContact.id == Conversation.contact_id)
+                                 .where(ExternalContact.lead_id == lead.id)):
+        conv.assignee_id = actor_id
+    db.add(LeadEvent(lead_id=lead.id, at=now(), kind="note", actor_id=actor_id, meta={"assignee_id": actor_id, "took_free": True},
+                     text=f"Ответственный: {who.full_name if who else ''} (взял свободный лид)"))
 
 
 async def on_trial_attended(db: AsyncSession, lead: Lead, lesson: Lesson, actor_id: int) -> None:

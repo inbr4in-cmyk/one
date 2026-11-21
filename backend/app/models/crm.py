@@ -38,6 +38,10 @@ class LeadStage(IdMixin, TimestampMixin, ArchiveMixin, Base):
     is_lost: Mapped[bool] = mapped_column(Boolean, default=False)
     # A lead sitting longer than this is «зависший» (ТЗ 9.2).
     stale_after_hours: Mapped[IntN]
+    # Owner's rule 21.11.2026: hours the responsible manager has to work a lead on this stage (a note, a call, a
+    # trial booking, a reply). After that the lead is «свободный»: everyone sees it, who works it first takes it.
+    # On «Записан на пробный» the clock starts when the client did not come to the trial. Empty = no control.
+    work_hours: Mapped[IntN]
 
 
 class LeadStageAccess(IdMixin, Base):
@@ -85,6 +89,8 @@ class Lead(IdMixin, TimestampMixin, ArchiveMixin, Base):
     last_activity_at: Mapped[DTN]
     notes: Mapped[TextN]
     is_hot: Mapped[bool] = mapped_column(Boolean, default=False)
+    work_due_at: Mapped[DTN]  # the responsible manager must work the lead before this moment
+    free_since: Mapped[DTN]  # he did not: the lead is open to every manager until somebody works it
 
 
 class LeadEvent(IdMixin, Base):

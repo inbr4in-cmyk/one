@@ -26,6 +26,7 @@ export interface InboxMessage {
   media_url: string | null
   status: string
   sender_id: number | null
+  sender_name?: string | null
 }
 
 /** GET /message-templates: WhatsApp templates allowed outside the 24 h window. */

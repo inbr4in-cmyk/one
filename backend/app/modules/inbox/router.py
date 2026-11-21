@@ -16,7 +16,7 @@ from app.core.permissions import NETWORK, OWN
 from app.core.ratelimit import client_ip, hit
 from app.core.schemas import In, ORM
 from app.core.security import mask_phone
-from app.models import Conversation, ExternalContact, ExternalMessage, Lead, LeadEvent, LeadStage, MessageTemplate, Student
+from app.models import Conversation, ExternalContact, ExternalMessage, Lead, LeadEvent, LeadStage, MessageTemplate, Student, User
 from app.modules.crm.service import merge_into_student, set_branch
 from app.modules.students.scope import get_student_scoped
 from app.modules.inbox.service import comment_to_answer, handle_meta_payload, in_window
@@ -102,6 +102,7 @@ class MessageOut(ORM):
     media_url: str | None
     status: str
     sender_id: int | None
+    sender_name: str | None = None  # the manager who wrote this answer
 
 
 def conv_filter(actor: Actor, action: str = "view"):
@@ -174,7 +175,14 @@ async def messages(conv_id: int, db: DB, actor: Actor = require("inbox", "view")
     if conv.unread and not before_id:
         conv.unread = 0
         await db.commit()
-    return [MessageOut.model_validate(m) for m in reversed(rows)]
+    names = dict((await db.execute(select(User.id, User.full_name).where(
+        User.id.in_({m.sender_id for m in rows if m.sender_id})))).all()) if rows else {}
+    out = []
+    for m in reversed(rows):
+        o = MessageOut.model_validate(m)
+        o.sender_name = names.get(m.sender_id)
+        out.append(o)
+    return out
 
 
 class SendIn(In):
@@ -193,8 +201,8 @@ async def _send(db: DB, actor: Actor, conv: Conversation, text: str, kind: str =
                           text=text, status="sent" if res.ok else "failed", error=res.error, sender_id=actor.id)
     db.add(msg)
     conv.last_message_at, conv.last_preview, conv.unread = msg.at, text[:255], 0
-    if conv.assignee_id is None:
-        conv.assignee_id = actor.id
+    # Owner's rule 21.11.2026: who answers the client leads this chat, the client's next messages come to him.
+    conv.assignee_id = actor.id
     if contact.lead_id:
         lead = await db.get(Lead, contact.lead_id)
         if lead:
@@ -211,6 +219,9 @@ async def _send(db: DB, actor: Actor, conv: Conversation, text: str, kind: str =
             contacted = await stage_by_code(db, "main", "contacted")
             if st and st.code == "new" and contacted:
                 await move(db, lead, contacted, actor.id, "Ответили в " + ("WhatsApp" if conv.channel == "whatsapp" else "Instagram"))
+            from app.services.crm import worked
+
+            await worked(db, lead, actor.id)
     await db.flush()
     return msg
 

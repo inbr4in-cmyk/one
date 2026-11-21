@@ -18,7 +18,8 @@ from app.core.audit import write_audit
 from app.core.db import SessionLocal
 from app.core.kv import get_kv
 from app.models import (
-    Attendance, BalanceEntry, Complaint, Expense, Freeze, GroupMember, Lead, LeadStage, Lesson, Student, Task, TaskAssignee,
+    Attendance, BalanceEntry, Complaint, Expense, Freeze, GroupMember, Lead, LeadEvent, LeadStage, Lesson, Student, Task,
+    TaskAssignee,
 )
 from app.models.learning import AttendanceStatus
 from app.models.work import TaskStatus
@@ -94,6 +95,82 @@ async def stale_leads(db: AsyncSession) -> int:
     return sent
 
 
+def _day_time(t: datetime) -> bool:
+    return 9 <= local(t).hour < 21  # nobody is pinged about idle leads at night
+
+
+async def lead_control(db: AsyncSession) -> dict:
+    """Owner's rules 21.11.2026. (1) The client did not come to the trial: the responsible manager is told at once and
+    has the stage's hours to get in touch. (2) A deadline missed on any timed stage: the lead becomes free, every
+    manager of the branch sees it and is told; who works it first becomes responsible. (3) A lead with no note and no
+    task for N hours: its manager is told to work it."""
+    from app.models import Attendance
+    from app.models.learning import AttendanceStatus
+    from app.services import crm
+
+    t = now()
+    out = {"noshow": 0, "freed": 0, "idle": 0}
+    booked = await crm.stage_by_code(db, "main", "trial_booked")
+    if booked and booked.work_hours:
+        rows = (await db.execute(select(Lead, Lesson).join(Lesson, Lesson.id == Lead.trial_lesson_id).where(
+            Lead.stage_id == booked.id, Lead.archived_at.is_(None), Lead.work_due_at.is_(None), Lead.free_since.is_(None),
+            Lesson.ends_at <= t, Lesson.ends_at > t - timedelta(days=2), Lesson.status != LessonStatus.CANCELLED))).all()
+        for lead, lesson in rows:
+            att = await db.scalar(select(Attendance.status).where(Attendance.lesson_id == lesson.id, Attendance.lead_id == lead.id))
+            if att in (AttendanceStatus.PRESENT, AttendanceStatus.LATE):
+                continue
+            if att is None and lesson.attendance_marked_at is None and lesson.ends_at > t - timedelta(hours=1):
+                continue  # the teacher has an hour to mark who came
+            if not await once(f"noshow:{lead.id}:{lesson.id}"):
+                continue
+            when = local(lesson.starts_at).strftime("%d.%m %H:%M")
+            lead.work_due_at = t + timedelta(hours=booked.work_hours)
+            db.add(LeadEvent(lead_id=lead.id, at=t, kind="trial", text=f"Не пришёл на пробный {when}", actor_id=None,
+                             meta={"lesson_id": lesson.id, "noshow": True}))
+            for uid in [lead.assignee_id] if lead.assignee_id else await crm_people(db, lead.branch_id, "crm"):
+                await crm.alert(db, uid, "lead", f"{lead.full_name} не пришёл на пробный",
+                                body="Свяжитесь с клиентом: узнайте причину, запишите на другой день и оставьте заметку",
+                                link=f"/crm/leads/{lead.id}")
+            out["noshow"] += 1
+    rows = (await db.execute(select(Lead, LeadStage).join(LeadStage, LeadStage.id == Lead.stage_id).where(
+        Lead.archived_at.is_(None), Lead.free_since.is_(None), Lead.work_due_at <= t,
+        LeadStage.is_won.is_(False), LeadStage.is_lost.is_(False)).limit(200))).all()
+    for lead, stage in rows:
+        lead.free_since, lead.work_due_at = t, None
+        db.add(LeadEvent(lead_id=lead.id, at=t, kind="note", actor_id=None, meta={"free": True},
+                         text=f"Лид свободен: на этапе «{stage.name}» с ним не поработали вовремя"))
+        for uid in await crm_people(db, lead.branch_id, "crm"):
+            await crm.alert(db, uid, "lead", f"Свободный лид: {lead.full_name}",
+                            body=f"«{stage.name}». Кто первым поработает с лидом, тот станет ответственным",
+                            link=f"/crm/leads/{lead.id}")
+        out["freed"] += 1
+    hours = int(await setting(db, "lead_idle_hours") or 0)
+    if hours and _day_time(t):
+        has_note = select(LeadEvent.id).where(LeadEvent.lead_id == Lead.id, crm.manual_event()).exists()
+        has_task = select(Task.id).where(Task.link_type == "lead", Task.link_id == Lead.id, Task.archived_at.is_(None),
+                                         Task.status.not_in((TaskStatus.DONE, TaskStatus.CANCELLED))).exists()
+        leads = list(await db.scalars(select(Lead).join(LeadStage, LeadStage.id == Lead.stage_id).where(
+            Lead.archived_at.is_(None), Lead.free_since.is_(None), LeadStage.is_won.is_(False), LeadStage.is_lost.is_(False),
+            Lead.created_at < t - timedelta(hours=hours), Lead.stage_changed_at < t - timedelta(hours=hours),
+            ~has_note, ~has_task).order_by(Lead.id).limit(300)))
+        per_user: dict[int, list[Lead]] = {}
+        for lead in leads:
+            if not await once(f"lead-idle:{lead.id}", 30 * DAY):
+                continue
+            for uid in [lead.assignee_id] if lead.assignee_id else await crm_people(db, lead.branch_id, "crm"):
+                per_user.setdefault(uid, []).append(lead)
+            out["idle"] += 1
+        for uid, mine in per_user.items():
+            if len(mine) > 3:  # a long list comes as one line, not as a flood
+                await crm.alert(db, uid, "lead_stale", f"Лиды без заметки и задачи: {len(mine)}",
+                                body="Поработайте с этими лидами и оставьте заметку", link="/crm")
+                continue
+            for lead in mine:
+                await crm.alert(db, uid, "lead_stale", f"Поработайте с лидом: {lead.full_name}",
+                                body=f"Больше {hours} ч без заметки и задачи", link=f"/crm/leads/{lead.id}")
+    return out
+
+
 async def overdue_tasks(db: AsyncSession) -> int:
     rows = await db.scalars(select(Task).where(
         Task.archived_at.is_(None), Task.due_at < now(), Task.due_at > now() - timedelta(days=7),
@@ -128,7 +205,7 @@ async def complaint_deadlines(db: AsyncSession) -> int:
 
 async def minutely(db: AsyncSession) -> dict:
     out = {"attendance": await attendance_reminders(db), "stale_leads": await stale_leads(db),
-           "overdue_tasks": await overdue_tasks(db), "complaints": await complaint_deadlines(db)}
+           "overdue_tasks": await overdue_tasks(db), "lead_control": await lead_control(db), "complaints": await complaint_deadlines(db)}
     await db.commit()
     out["wa_retried"] = await retry_failed(db)
     await db.commit()

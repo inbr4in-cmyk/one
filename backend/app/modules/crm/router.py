@@ -44,6 +44,7 @@ class StageOut(ORM):
     is_won: bool
     is_lost: bool
     stale_after_hours: int | None = None
+    work_hours: int | None = None
     # Built-in stages drive automation (trial booked, paid...): they can be renamed and recoloured, not removed.
     system: bool = False
 
@@ -122,6 +123,11 @@ class LeadCard(BaseModel):
     existing_student: dict | None = None  # a student (or a student's parent) already has this phone
     can_edit: bool = True  # False: the admin left this funnel stage to me for viewing only
     assignee_name: str | None = None
+    unanswered: bool = False  # the client wrote last and nobody has answered yet
+    free: bool = False  # the manager missed the deadline: every manager sees the lead, who works it first takes it
+    work_due_at: datetime | None = None
+    last_note: str | None = None  # the newest note / call written by a manager
+    last_note_at: datetime | None = None
 
 
 class EventOut(ORM):
@@ -155,7 +161,8 @@ async def _cards(db: DB, actor: Actor, leads: list[Lead]) -> list[LeadCard]:
     owners = dict((await db.execute(select(User.id, User.full_name).where(
         User.id.in_({x.owner_id for x in leads if x.owner_id} | {x.assignee_id for x in leads if x.assignee_id})))).all())
     conv_rows = (await db.execute(
-        select(Conversation.id, Conversation.channel, Conversation.last_inbound_at, Conversation.unread, ExternalContact.lead_id)
+        select(Conversation.id, Conversation.channel, Conversation.last_inbound_at, Conversation.unread, ExternalContact.lead_id,
+               Conversation.last_message_at)
         .join(ExternalContact, ExternalContact.id == Conversation.contact_id)
         .where(ExternalContact.lead_id.in_([x.id for x in leads]))
     )).all()
@@ -164,6 +171,10 @@ async def _cards(db: DB, actor: Actor, leads: list[Lead]) -> list[LeadCard]:
         select(Lesson.id, Lesson.starts_at, User.full_name)
         .outerjoin(User, User.id == func.coalesce(Lesson.actual_teacher_id, Lesson.teacher_id))
         .where(Lesson.id.in_({x.trial_lesson_id for x in leads if x.trial_lesson_id})))).all()}
+    notes: dict[int, LeadEvent] = {}
+    for e in await db.scalars(select(LeadEvent).where(LeadEvent.lead_id.in_([x.id for x in leads]), crm_svc.manual_event())
+                              .order_by(LeadEvent.id)):
+        notes[e.lead_id] = e
     warn_min = int(await setting(db, "lead_first_reply_warn_min") or 30)
     out = []
     t = now()
@@ -177,8 +188,12 @@ async def _cards(db: DB, actor: Actor, leads: list[Lead]) -> list[LeadCard]:
         if tr := trials.get(x.trial_lesson_id):
             c.trial_at, c.trial_teacher = tr[1], tr[2]
         conv = by_lead.get(x.id)
+        c.free = x.free_since is not None
+        if n := notes.get(x.id):
+            c.last_note, c.last_note_at = (n.text or "")[:200], n.at
         if conv:
             c.conversation_id, c.channel = conv[0], conv[1]
+            c.unanswered = bool(conv[2] and conv[5] and conv[5] <= conv[2] and not (st and (st.is_won or st.is_lost)))
             if conv[3] and conv[2]:
                 c.waiting_min = int((t - conv[2]).total_seconds() // 60)
         elif st and st.code == "new":
@@ -214,6 +229,8 @@ class StageIn(In):
     name: str = Field(min_length=1, max_length=120)
     color: str = Field(default="#5B6782", pattern=r"^#[0-9A-Fa-f]{6}$")
     stale_after_hours: int | None = Field(default=None, ge=1, le=24 * 365)
+    # hours for the manager to work a lead on this stage, then the lead is free for everyone; empty = no control
+    work_hours: int | None = Field(default=None, ge=1, le=24 * 30)
 
 
 @router.post("/pipelines/{pipeline_id}/stages", response_model=StageOut, status_code=201)
@@ -227,7 +244,7 @@ async def add_stage(pipeline_id: int, body: StageIn, db: DB, actor: Actor = requ
     pos = next((i for i, x in enumerate(stages) if x.is_won or x.is_lost), len(stages))
     n = await db.scalar(select(func.count()).select_from(LeadStage).where(LeadStage.pipeline_id == p.id))
     st = LeadStage(pipeline_id=p.id, name=body.name.strip(), code=f"custom_{p.id}_{n + 1}", color=body.color,
-                   stale_after_hours=body.stale_after_hours, order=pos)
+                   stale_after_hours=body.stale_after_hours, work_hours=body.work_hours, order=pos)
     stages.insert(pos, st)
     db.add(st)
     for i, x in enumerate(stages):
@@ -244,8 +261,10 @@ async def edit_stage(stage_id: int, body: StageIn, db: DB, actor: Actor = requir
     st = await db.get(LeadStage, stage_id)
     if st is None or st.archived_at is not None:
         raise not_found("Этап")
-    before = snapshot(st, ["name", "color", "stale_after_hours"])
+    before = snapshot(st, ["name", "color", "stale_after_hours", "work_hours"])
     st.name, st.color, st.stale_after_hours = body.name.strip(), body.color, body.stale_after_hours
+    if not (st.is_won or st.is_lost):
+        st.work_hours = body.work_hours
     b, a = diff(before, snapshot(st, list(before)))
     await write_audit(db, actor_id=actor.id, action="lead_stage.update", entity="lead_stage", entity_id=st.id, ip=actor.ip,
                       before=b, after=a)
@@ -380,6 +399,8 @@ async def patch_lead(lead_id: int, body: LeadPatch, db: DB, actor: Actor = requi
     for k in ("phone", "parent_phone"):
         if data.get(k):
             data[k] = normalize_phone(data[k])
+    if data.get("assignee_id") and data["assignee_id"] != lead.assignee_id:
+        lead.free_since = None  # a responsible person was named by hand
     for k, v in data.items():
         setattr(lead, k, v)
     lead.last_activity_at = now()
@@ -413,6 +434,8 @@ async def change_stage(lead_id: int, body: StageIn, db: DB, actor: Actor = requi
     if st.code == "trial_done":
         raise bad_request("«Пришёл на пробный» ставит учитель отметкой посещаемости")
     lead.lost_reason = body.lost_reason if st.is_lost else None
+    if st.id != lead.stage_id:
+        await crm_svc.worked(db, lead, actor.id)
     await crm_svc.move(db, lead, st, actor.id, f"{st.name}" + (f": {body.lost_reason}" if body.lost_reason else ""))
     await write_audit(db, actor_id=actor.id, action="lead.stage", entity="lead", entity_id=lead.id, branch_id=lead.branch_id,
                       ip=actor.ip, after={"stage": st.code, "reason": body.lost_reason})
@@ -440,6 +463,7 @@ async def add_event(lead_id: int, body: EventIn, db: DB, actor: Actor = require(
         cur = await db.get(LeadStage, lead.stage_id)
         if contacted and cur and cur.code == "new":
             await crm_svc.move(db, lead, contacted, actor.id)
+    await crm_svc.worked(db, lead, actor.id)
     await db.commit()
     return EventOut.model_validate(e)
 
@@ -513,6 +537,7 @@ async def _book_trial(db: DB, actor: Actor, lead: Lead, lesson: Lesson, notify: 
                          actor_id=actor.id, meta={"lesson_id": lesson.id}))
     await crm_svc.move(db, lead, st, actor.id, f"Записан на пробный {loc:%d.%m %H:%M}"
                        + (" (индивидуально)" if lesson.is_trial else ""))
+    await crm_svc.worked(db, lead, actor.id)
     if notify and lesson.starts_at > now() and (lead.phone or lead.parent_phone):
         await send_whatsapp_text(db, lead.parent_phone or lead.phone,
                                  f"Здравствуйте! {lead.full_name} записан(а) на пробный урок {loc:%d.%m} в {loc:%H:%M}. "

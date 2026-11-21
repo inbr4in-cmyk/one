@@ -66,3 +66,34 @@ export const docsApi = {
   revoke: (id: number) => http.post<void>(`/consents/${id}/revoke`),
   missing: (branch_id?: number | null) => http.get<{ student_id: number; full_name: string; branch_id: number }[]>(`/consents/status${qs({ branch_id })}`),
 }
+
+/** A file for one kind of user (a staff role, parents, students): read and accepted once. */
+export interface UserDoc {
+  id: number
+  audience: string
+  title: string
+  file_name: string
+  url: string | null
+  created_at: string
+  accepted?: number
+}
+export interface UserDocAccept {
+  id: number
+  doc_id: number
+  title: string
+  audience: string
+  audience_name: string
+  removed: boolean
+  user_id: number
+  user_name: string
+  accepted_at: string
+  ip: string | null
+}
+export const userDocsApi = {
+  list: () => http.get<{ audiences: { code: string; name: string }[]; max: number; docs: UserDoc[] }>('/user-docs'),
+  add: (body: { audience: string; title: string; file_key: string; file_name: string }) => http.post<UserDoc>('/user-docs', body, { silent: true }),
+  remove: (id: number) => http.delete(`/user-docs/${id}`),
+  pending: () => http.get<UserDoc[]>('/user-docs/pending', { silent: true }),
+  accept: (doc_ids: number[]) => http.post<void>('/user-docs/accept', { doc_ids }),
+  journal: () => http.get<UserDocAccept[]>('/user-docs/journal'),
+}

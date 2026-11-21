@@ -31,6 +31,7 @@ class Payment(IdMixin, TimestampMixin, Base):
     lesson_price: Mapped[Money]
     method: Mapped[str] = mapped_column(String(16))
     received_by: Mapped[int] = fk("users.id")
+    seller_id: Mapped[int | None] = fk("users.id", nullable=True)  # who sold (picked by the person taking the money)
     paid_at: Mapped[DT]
     refunded: Mapped[Money]
     # First paid course payment after a trial = "sale" (KPI for office manager).

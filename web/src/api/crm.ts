@@ -13,6 +13,8 @@ export interface Stage {
   is_won: boolean
   is_lost: boolean
   stale_after_hours?: number | null
+  /** hours the manager has to work a lead on this stage, then every manager sees it */
+  work_hours?: number | null
   /** built-in: renamed and recoloured, never removed */
   system?: boolean
 }
@@ -21,6 +23,7 @@ export interface StageIn {
   name: string
   color: string
   stale_after_hours: number | null
+  work_hours?: number | null
 }
 
 export interface Pipeline {
@@ -58,6 +61,12 @@ export interface Lead {
   notes: string | null
   is_hot: boolean
   created_at: string
+  /** the client wrote last, nobody answered */
+  unanswered?: boolean
+  /** the manager missed the deadline: any manager may take the lead */
+  free?: boolean
+  last_note?: string | null
+  last_note_at?: string | null
   stale: boolean
   waiting_min: number | null
   channel: string | null

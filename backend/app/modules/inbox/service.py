@@ -109,11 +109,15 @@ async def receive(db: AsyncSession, *, channel: str, external_id: str, message_i
         lead.last_activity_at = t
         db.add(LeadEvent(lead_id=lead.id, at=t, kind="message", text=conv.last_preview, actor_id=None, meta={"channel": channel}))
     await db.flush()
-    targets = [conv.assignee_id] if conv.assignee_id else await crm_people(db, branch_id, "inbox")
-    for uid in targets:
-        if uid and conv.unread == 1:
-            await notify_user(db, uid, "inbox", f"{contact.display_name or 'Новое сообщение'}: {conv.last_preview[:80]}",
-                              link=f"/inbox/{conv.id}", meta_={"channel": channel})
+    title = f"{contact.display_name or (lead.full_name if lead else None) or 'Новое сообщение'}: {conv.last_preview[:80]}"
+    if conv.assignee_id:
+        # The manager who answers this client gets every next message on the screen at once (owner, 21.11.2026).
+        from app.services.crm import alert
+
+        await alert(db, conv.assignee_id, "inbox", title, link=f"/inbox/{conv.id}")
+    elif conv.unread == 1:
+        for uid in await crm_people(db, branch_id, "inbox"):
+            await notify_user(db, uid, "inbox", title, link=f"/inbox/{conv.id}", meta_={"channel": channel})
     for b in [branch_id] if branch_id else await db.scalars(select(Branch.id).where(Branch.archived_at.is_(None))):
         await publish(f"inbox:branch:{b}", {"type": "inbox.message", "conversation_id": conv.id, "message_id": msg.id})
     return msg

@@ -7,6 +7,8 @@ export interface Toast {
   id: number
   text: string
   tone: ToastTone
+  /** in-app path opened by a click on the toast */
+  link?: string
 }
 
 const DURATION = 4000
@@ -23,11 +25,11 @@ export const useToastStore = defineStore('toast', () => {
     timers.delete(id)
   }
 
-  function show(text: string, tone: ToastTone = 'info', duration = DURATION) {
+  function show(text: string, tone: ToastTone = 'info', duration = DURATION, link?: string) {
     // The same message twice in a row (e.g. several failed requests) is shown once.
     if (items.value.some((t) => t.text === text)) return
     const id = ++seq
-    items.value = [...items.value.slice(-(MAX - 1)), { id, text, tone }]
+    items.value = [...items.value.slice(-(MAX - 1)), { id, text, tone, link }]
     // duration 0 = stays until closed (save errors must not slip by unnoticed)
     if (duration > 0) timers.set(id, setTimeout(() => dismiss(id), duration))
   }

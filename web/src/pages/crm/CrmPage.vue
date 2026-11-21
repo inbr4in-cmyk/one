@@ -36,6 +36,7 @@ const q = ref('')
 const source = ref('')
 const owner = ref(0)
 const waitingOnly = ref(false)
+const freeOnly = ref(false)
 const creating = ref(false)
 const openId = ref<number | null>(Number(route.query.lead) || null)
 const dragId = ref<number | null>(null)
@@ -63,7 +64,8 @@ const owners = computed(() => {
 const ownerOptions = computed(() => [{ value: 0, label: t('crm.allOwners') }, ...owners.value.map(([id, name]) => ({ value: id, label: name }))])
 const waitingCount = computed(() => board.value?.columns.reduce((a, c) => a + c.leads.filter(isWaiting).length, 0) ?? 0)
 const isWaiting = (l: Lead) => l.waiting_min !== null && l.waiting_min > 30
-const visible = (leads: Lead[]) => (waitingOnly.value ? leads.filter(isWaiting) : leads)
+const freeCount = computed(() => board.value?.columns.reduce((a, c) => a + c.leads.filter((l) => l.free).length, 0) ?? 0)
+const visible = (leads: Lead[]) => leads.filter((l) => (!waitingOnly.value || isWaiting(l)) && (!freeOnly.value || l.free))
 const stageName = (s: Stage) => (te(`crm.stage.${s.code}`) ? t(`crm.stage.${s.code}`) : s.name)
 
 async function load() {
@@ -89,6 +91,12 @@ watch(openId, (id) => router.replace({ query: { ...route.query, lead: id ?? unde
 onMounted(async () => {
   pipelines.value = await crmApi.pipelines().catch(() => [])
   load()
+})
+// A lead became free or somebody took it: the board follows.
+useRealtime('alert', (e) => {
+  if (e.kind !== 'lead') return
+  clearTimeout(timer)
+  timer = setTimeout(load, 800)
 })
 // New DMs create leads and move "waiting" timers.
 useRealtime('inbox.message', () => {
@@ -204,6 +212,9 @@ function onCardKey(e: KeyboardEvent, l: Lead) {
       <button v-if="waitingCount || waitingOnly" type="button" class="tgl danger" :aria-pressed="waitingOnly" @click="waitingOnly = !waitingOnly">
         <UiIcon name="clock" :size="16" />{{ t('crm.waiting', { n: waitingCount }) }}
       </button>
+      <button v-if="freeCount || freeOnly" type="button" class="tgl danger" :aria-pressed="freeOnly" @click="freeOnly = !freeOnly">
+        <UiIcon name="zap" :size="16" />{{ t('nv.lw.freeN', { n: freeCount }) }}
+      </button>
     </div>
 
     <div class="scroll-x">
@@ -221,7 +232,7 @@ function onCardKey(e: KeyboardEvent, l: Lead) {
           </div>
           <TransitionGroup name="fade" tag="div" class="col-b">
             <article
-              v-for="l in visible(c.leads)" :key="l.id" class="lead" :class="{ hot: isWaiting(l), dragging: dragId === l.id, star: l.is_hot }"
+              v-for="l in visible(c.leads)" :key="l.id" class="lead" :class="{ hot: isWaiting(l), dragging: dragId === l.id, star: l.is_hot, unans: l.unanswered || isWaiting(l), free: l.free }"
               :draggable="auth.can('crm.edit')" tabindex="0" role="button" :aria-label="l.full_name"
               @dragstart="onDragStart($event, l)" @dragend="onDragEnd" @click="openId = l.id" @keydown="onCardKey($event, l)"
             >
@@ -237,11 +248,14 @@ function onCardKey(e: KeyboardEvent, l: Lead) {
                 <template v-else-if="l.phone">{{ formatPhone(l.phone) }}</template>
                 <template v-else-if="l.age">{{ t('students.age', { n: l.age }) }}</template>
               </div>
+              <div v-if="l.free" class="freeline"><UiIcon name="zap" :size="14" />{{ t('nv.lw.free') }}</div>
+              <div v-if="l.last_note" class="lnote" :title="l.last_note">{{ l.last_note }}</div>
               <div class="r3">
                 <LevelTag v-if="l.level_id" :id="l.level_id" /><span v-else class="muted" style="font-size: 12px">{{ t('crm.noLevel') }}</span>
                 <span class="sp" />
                 <UiIcon v-if="l.is_hot" name="zap" :size="14" class="redc" />
                 <span v-if="l.waiting_min !== null" class="wait" :class="{ bad: isWaiting(l) }"><UiIcon name="clock" :size="16" />{{ isWaiting(l) ? `${waitLabel(l.waiting_min, units)} ${t('crm.noReply')}` : waitLabel(l.waiting_min, units) }}</span>
+                <span v-else-if="l.unanswered" class="wait bad">{{ t('crm.noReply') }}</span>
                 <span v-else-if="l.stale" class="wait bad">{{ t('crm.stale') }}</span>
               </div>
             </article>

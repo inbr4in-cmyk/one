@@ -237,6 +237,7 @@ import { safeUrl } from '@/utils/url'
             <span v-if="m.newDay" class="day">{{ dayTitle(m.at, loc, t('chats.today'), t('chats.yesterday')) }}</span>
             <div class="b" :class="[m.direction, { failed: m.status === 'failed', tpl: m.kind === 'template' }]">
               <span v-if="m.kind === 'template'" class="by"><UiIcon name="zap" :size="14" /> {{ t('inbox.template') }}</span>
+              <span v-if="m.direction === 'out' && m.sender_name" class="by">{{ m.sender_name }}</span>
               <img v-if="m.media_url && m.kind === 'image'" :src="m.media_url" alt="" class="photo" loading="lazy" />
               <a v-else-if="safeUrl(m.media_url)" :href="safeUrl(m.media_url)!" target="_blank" rel="noopener" class="file"><span class="fi">{{ m.kind.toUpperCase().slice(0, 3) }}</span>{{ t('chats.file') }}</a>
               <span class="pre">{{ m.text }}</span>

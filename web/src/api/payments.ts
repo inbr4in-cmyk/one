@@ -20,6 +20,8 @@ export interface PaymentIn {
   paid_on?: string | null
   /** a subscription bought earlier: lessons of it already used before the school moved to the site */
   used_lessons?: number
+  /** who sold: the sale bonus goes to this manager */
+  seller_id?: number | null
 }
 
 export interface Quote {

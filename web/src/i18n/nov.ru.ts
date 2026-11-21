@@ -1,6 +1,34 @@
 /** Requests of 14.11: leave via the methodist, book out of a payment, pay breakdown, finance by dates. */
 export default {
   nv: {
+    udoc: {
+      title: 'Документы для пользователей',
+      audience: 'Для кого',
+      none: 'Файлов пока нет',
+      name: 'Название',
+      file: 'Файл',
+      pickFile: 'Выберите файл',
+      add: 'Загрузить файл',
+      open: 'Открыть',
+      acceptedN: 'согласились: {n}',
+      journal: 'Журнал согласий',
+      who: 'Кто',
+      when: 'Когда',
+      removed: 'удалён',
+      removeTitle: 'Удалить файл?',
+      gateTitle: 'Прочитайте документы школы',
+      agree: 'Я прочитал(а) и согласен(а)',
+      accept: 'Согласен',
+    },
+    lw: {
+      free: 'Свободный лид',
+      freeN: 'Свободные: {n}',
+      freeHint: 'Кто первым поработает, тот станет ответственным',
+      workHours: 'Срок на работу с лидом, часов',
+      workAfter: 'свободен через {n} ч без работы',
+      seller: 'Кто продал',
+      sellerMe: 'Я',
+    },
     join: { title: 'Добавить в группу', since: 'В группе с', action: 'Добавить', done: 'Ученик добавлен в группу' },
     cal: { month: 'Месяц', year: 'Год', frozen: 'Заморозка' },
     payp: {

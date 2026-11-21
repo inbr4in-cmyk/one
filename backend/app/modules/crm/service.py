@@ -16,14 +16,20 @@ def lead_filter(actor: Actor, action: str = "view"):
     if scope == NETWORK:
         cond = true()
     elif scope == OWN:
-        cond = or_(Lead.owner_id == actor.id, Lead.assignee_id == actor.id)
+        cond = or_(Lead.owner_id == actor.id, Lead.assignee_id == actor.id, _free(actor))
     else:
         cond = or_(Lead.branch_id.in_(actor.branch_ids or {-1}), Lead.branch_id.is_(None))  # no branch yet: everyone's
     if actor.stage_hidden:
         cond = and_(cond, Lead.stage_id.notin_(actor.stage_hidden))
     if actor.stage_own:
-        cond = and_(cond, or_(Lead.stage_id.notin_(actor.stage_own), Lead.owner_id == actor.id, Lead.assignee_id == actor.id))
+        cond = and_(cond, or_(Lead.stage_id.notin_(actor.stage_own), Lead.owner_id == actor.id, Lead.assignee_id == actor.id,
+                              Lead.free_since.is_not(None)))
     return cond
+
+
+def _free(actor: Actor):
+    """A free lead (its manager missed the deadline) is open to every manager of the branch."""
+    return and_(Lead.free_since.is_not(None), or_(Lead.branch_id.in_(actor.branch_ids or {-1}), Lead.branch_id.is_(None)))
 
 
 def stage_editable(actor: Actor, stage_id: int) -> bool:

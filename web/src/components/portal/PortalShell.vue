@@ -6,6 +6,7 @@ import { UiAvatar, UiButton, UiEmptyState, UiIcon, UiSkeleton } from '@/componen
 import BrandLogo from '@/components/layout/BrandLogo.vue'
 import NotificationsMenu from '@/components/layout/NotificationsMenu.vue'
 import RulesGate from '@/components/compliance/RulesGate.vue'
+import UserDocsGate from '@/components/compliance/UserDocsGate.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useCountersStore } from '@/stores/counters'
 import { usePortalStore } from '@/stores/portal'
@@ -95,5 +96,6 @@ watch(() => route.name, (n) => n === 'portal-home' && portal.me && portal.load()
       </RouterView>
     </main>
     <RulesGate />
+    <UserDocsGate />
   </div>
 </template>

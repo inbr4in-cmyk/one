@@ -349,6 +349,7 @@ watch(() => props.leadId, (id) => id && load(id), { immediate: true })
         <dt>{{ t('students.form.level') }}</dt>
         <dd><LevelTag v-if="lead.level_id" :id="lead.level_id" full /><UiChip v-else tone="warn" small>{{ t('crm.noTest') }}</UiChip><template v-if="lead.placement_score !== null"> · {{ t('crm.score', { n: lead.placement_score }) }}</template></dd>
         <dt>{{ t('nv.leadOwner') }}</dt><dd>{{ lead.owner_name ?? t('crm.unassigned') }}</dd>
+        <template v-if="lead.free"><dt>{{ t('nv.lw.free') }}</dt><dd class="redc">{{ t('nv.lw.freeHint') }}</dd></template>
         <dt>{{ t('nv.assignee') }}</dt>
         <dd>
           <UiSelect v-if="assigneeOpen" :model-value="lead.assignee_id ?? 0" :options="staffOptions" :label="t('nv.assignee')" size="sm" @update:model-value="setAssignee" />

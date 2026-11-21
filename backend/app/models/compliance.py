@@ -33,6 +33,31 @@ class Consent(IdMixin, Base):
     revoked_at: Mapped[DTN]
 
 
+class UserDoc(IdMixin, TimestampMixin, Base):
+    """A file (rules, instructions) for one kind of user: a staff role, parents or students. Up to two live files per
+    audience; each person of the audience reads and accepts it once (owner, 21.11.2026)."""
+
+    __tablename__ = "user_docs"
+
+    audience: Mapped[str] = mapped_column(String(72), index=True)  # a staff role code | "parent" | "student"
+    title: Mapped[str] = mapped_column(String(255))
+    file_key: Mapped[str] = mapped_column(String(80))
+    file_name: Mapped[str] = mapped_column(String(255))
+    created_by: Mapped[int] = fk("users.id")
+    archived_at: Mapped[DTN]
+
+
+class UserDocAccept(IdMixin, Base):
+    __tablename__ = "user_doc_accepts"
+    __table_args__ = (UniqueConstraint("doc_id", "user_id"),)
+
+    doc_id: Mapped[int] = fk("user_docs.id")
+    user_id: Mapped[int] = fk("users.id")
+    accepted_at: Mapped[DT]
+    ip: Mapped[StrN]
+    user_agent: Mapped[StrN]
+
+
 class Complaint(IdMixin, TimestampMixin, Base):
     """Правила «Порядок жалоб»: ack 24h, answer 3 business days (7 if a check is needed)."""
 
