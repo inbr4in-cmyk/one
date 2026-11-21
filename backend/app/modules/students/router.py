@@ -444,6 +444,23 @@ async def remove_guardian(student_id: int, guardian_id: int, db: DB, actor: Acto
     return await card(db, s, actor)
 
 
+@router.post("/{student_id}/restore", status_code=204)
+async def restore_student(student_id: int, db: DB, actor: Actor = require("students", "archive")) -> None:
+    """«Восстановить из архива» (owner, branch admin): the student is back in the lists with the status he had."""
+    s = await get_student_scoped(db, actor, student_id, "students", "archive")
+    if s.archived_at is None:
+        return
+    if s.phone and await db.scalar(select(Student.id).where(Student.phone == s.phone, Student.archived_at.is_(None), Student.id != s.id)):
+        raise conflict("Ученик с таким телефоном уже есть в списке")
+    if s.contract_no and await db.scalar(select(Student.id).where(Student.contract_no == s.contract_no,
+                                                                   Student.archived_at.is_(None), Student.id != s.id)):
+        raise conflict("Ученик с таким номером договора уже есть в списке")
+    s.archived_at = None
+    await write_audit(db, actor_id=actor.id, action="student.restore", entity="student", entity_id=s.id,
+                      branch_id=s.branch_id, ip=actor.ip)
+    await db.commit()
+
+
 @router.post("/{student_id}/archive", status_code=204)
 async def archive_student(student_id: int, db: DB, actor: Actor = require("students", "archive")) -> None:
     s = await get_student_scoped(db, actor, student_id, "students", "archive")
@@ -485,6 +502,7 @@ SIMPLE_EVENTS = {
     "student.unfreeze": ("freeze", "Заморозка снята"),
     "student.freeze_ended": ("freeze", "Заморозка закончилась"),
     "student.archive": ("status", "Удалён (в архиве)"),
+    "student.restore": ("status", "Восстановлен из архива"),
     "student.leave_request": ("status", "Отмечено, что ученик хочет уйти: задача методисту"),
     "student.leave_decision": ("status", "Решение методиста"),
     "student.guardian_add": ("other", "Добавлен родитель"),

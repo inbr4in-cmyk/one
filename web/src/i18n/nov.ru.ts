@@ -1,6 +1,13 @@
 /** Requests of 14.11: leave via the methodist, book out of a payment, pay breakdown, finance by dates. */
 export default {
   nv: {
+    payp: {
+      total: 'Начислено за месяц', lessons: 'За уроки · {n}', other: 'Оклад, KPI, премии, удержания', paid: 'Выплачено', left: 'Осталось выплатить',
+      byGroup: 'Уроки по группам и дням', group: 'Группа', nLessons: '{n} ур.', perDay: 'Итого за день', noLessons: 'В этом месяце уроков нет',
+      otherLines: 'Остальные начисления', noOther: 'Других начислений нет', payouts: 'Выплаты', noPayouts: 'Выплат за месяц нет', notFound: 'Сотрудник не найден', open: 'Открыть страницу зарплаты',
+      format: { group: 'группа', duo: 'дуэт', individual: 'индивидуально', support: 'support', club: 'открытый урок' },
+    },
+    archive: { tab: 'Архив', restore: 'Восстановить', restored: 'Ученик восстановлен из архива' },
     leadDel: { event: 'Удалить запись истории', eventText: 'Вы точно хотите удалить запись «{text}»? Она исчезнет из истории лида.', eventDone: 'Запись удалена', trial: 'Удалить запись на пробный', trialText: 'Вы точно хотите удалить запись на пробный? Лид вернётся на этап «Связались», и его можно будет записать заново.', trialDone: 'Запись на пробный удалена' },
     cardOnly: 'На этап «{stage}» лид переводится только из карточки лида',
     payType: { label: 'Тип оплаты', all: 'Все', course: 'Курс', book: 'Книга' },

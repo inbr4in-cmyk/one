@@ -253,7 +253,7 @@ async def test_pay_breakdown_and_finance_by_dates(db, client, owner_h):
     pnl = (await client.get(f"/api/finance/pnl?date_from={d}&date_to={d}", headers=owner_h)).json()
     assert pnl["total"]["receipts"] == 36000 and pnl["total"]["refunds"] == 6000 and pnl["total"]["net_revenue"] == 30000
     row = next(x for x in pnl["branches"] if x["branch_id"] == bid)
-    assert row["net_by_category"] == {"course": 30000} and row["payroll"] == 4700
+    assert row["net_by_category"] == {"course": 30000} and row["payroll"] == 0  # earned pay is not an expense until it is paid out
     y = (today() - timedelta(days=1)).isoformat()
     assert (await client.get(f"/api/finance/pnl?date_from={y}&date_to={y}", headers=owner_h)).json()["total"]["receipts"] == 0
 

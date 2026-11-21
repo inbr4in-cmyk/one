@@ -103,6 +103,7 @@ RATES = {
     "teacher_extra_threshold": 5,
     "teacher_individual_lesson": 2000,
     "teacher_duo_lesson": 2500,
+    "teacher_individual_noshow": 1000,
     "teacher_support_lesson": 1000,
     "teacher_club_lesson": 8000,
     "teacher_trial_retention": 500,

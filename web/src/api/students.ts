@@ -147,6 +147,7 @@ export interface StudentFilters {
   level_id?: number | null
   group_id?: number | null
   debt?: boolean
+  archived?: boolean
   limit?: number
   offset?: number
 }
@@ -172,6 +173,7 @@ export const studentsApi = {
     http.post<Student>(`/students/${id}/freeze`, { starts_on, ends_on, reason }),
   unfreeze: (id: number) => http.post<Student>(`/students/${id}/unfreeze`),
   archive: (id: number) => http.post<null>(`/students/${id}/archive`),
+  restore: (id: number) => http.post<null>(`/students/${id}/restore`, {}, { silent: true }),
   tests: (id: number) => http.get<Attempt[]>(`/students/${id}/tests`, { silent: true }),
   attendance: (id: number) => http.get<AttendanceMark[]>(`/students/${id}/attendance`, { silent: true }),
 }

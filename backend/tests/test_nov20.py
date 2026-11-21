@@ -59,9 +59,9 @@ async def test_individual_lesson_is_not_paid_when_the_student_did_not_come(clien
             await db.refresh(a)
         return a.amount if a else 0
 
-    assert await pay("absent") == 0
+    assert await pay("excused") == 0      # asked off, the first time this month: the lesson stays, no pay
     assert await pay("present") == 2000
-    assert await pay("excused") == 0
+    assert await pay("absent") == 1000    # no warning: the lesson is taken, the teacher gets the no-show rate
 
 
 async def test_lead_can_be_corrected_and_becomes_a_student_only_in_the_paid_column(client, db, owner_h):

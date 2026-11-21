@@ -42,11 +42,11 @@ async def test_settle_with_staff_by_parts_goes_to_expenses_and_may_leave_a_debt(
     sheet = (await client.get(f"/api/payroll?period={period}&branch_id={bid}", headers=owner_h)).json()
     me = next(p for p in sheet["people"] if p["user_id"] == teacher.id)
     assert me["paid"] == 3200 and me["left"] == 200
-    # the P&L counts the pay as it is earned, the payout does not come on top of it
+    # the P&L counts only the money paid out, not the pay that is earned
     d = today().isoformat()
     pnl = (await client.get(f"/api/finance/pnl?date_from={d}&date_to={d}", headers=owner_h)).json()
     row = next(x for x in pnl["branches"] if x["branch_id"] == bid)
-    assert row["expenses"] == {} and row["payroll"] == 3400
+    assert row["expenses"] == {"Зарплата": 3200} and row["payroll"] == 0
 
     # an advance: more than earned → the person's debt
     r = await client.post("/api/payroll/payouts", headers=owner_h, json={

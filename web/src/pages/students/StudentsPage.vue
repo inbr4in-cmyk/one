@@ -9,6 +9,7 @@ import StudentCreateDrawer from '@/components/students/StudentCreateDrawer.vue'
 import { studentsApi, STUDENT_STATUSES, type StudentListItem } from '@/api/students'
 import { academicsApi, type Group } from '@/api/academics'
 import { useAuthStore } from '@/stores/auth'
+import { ApiError } from '@/api/http'
 import { useToastStore } from '@/stores/toast'
 import { useBranchStore } from '@/stores/branch'
 import { useRefsStore } from '@/stores/refs'
@@ -46,7 +47,10 @@ const columns = computed<TableColumn[]>(() => [
   { key: 'status', label: t('students.col.status') },
   ...(auth.can('students.archive') ? [{ key: 'actions', label: '', align: 'right' as const }] : []),
 ])
-const statusOptions = computed(() => [{ value: '', label: t('students.allStatuses') }, ...STUDENT_STATUSES.map((s) => ({ value: s, label: t(`students.status.${s}`) }))])
+/** «Архив» sits in the status filter: students removed from the lists, finished long ago in the old CRM among them. */
+const ARCHIVE = 'archived'
+const statusOptions = computed(() => [{ value: '', label: t('students.allStatuses') }, ...STUDENT_STATUSES.map((s) => ({ value: s, label: t(`students.status.${s}`) })),
+  { value: ARCHIVE, label: t('nv.archive.tab') }])
 const levelOptions = computed(() => [{ value: 0, label: t('students.allLevels') }, ...refs.levels.map((l) => ({ value: l.id, label: l.name }))])
 const groupOptions = computed(() => [{ value: 0, label: t('students.allGroups') }, ...groups.value.map((g) => ({ value: g.id, label: g.name }))])
 
@@ -67,6 +71,16 @@ async function doDelete() {
   }
 }
 
+async function restore(row: StudentListItem) {
+  try {
+    await studentsApi.restore(row.id)
+    toast.ok(t('nv.archive.restored'))
+    await load()
+  } catch (e) {
+    toast.error(e instanceof ApiError ? e.detail || t('errors.generic') : t('errors.generic'))
+  }
+}
+
 async function load() {
   const my = ++seq
   loading.value = true
@@ -74,7 +88,8 @@ async function load() {
     const page = await studentsApi.list({
       q: f.q.trim() || undefined,
       branch_id: branch.filterId,
-      status: f.status || undefined,
+      status: f.status === ARCHIVE ? undefined : f.status || undefined,
+      archived: f.status === ARCHIVE ? true : undefined,
       level_id: f.level_id || null,
       group_id: f.group_id || null,
       debt: f.debt,
@@ -155,7 +170,8 @@ function resetFilters() {
         <UiChip v-if="row.lessons_left <= 0 && row.status === 'active'" tone="red" small>{{ t('students.debt') }}</UiChip>
       </template>
       <template #cell-actions="{ row }">
-        <UiButton size="sm" variant="ghost" danger icon="delete" :aria-label="`${t('students.archive')}: ${row.full_name}`" @click.stop="del = row" />
+        <UiButton v-if="f.status === ARCHIVE" size="sm" variant="ghost" icon="history" @click.stop="restore(row)">{{ t('nv.archive.restore') }}</UiButton>
+        <UiButton v-else size="sm" variant="ghost" danger icon="delete" :aria-label="`${t('students.archive')}: ${row.full_name}`" @click.stop="del = row" />
       </template>
       <template #empty>
         <UiEmptyState icon="users" :title="t('students.empty')" :text="hasFilters ? t('students.emptyFiltered') : undefined" />

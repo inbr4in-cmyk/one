@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { UiAvatar, UiButton, UiCard, UiChip, UiDrawer, UiEmptyState, UiPeriod, UiPrompt, UiSkeleton, UiTabs } from '@/components/ui'
 import SettleModal from '@/components/ops/SettleModal.vue'
 import TimesheetGrid from '@/components/ops/TimesheetGrid.vue'
@@ -23,6 +23,7 @@ const refs = useRefsStore()
 refs.load()
 const toast = useToastStore()
 const route = useRoute()
+const router = useRouter()
 const loc = computed(() => locale.value as Locale)
 
 /** Own-scope payroll.view is "my pay" only; branch or network scope also sees the sheet. */
@@ -134,7 +135,7 @@ const signed = (n: number) => (n > 0 ? `+${money(n, loc.value)}` : n < 0 ? `−$
       <template #actions><b v-if="sheet" class="num">{{ money(sheet.total, loc) }}</b></template>
       <div v-if="!sheet" class="card-pad"><UiSkeleton :lines="5" /></div>
       <div v-else-if="sheet.people.length" class="card-b lr-list">
-        <button v-for="p in sheet.people" :key="p.user_id" type="button" class="list-row pick" @click="openPerson(p)">
+        <button v-for="p in sheet.people" :key="p.user_id" type="button" class="list-row pick" @click="router.push({ name: 'payroll-person', params: { id: p.user_id }, query: { period } })">
           <UiAvatar :name="p.full_name" />
           <div class="grow">
             <b>{{ p.full_name }}</b>

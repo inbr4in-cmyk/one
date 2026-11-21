@@ -34,7 +34,7 @@ from app.modules.academics import schedule as sched
 from app.modules.students.router import is_frozen_on
 from app.modules.students.scope import get_student_scoped
 from app.services import balance as bal
-from app.services import chats, crm, retention
+from app.services import absences, chats, crm, retention
 from app.services.clock import at_local, end_of_local_day, local, now, today
 from app.services.coins import award_auto
 from app.services.messaging import notify_guardians
@@ -939,6 +939,19 @@ async def _two_absences(db: DB, s: Student, lesson: Lesson, group: Group | None,
         actor_id)
 
 
+async def accrue_for_lesson(db, lesson: Lesson, actor_id: int | None) -> int:
+    """Teacher pay of a held lesson from its marks. N = present + late (+ trial visitors if configured)."""
+    group = await db.get(Group, lesson.group_id) if lesson.group_id else None
+    trial_counts = bool(await setting(db, "trial_counts_in_n"))
+    n = sum(1 for x in await db.scalars(select(Attendance).where(Attendance.lesson_id == lesson.id))
+            if x.status in (AttendanceStatus.PRESENT, AttendanceStatus.LATE) and (x.student_id or trial_counts))
+    await accrue_lesson(db, teacher_id=lesson.actual_teacher_id or lesson.teacher_id, lesson_id=lesson.id, n=n,
+                        on=local(lesson.starts_at).date(), branch_id=lesson.branch_id,
+                        group_name=group.name if group else ("Support" + (f" «{lesson.topic}»" if lesson.topic else "")) if lesson.is_support else "индивидуально",
+                        actor_id=actor_id, kind="support" if lesson.is_support else group.kind if group else "individual")
+    return n
+
+
 def _charged(status: str, charge_absent: bool, charge_late: bool) -> bool:
     return status == AttendanceStatus.PRESENT or (status == AttendanceStatus.LATE and charge_late) or (
         status == AttendanceStatus.ABSENT and charge_absent)
@@ -962,6 +975,7 @@ async def mark(lesson_id: int, body: MarksIn, db: DB, actor: Actor = require("at
     allowed_students = {r.student_id for r in (await roster(lesson.id, db, actor)).rows if r.student_id}
     allowed_leads = set((await db.scalars(select(Lead.id).where(Lead.trial_lesson_id == lesson.id))).all())
     changes = []
+    excused_touched: set[int] = set()
     for m in body.marks:
         if m.status not in AttendanceStatus.ALL:
             raise bad_request(f"Неизвестный статус {m.status}")
@@ -987,6 +1001,10 @@ async def mark(lesson_id: int, body: MarksIn, db: DB, actor: Actor = require("at
             star_delta = m.stars - a.stars
             a.stars = m.stars
             s.stars += star_delta
+            if AttendanceStatus.EXCUSED in (m.status, old_status) and not lesson.is_support:
+                excused_touched.add(s.id)  # one free excused absence a month: settled for the whole month below
+            if m.status == AttendanceStatus.EXCUSED and a.charged and loc.date() >= absences.RULE_FROM and not lesson.is_support:
+                want = True  # stays as it is until the month is settled below (no refund-and-charge-again lines)
             if want != a.charged:
                 await bal.apply(db, s, "lesson", lessons=-1 if want else 1, price=s.balance_lesson_price,
                                 ref=("attendance", lesson.id), actor_id=actor.id, counts_as_done=True,
@@ -1016,19 +1034,23 @@ async def mark(lesson_id: int, body: MarksIn, db: DB, actor: Actor = require("at
         if old_status != m.status:
             changes.append({"student_id": m.student_id, "lead_id": m.lead_id, "from": old_status, "to": m.status})
     await db.flush()
-    # Lesson held → teacher pay. N = present + late (+ trial visitors if configured).
-    all_marks = list(await db.scalars(select(Attendance).where(Attendance.lesson_id == lesson.id)))
-    n = sum(1 for x in all_marks if x.status in (AttendanceStatus.PRESENT, AttendanceStatus.LATE)
-            and (x.student_id or trial_counts))
+    # The first excused absence of the month is free, the next ones are charged; a change here can move the free
+    # one to another lesson of the month, whose teacher pay (individual lesson) then follows.
+    other_lessons: set[int] = set()
+    for sid in excused_touched:
+        other_lessons.update(await absences.rebalance_excused(db, await db.get(Student, sid), loc.date(), actor.id))
     first_mark = lesson.attendance_marked_at is None
     lesson.status = LessonStatus.DONE
     lesson.attendance_marked_at = lesson.attendance_marked_at or now()
     if body.topic:
         lesson.topic = body.topic
-    await accrue_lesson(db, teacher_id=lesson.actual_teacher_id or lesson.teacher_id, lesson_id=lesson.id, n=n,
-                        on=loc.date(), branch_id=lesson.branch_id,
-                        group_name=group.name if group else ("Support" + (f" «{lesson.topic}»" if lesson.topic else "")) if lesson.is_support else "индивидуально",
-                        actor_id=actor.id, kind="support" if lesson.is_support else group.kind if group else "individual")
+    await db.flush()
+    # Lesson held → teacher pay.
+    n = await accrue_for_lesson(db, lesson, actor.id)
+    for lid in other_lessons - {lesson.id}:
+        other = await db.get(Lesson, lid)
+        if other is not None and other.attendance_marked_at is not None:
+            await accrue_for_lesson(db, other, actor.id)
     await write_audit(db, actor_id=actor.id, action="attendance.mark" if first_mark and not needs_reason else "attendance.fix",
                       entity="lesson", entity_id=lesson.id, branch_id=lesson.branch_id, ip=actor.ip,
                       after={"changes": changes, "n": n}, note=body.reason)

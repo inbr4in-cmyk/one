@@ -266,13 +266,11 @@ async def pnl(db: DB, period: str, branches: set[int] | None, date_from: date | 
     cats = {c.id: c.name for c in await db.scalars(select(ExpenseCategory))}
     exp = (await db.execute(
         select(Expense.branch_id, Expense.category_id, func.sum(Expense.amount))
-        .where(Expense.archived_at.is_(None), Expense.spent_on >= s, Expense.spent_on < e,
-               # a payout to staff is in the expense list, but the P&L already counts the pay as it is earned
-               func.coalesce(Expense.source_ref, "").not_like("payout:%"))
+        .where(Expense.archived_at.is_(None), Expense.spent_on >= s, Expense.spent_on < e)
         .group_by(Expense.branch_id, Expense.category_id))).all()
-    payroll = await _payroll_between(db, s, e) if ranged else {b: int(v) for b, v in (await db.execute(
-        select(Accrual.branch_id, func.sum(Accrual.amount)).where(Accrual.period == period)
-        .group_by(Accrual.branch_id))).all()}
+    # Owner's rule (21.11.2026): only money really spent is an expense. Pay that is earned but not paid out yet is
+    # not counted; a payout («Рассчитаться») is an expense of the day it was paid, like any expense typed in by hand.
+    payroll: dict = {}
 
     revenue_by_branch = {b: sum(v for (bb, _), v in rev.items() if bb == b) for b in all_ids}
     total_rev = sum(revenue_by_branch.values())
@@ -433,7 +431,6 @@ async def export_pnl(db: DB, actor: Actor = require("finance", "export"), period
         rows += [["", c, v] for c, v in r["revenue"].items()]
         rows.append(["", "Возвраты", -r["refunds"]])
         rows += [["", f"Расход: {c}", -v] for c, v in r["expenses"].items()]
-        rows.append(["", "Зарплата и бонусы", -r["payroll"]])
         rows.append(["", "Прибыль", r["profit"]])
     rows.append(["Итого по сети", "Прибыль", rep["total"]["profit"]])
     await write_audit(db, actor_id=actor.id, action="finance.export", entity="pnl", ip=actor.ip, note=period)

@@ -153,6 +153,58 @@ async def get_breakdown(user_id: int, db: DB, actor: Actor = require("payroll", 
     return await breakdown(db, user_id, period, _scope_filter(actor, "view", branch_id))
 
 
+@router.get("/payroll/person")
+async def person(user_id: int, db: DB, actor: Actor = require("payroll", "view"), period: str | None = None,
+                 branch_id: int | None = None) -> dict:
+    """The salary page of one staff member: every held lesson of the month by group and by day, then everything
+    else (оклад, KPI, премии, удержания) line by line, and what was already paid out."""
+    from app.models import Group
+    from app.services.clock import local
+
+    period = period or period_of(today())
+    month_bounds(period)
+    flt = _scope_filter(actor, "view", branch_id)
+    u = await db.get(User, user_id)
+    if u is None:
+        raise not_found("Сотрудник")
+    rows = (await db.execute(
+        select(Accrual, Lesson, Group).outerjoin(Lesson, (Accrual.ref_type == "lesson") & (Accrual.kind == "lesson") & (Lesson.id == Accrual.ref_id))
+        .outerjoin(Group, Group.id == Lesson.group_id)
+        .where(Accrual.user_id == user_id, Accrual.period == period, *flt).order_by(Accrual.id))).all()
+    if not rows and actor.scope("payroll", "view") == OWN and user_id != actor.id:
+        raise not_found("Сотрудник")
+    groups: dict[str, dict] = {}
+    other: list[dict] = []
+    for a, lesson, g in rows:
+        if a.kind == "lesson" and lesson is not None:
+            kind = "support" if lesson.is_support else g.kind if g else "individual"
+            key = f"g{g.id}" if g else kind
+            name = g.name if g else ("Support-уроки" if lesson.is_support else "Индивидуальные уроки")
+            sec = groups.setdefault(key, {"key": key, "group_id": g.id if g else None, "name": name, "kind": kind,
+                                          "count": 0, "amount": 0, "lessons": []})
+            at = local(lesson.starts_at)
+            sec["count"] += 1
+            sec["amount"] += a.amount
+            sec["lessons"].append({"lesson_id": lesson.id, "day": at.day, "date": at.date().isoformat(), "time": f"{at:%H:%M}",
+                                   "amount": a.amount, "note": a.description})
+        else:
+            other.append({"id": a.id, "kind": a.kind, "title": KIND_NAMES.get(a.kind, a.kind), "amount": a.amount,
+                          "description": a.description, "created_at": a.created_at.isoformat()})
+    for sec in groups.values():
+        sec["lessons"].sort(key=lambda x: (x["date"], x["time"]))
+    total = sum(r[0].amount for r in rows)
+    payouts = await _payout_list(db, user_id, period)
+    paid = sum(b["total"] for b in payouts)
+    lessons_total = sum(s["amount"] for s in groups.values())
+    y, m = int(period[:4]), int(period[5:7])
+    days = (date(y + (m == 12), m % 12 + 1, 1) - timedelta(days=1)).day
+    return {"user": {"id": u.id, "full_name": u.full_name, "position": u.position, "pay_scheme": u.pay_scheme},
+            "period": period, "days": days, "groups": sorted(groups.values(), key=lambda s: -s["amount"]),
+            "lessons_total": lessons_total, "lessons_count": sum(s["count"] for s in groups.values()),
+            "other": other, "other_total": total - lessons_total, "total": total, "paid": paid, "left": total - paid,
+            "payouts": payouts}
+
+
 @router.get("/payroll/accruals", response_model=list[AccrualOut])
 async def accruals(db: DB, actor: Actor = require("payroll", "view"), period: str | None = None,
                    user_id: int | None = None, branch_id: int | None = None) -> list[AccrualOut]:

@@ -45,3 +45,63 @@ async def test_admin_removes_a_wrong_history_line_and_a_wrong_trial_booking(clie
     # and the lead can be booked again
     assert (await client.post(f"/api/crm/leads/{lid}/trial", headers=sh, json={"lesson_id": lesson.id, "notify": False})).status_code == 200
     assert (await db.get(Lead, lid)) is not None
+
+
+async def test_one_excused_absence_a_month_is_free_and_the_next_is_charged(client, db, owner_h):
+    from datetime import time
+
+    from app.models import Accrual, Attendance, Student
+    from app.services.clock import at_local, today
+    from tests.test_core_learning import _student
+
+    bid = await branch_id(db, YANGI)
+    teacher = await make_staff(db, "teacher", [YANGI], "+77051117010", "Индив Учитель")
+    room = await db.scalar(select(Room).where(Room.branch_id == bid).order_by(Room.id))
+    g = (await client.post("/api/groups", headers=owner_h, json={
+        "name": "Индив 2", "branch_id": bid, "level_id": await level_id(db, "ELE"), "teacher_id": teacher.id,
+        "room_id": room.id, "kind": "individual"})).json()
+    s = await _student(db, client, owner_h, bid, "Отпросился Дважды", "+77051117011")
+    sid = s["id"]
+    first = today().replace(day=1)
+    await client.post(f"/api/groups/{g['id']}/members", headers=owner_h, json={"student_id": sid, "joined_on": max(first, today() - timedelta(days=30)).isoformat()})
+    await client.post("/api/payments", headers=owner_h, json={"student_id": sid, "lessons": 8, "method": "cash"})
+    days = [today() - timedelta(days=i) for i in (2, 1, 0)]
+    if days[0].month != today().month:   # keep all three lessons in one month
+        days = [today()] * 3
+    ids = []
+    for i, d in enumerate(days):
+        x = Lesson(branch_id=bid, group_id=g["id"], level_id=g["level_id"], teacher_id=teacher.id, room_id=room.id,
+                   starts_at=at_local(d, time(3 + i, 0)), ends_at=at_local(d, time(3 + i, 30)))
+        db.add(x)
+        await db.flush()
+        ids.append(x.id)
+
+    async def mark(lid, status):
+        r = await client.put(f"/api/lessons/{lid}/attendance", headers=owner_h,
+                             json={"marks": [{"student_id": sid, "status": status}], "reason": "исправление"})
+        assert r.status_code == 200, r.text
+
+    async def state():
+        st = await db.get(Student, sid)
+        await db.refresh(st)
+        out = []
+        for lid in ids:
+            a = await db.scalar(select(Attendance).where(Attendance.lesson_id == lid))
+            acc = await db.scalar(select(Accrual).where(Accrual.kind == "lesson", Accrual.ref_id == lid))
+            if a:
+                await db.refresh(a)
+            if acc:
+                await db.refresh(acc)
+            out.append((a.charged if a else None, acc.amount if acc else None))
+        return st.lessons_left, out
+
+    await mark(ids[1], "excused")
+    assert await state() == (8, [(None, None), (False, 0), (None, None)])
+    await mark(ids[2], "excused")              # the second one this month is charged, the teacher gets the no-show rate
+    assert await state() == (7, [(None, None), (False, 0), (True, 1000)])
+    await mark(ids[0], "excused")              # an earlier lesson entered later takes the free place
+    assert await state() == (6, [(False, 0), (True, 1000), (True, 1000)])
+    await mark(ids[0], "present")              # he did come: the free absence goes back to the next one
+    assert await state() == (6, [(True, 2000), (False, 0), (True, 1000)])
+    await mark(ids[2], "absent")
+    assert await state() == (6, [(True, 2000), (False, 0), (True, 1000)])

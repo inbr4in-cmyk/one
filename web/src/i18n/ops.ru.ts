@@ -660,6 +660,7 @@ export default {
       teacher_lesson_base: 'Учитель: ставка за урок',
       teacher_extra_per_student: 'Учитель: доплата за ученика сверх порога',
       teacher_individual_lesson: 'Учитель: индивидуальный урок',
+      teacher_individual_noshow: 'Учитель: индивидуальный урок, ученик не пришёл без предупреждения',
       teacher_support_lesson: 'Учитель: support-урок, за 30 минут',
       teacher_club_lesson: 'Учитель: открытый урок',
       teacher_duo_lesson: 'Учитель: урок в дуэте',

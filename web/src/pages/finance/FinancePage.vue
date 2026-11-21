@@ -84,9 +84,7 @@ const totals = computed(() => pnl.value?.total)
 const byCategory = computed(() => {
   const acc = new Map<string, number>()
   for (const r of pnl.value?.branches ?? []) for (const [k, v] of Object.entries(r.expenses)) acc.set(k, (acc.get(k) ?? 0) + v)
-  const payroll = totals.value?.payroll ?? 0
   const rows = [...acc.entries()].map(([k, v]) => ({ key: k, label: k, value: v }))
-  if (payroll) rows.push({ key: '__payroll', label: t('fin.payroll'), value: payroll })
   return rows.sort((a, b) => b.value - a.value)
 })
 const revenueCats = computed(() => {
@@ -164,7 +162,7 @@ async function exportFile(kind: 'payments' | 'pnl') {
       <template v-if="!totals"><div v-for="i in 3" :key="i" class="card kpi"><UiSkeleton :lines="3" /></div></template>
       <template v-else>
         <div class="card kpi"><div class="k">{{ t('fin.gross') }}</div><div class="v num">{{ money(totals.receipts, loc) }}</div><span class="muted" style="font-size: 12px">{{ totals.refunds ? t('nv.fin.refundsNet', { refunds: money(totals.refunds, loc), net: money(totals.net_revenue, loc) }) : t('fin.noRefunds') }}</span></div>
-        <div class="card kpi"><div class="k">{{ t('fin.expenses') }}</div><div class="v num">{{ money(totals.total_expenses, loc) }}</div><span class="muted" style="font-size: 12px">{{ t('fin.payrollNote', { sum: money(totals.payroll, loc) }) }}</span></div>
+        <div class="card kpi"><div class="k">{{ t('fin.expenses') }}</div><div class="v num">{{ money(totals.total_expenses, loc) }}</div></div>
         <div class="card kpi"><div class="k">{{ t('fin.profit') }}</div><div class="v num" :class="{ redc: totals.profit < 0 }">{{ money(totals.profit, loc) }}</div><span class="muted" style="font-size: 12px">{{ t('fin.margin', { m: marginLabel(totals.margin) }) }}</span></div>
       </template>
     </div>
@@ -174,12 +172,11 @@ async function exportFile(kind: 'payments' | 'pnl') {
         <div v-if="!pnl" class="card-pad"><UiSkeleton :lines="4" /></div>
         <div v-else class="scroll-x">
           <table class="tbl" style="min-width: 560px">
-            <thead><tr><th>{{ t('branch.label') }}</th><th class="r">{{ t('nv.fin.netRevenue') }}</th><th class="r">{{ t('fin.payroll') }}</th><th class="r">{{ t('fin.expenses') }}</th><th class="r">{{ t('fin.profit') }}</th><th class="r">{{ t('fin.marginCol') }}</th></tr></thead>
+            <thead><tr><th>{{ t('branch.label') }}</th><th class="r">{{ t('nv.fin.netRevenue') }}</th><th class="r">{{ t('fin.expenses') }}</th><th class="r">{{ t('fin.profit') }}</th><th class="r">{{ t('fin.marginCol') }}</th></tr></thead>
             <tbody class="num">
               <tr v-for="r in pnl.branches" :key="r.branch_id">
                 <td><b>{{ r.branch }}</b><div v-if="r.refunds" class="muted" style="font-size: 12px">{{ t('fin.refundsNote', { sum: money(r.refunds, loc) }) }}</div></td>
                 <td class="r">{{ money(r.net_revenue, loc) }}</td>
-                <td class="r">{{ money(r.payroll, loc) }}</td>
                 <td class="r">{{ money(r.total_expenses, loc) }}</td>
                 <td class="r" :class="{ redc: r.profit < 0 }">{{ money(r.profit, loc) }}</td>
                 <td class="r">{{ marginLabel(r.margin) }}</td>
@@ -187,7 +184,6 @@ async function exportFile(kind: 'payments' | 'pnl') {
               <tr v-if="pnl.branches.length > 1" class="tot">
                 <td><b>{{ t('fin.total') }}</b></td>
                 <td class="r"><b>{{ money(pnl.total.net_revenue, loc) }}</b></td>
-                <td class="r"><b>{{ money(pnl.total.payroll, loc) }}</b></td>
                 <td class="r"><b>{{ money(pnl.total.total_expenses, loc) }}</b></td>
                 <td class="r" :class="{ redc: pnl.total.profit < 0 }"><b>{{ money(pnl.total.profit, loc) }}</b></td>
                 <td class="r"><b>{{ marginLabel(pnl.total.margin) }}</b></td>
