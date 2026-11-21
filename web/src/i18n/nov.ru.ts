@@ -171,6 +171,7 @@ export default {
     parentPhone: 'Телефон родителя',
     leadNote: 'Заметка',
     memberSince: 'В группе с',
+    memberSinceEdit: 'Изменить дату «в группе с»',
     rulePast: 'Создано уроков: {n}, из них прошедших: {p}',
     profile: {
       title: 'Профиль сотрудника',

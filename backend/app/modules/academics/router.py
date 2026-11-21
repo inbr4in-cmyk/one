@@ -273,6 +273,47 @@ async def add_member(group_id: int, body: MemberIn, db: DB, actor: Actor = requi
     return {"ok": True}
 
 
+class MemberSinceIn(In):
+    joined_on: date
+
+
+@router.patch("/groups/{group_id}/members/{student_id}")
+async def change_member_since(group_id: int, student_id: int, body: MemberSinceIn, db: DB,
+                              actor: Actor = require("students", "edit")) -> dict:
+    """«Изменить дату»: the student was entered with the wrong «в группе с». Earlier date → the student shows up
+    in the attendance lists of the group's past lessons from that day. Nothing is charged here."""
+    g = await _get_group(db, actor, group_id, "edit")
+    m = await db.scalar(select(GroupMember).where(GroupMember.group_id == g.id, GroupMember.student_id == student_id,
+                                                  GroupMember.left_on.is_(None)))
+    if m is None:
+        raise not_found("Ученик в группе")
+    since = body.joined_on
+    if since == m.joined_on:
+        return {"ok": True}
+    if since > today() or since < today() - timedelta(days=BACKDATE_DAYS):
+        raise bad_request("Дата «в группе с»: не позже сегодня и не раньше чем месяц назад")
+    if g.starts_on and since < g.starts_on:
+        raise bad_request(f"Группа открыта {g.starts_on:%d.%m.%Y}: раньше записать нельзя")
+    if await db.scalar(select(GroupMember.id).where(GroupMember.student_id == student_id, GroupMember.id != m.id,
+                                                    GroupMember.left_on > since).limit(1)):
+        raise bad_request("В эти дни ученик был в другой группе — выберите дату позже")
+    if since > m.joined_on:
+        # Marked lessons before the new date would be left without a member: fix the attendance first.
+        marked = await db.scalar(
+            select(func.count()).select_from(Attendance).join(Lesson, Lesson.id == Attendance.lesson_id)
+            .where(Attendance.student_id == student_id, Lesson.group_id == g.id,
+                   Lesson.starts_at >= at_local(m.joined_on, time(0, 0)), Lesson.starts_at < at_local(since, time(0, 0))))
+        if marked:
+            raise bad_request("До этой даты у ученика уже отмечены уроки в группе — выберите дату раньше")
+    before = {"joined_on": m.joined_on.isoformat()}
+    m.joined_on = since
+    await write_audit(db, actor_id=actor.id, action="group.member_since", entity="group", entity_id=g.id,
+                      branch_id=g.branch_id, ip=actor.ip, before={"student_id": student_id, **before},
+                      after={"student_id": student_id, "joined_on": since.isoformat()})
+    await db.commit()
+    return {"ok": True}
+
+
 @router.delete("/groups/{group_id}/members/{student_id}", status_code=204)
 async def remove_member(group_id: int, student_id: int, db: DB, actor: Actor = require("students", "edit")) -> None:
     g = await _get_group(db, actor, group_id, "edit")

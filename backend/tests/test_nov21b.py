@@ -294,3 +294,27 @@ async def test_paid_lead_without_a_group_for_an_hour_alerts_the_branch_admin(cli
     from app.core.kv import get_kv
     await get_kv().delete(f"once:paid-no-group:{lead['id']}:{__import__('app.services.clock', fromlist=['local']).local(now()).date()}")
     assert (await jobs.lead_control(db))["paid_no_group"] == 0
+
+
+async def test_member_since_is_corrected_and_the_student_appears_in_past_lessons(client, db, owner_h):
+    from app.models import GroupMember
+    from app.services.clock import today
+    from tests.test_core_learning import _student
+
+    bid = await branch_id(db, YANGI)
+    teacher = await make_staff(db, "teacher", [YANGI], "+77052227091", "Учитель")
+    g = (await client.post("/api/groups", headers=owner_h, json={"name": "MS-1", "branch_id": bid,
+                                                                 "level_id": await level_id(db, "ELE"), "teacher_id": teacher.id})).json()
+    sid = (await _student(db, client, owner_h, bid, "Дата Группы", "+77052227092"))["id"]
+    await client.post(f"/api/groups/{g['id']}/members", headers=owner_h, json={"student_id": sid})
+    url = f"/api/groups/{g['id']}/members/{sid}"
+    back = today() - timedelta(days=10)
+    assert (await client.patch(url, headers=owner_h, json={"joined_on": (today() - timedelta(days=40)).isoformat()})).status_code == 400
+    assert (await client.patch(url, headers=owner_h, json={"joined_on": (today() + timedelta(days=1)).isoformat()})).status_code == 400
+    r = await client.patch(url, headers=owner_h, json={"joined_on": back.isoformat()})
+    assert r.status_code == 200, r.text
+    m = await db.scalar(select(GroupMember).where(GroupMember.student_id == sid))
+    await db.refresh(m)
+    assert m.joined_on == back
+    rows = (await client.get(f"/api/groups/{g['id']}/members", headers=owner_h)).json()
+    assert rows[0]["joined_on"] == back.isoformat()

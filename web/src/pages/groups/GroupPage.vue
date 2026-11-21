@@ -97,6 +97,26 @@ async function addMember(s: StudentListItem) {
     /* toast */
   }
 }
+const sinceOf = ref<{ student_id: number; full_name: string } | null>(null)
+const sinceVal = ref('')
+function openSince(m: { student_id: number; full_name: string; joined_on?: string }) {
+  sinceVal.value = m.joined_on && m.joined_on >= sinceMin.value ? m.joined_on : todayIso()
+  sinceOf.value = m
+}
+async function saveSince() {
+  if (!sinceOf.value) return
+  busy.value = true
+  try {
+    await academicsApi.memberSince(id.value, sinceOf.value.student_id, sinceVal.value)
+    toast.ok(t('common.saved'))
+    sinceOf.value = null
+    load()
+  } catch {
+    /* toast */
+  } finally {
+    busy.value = false
+  }
+}
 async function removeMember() {
   if (!removing.value) return
   busy.value = true
@@ -269,8 +289,9 @@ const lessonState = (l: Lesson) => (l.status === 'cancelled' ? 'red' : l.attenda
             <div class="grow">
               <RouterLink v-if="auth.can('students.view')" :to="{ name: 'student', params: { id: m.student_id } }" class="rowlink"><b>{{ m.full_name }}</b></RouterLink>
               <b v-else>{{ m.full_name }}</b>
-              <span :class="{ warnc: m.lessons_left <= 2 }">{{ t('students.lessonsLeft', { n: m.lessons_left }) }}<template v-if="m.status === 'frozen'"> · {{ t('students.status.frozen') }}</template></span>
+              <span :class="{ warnc: m.lessons_left <= 2 }">{{ t('students.lessonsLeft', { n: m.lessons_left }) }}<template v-if="m.joined_on"> · {{ t('nv.sched.since', { d: dmy(parseDate(m.joined_on), loc) }) }}</template><template v-if="m.status === 'frozen'"> · {{ t('students.status.frozen') }}</template></span>
             </div>
+            <UiButton v-if="auth.can('students.edit')" size="sm" variant="ghost" icon="cal" :aria-label="t('nv.memberSinceEdit')" :title="t('nv.memberSinceEdit')" @click="openSince(m)" />
             <UiButton v-if="auth.can('students.edit')" size="sm" variant="ghost" icon="x" :aria-label="t('groups.removeMember')" @click="removing = m" />
           </div>
           <p v-if="!members.length" class="muted m0">{{ t('groups.noMembers') }}</p>
@@ -354,6 +375,14 @@ const lessonState = (l: Lesson) => (l.status === 'cancelled' ? 'red' : l.attenda
     <HomeworkDrawer v-model:open="hwDrawer" :homework="hwOpen" @edit="openHw" @changed="reloadHw" />
     <HomeworkModal :open="modal === 'hw'" :group-id="g.id" :homework="hwEditing" @update:open="(v) => !v && (modal = null)" @saved="onHwSaved" />
 
+    <UiModal :open="sinceOf !== null" :title="t('nv.memberSinceEdit')" @update:open="(v) => !v && (sinceOf = null)">
+      <p class="m0" style="margin-bottom: 12px"><b>{{ sinceOf?.full_name }}</b></p>
+      <UiInput v-model="sinceVal" type="date" :min="sinceMin" :max="todayIso()" :label="t('nv.memberSince')" />
+      <template #footer>
+        <UiButton variant="ghost" @click="sinceOf = null">{{ t('common.cancel') }}</UiButton>
+        <UiButton :loading="busy" @click="saveSince">{{ t('common.save') }}</UiButton>
+      </template>
+    </UiModal>
     <UiPrompt :open="removing !== null" :title="t('groups.removeMember')" :text="t('groups.removeText', { name: removing?.full_name ?? '' })" :confirm-label="t('common.remove')" danger :busy="busy" @update:open="(v) => !v && (removing = null)" @confirm="removeMember" />
     <UiPrompt :open="endingRule !== null" :title="t('groups.rule.end')" :text="t('groups.rule.endText')" :confirm-label="t('groups.rule.end')" danger :busy="busy" @update:open="(v) => !v && (endingRule = null)" @confirm="endRule" />
     <UiPrompt :open="modal === 'archive'" :title="t('groups.archive')" :text="t('groups.archiveText', { name: g.name })" :confirm-label="t('groups.archive')" danger :busy="busy" @update:open="(v) => !v && (modal = null)" @confirm="archive" />

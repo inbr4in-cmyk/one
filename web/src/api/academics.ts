@@ -174,6 +174,7 @@ export const academicsApi = {
   archiveGroup: (id: number) => http.post<null>(`/groups/${id}/archive`),
   members: (id: number) => http.get<GroupMember[]>(`/groups/${id}/members`),
   addMember: (id: number, student_id: number, joined_on?: string) => http.post<{ ok: boolean }>(`/groups/${id}/members`, { student_id, joined_on }),
+  memberSince: (id: number, studentId: number, joined_on: string) => http.patch<{ ok: boolean }>(`/groups/${id}/members/${studentId}`, { joined_on }),
   removeMember: (id: number, studentId: number) => http.delete(`/groups/${id}/members/${studentId}`),
   addRule: (id: number, body: RuleIn) =>
     http.post<{ rule_id: number; created: number; past?: number; conflicts: string[] }>(`/groups/${id}/schedule`, body, { silent: true }),

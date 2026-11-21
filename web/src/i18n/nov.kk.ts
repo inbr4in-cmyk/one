@@ -170,6 +170,7 @@ export default {
     parentPhone: 'Ата-ананың телефоны',
     leadNote: 'Ескертпе',
     memberSince: 'Топта қай күннен',
+    memberSinceEdit: '«Топта қай күннен» күнін өзгерту',
     rulePast: 'Құрылған сабақтар: {n}, оның ішінде өткендері: {p}',
     profile: {
       title: 'Қызметкер профилі',
