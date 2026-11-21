@@ -121,7 +121,7 @@ async def breakdown(db: DB, user_id: int, period: str, extra_filter: list) -> di
     for a, lesson, gkind, room_rate, level_rate in rows:
         if a.kind == "lesson" and lesson is not None:
             kind = "support" if lesson.is_support else (gkind or "group") if lesson.group_id else "individual"
-            if room_rate and kind in ("group", "duo", "individual") and a.amount == room_rate:
+            if room_rate and kind in ("group", "duo", "individual") and not (level_rate and a.amount == level_rate):
                 kind = "room"
             if level_rate and kind in ("group", "duo", "individual") and a.amount == level_rate:
                 kind = "level"
@@ -192,7 +192,7 @@ async def person(user_id: int, db: DB, actor: Actor = require("payroll", "view")
             sec["amount"] += a.amount
             # «Ставка» and «KPI» apart: in a group lesson the pay above the base rate is the extra for students
             base = a.amount
-            if kind == "group" and not (room_rate and a.amount == room_rate) and not (level_rate and a.amount == level_rate):
+            if kind == "group" and not room_rate and not (level_rate and a.amount == level_rate):
                 if at.date() not in bases:
                     bases[at.date()] = await rate(db, "teacher_lesson_base", at.date())
                 base = min(a.amount, bases[at.date()])
