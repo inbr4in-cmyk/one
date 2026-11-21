@@ -47,6 +47,18 @@ const columns = computed<TableColumn[]>(() => [
 ])
 const pageSum = computed(() => rows.value.reduce((a, p) => a + p.amount - p.refunded, 0))
 
+const exporting = ref(false)
+async function exportXlsx() {
+  exporting.value = true
+  try {
+    await paymentsApi.exportXlsx({ branch_id: branch.filterId, date_from: f.from || undefined, date_to: f.to || undefined, category: f.category || undefined })
+  } catch {
+    /* toast */
+  } finally {
+    exporting.value = false
+  }
+}
+
 async function load() {
   const my = ++seq
   loading.value = true
@@ -79,6 +91,7 @@ const methodIco = (m: string) => (m === 'kaspi' ? 'K' : m === 'cash' ? '₸' : '
   <div class="ph">
     <div><h1>{{ t('payments.title') }}</h1><p>{{ t('payments.subtitle', { n: total }) }}</p></div>
     <span class="sp" />
+    <UiButton v-if="auth.can('finance.export')" variant="ghost" icon="download" :loading="exporting" @click="exportXlsx">Excel</UiButton>
     <UiButton v-if="auth.can('payments.create')" variant="primary" icon="plus" @click="picking = true">{{ t('payments.take') }}</UiButton>
   </div>
   <UiModal v-model:open="picking" :title="t('payments.pickStudent')">

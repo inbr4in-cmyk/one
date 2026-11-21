@@ -287,6 +287,41 @@ async def _sale_facts(db: DB, s: Student, p: Payment, actor: Actor, was_left: bo
                       branch_id=s.branch_id, description=f"Удержание после пробного: {s.full_name}", created_by=actor.id)
 
 
+@router.get("/payments-export.xlsx")
+async def export_payments(db: DB, actor: Actor = require("finance", "export"), branch_id: int | None = Query(None, ge=1),
+                          date_from: str | None = Query(None, max_length=40), date_to: str | None = Query(None, max_length=40),
+                          category: str | None = Query(None, pattern="^(course|book|shop)$")):
+    """Excel of the Payments page: every payment under the same filter (period, branch, type), not only one page."""
+    from app.models import Branch
+    from app.modules.finance.router import _xlsx
+
+    Seller = User.__table__.alias("seller")
+    q = (select(Payment, Student.full_name, User.full_name, Branch.name, Seller.c.full_name)
+         .join(Student, Student.id == Payment.student_id).join(User, User.id == Payment.received_by)
+         .join(Branch, Branch.id == Payment.branch_id).outerjoin(Seller, Seller.c.id == Payment.seller_id))
+    if actor.scope("finance", "export") != NETWORK:
+        q = q.where(Payment.branch_id.in_(actor.branch_ids or {-1}))
+    if branch_id:
+        q = q.where(Payment.branch_id == branch_id)
+    if category:
+        q = q.where(Payment.category == category)
+    start, end = local_range(parse_day(date_from), parse_day(date_to))
+    if start:
+        q = q.where(Payment.paid_at >= start)
+    if end:
+        q = q.where(Payment.paid_at < end)
+    cat = {"course": "Курс", "book": "Книга", "shop": "Магазин"}
+    rows = [[local(p.paid_at).strftime("%d.%m.%Y %H:%M"), br, st, cat.get(p.category, p.category), p.lessons, p.lesson_price,
+             p.discount, p.amount, p.refunded, p.amount - p.refunded, p.method, by, seller or by, "да" if p.is_first else "", p.note or ""]
+            for p, st, by, br, seller in (await db.execute(q.order_by(Payment.paid_at).limit(50_000))).all()]
+    await write_audit(db, actor_id=actor.id, action="finance.export", entity="payments", ip=actor.ip,
+                      note=f"{date_from or '…'}–{date_to or '…'} филиал {branch_id or 'все'} {category or 'все'}: {len(rows)}")
+    await db.commit()
+    return _xlsx("Оплаты", ["Дата", "Филиал", "Ученик", "Тип", "Уроков", "Цена урока", "Скидка", "Сумма", "Возврат", "Итого",
+                            "Способ", "Принял", "Продал", "Первая оплата", "Комментарий"], rows,
+                 f"payments-{date_from or 'all'}-{date_to or 'all'}.xlsx")
+
+
 @router.get("/payments", response_model=Page[PaymentOut])
 async def list_payments(db: DB, actor: Actor = require("payments", "view"), student_id: int | None = Query(None, ge=1),
                         branch_id: int | None = Query(None, ge=1), date_from: str | None = Query(None, max_length=40),

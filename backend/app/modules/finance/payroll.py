@@ -99,29 +99,32 @@ async def sheet(db: DB, actor: Actor = require("payroll", "view"), period: str |
 
 
 LESSON_SECTIONS = (("group", "Групповые уроки"), ("duo", "Дуэт"), ("individual", "Индивидуальные уроки"),
-                   ("support", "Support-уроки"), ("club", "Открытые уроки"), ("room", "Уроки в кабинете с особой ставкой"))
+                   ("support", "Support-уроки"), ("club", "Открытые уроки"), ("room", "Уроки в кабинете с особой ставкой"),
+                   ("level", "Уроки курса с особой ставкой"))
 
 
 async def breakdown(db: DB, user_id: int, period: str, extra_filter: list) -> dict:
     """How one person's pay for the month is made up: lessons by format at the rate (ставка), the extra for
     students above the threshold separately (KPI), then everything else (оклад, премии, удержания…)."""
-    from app.models import Group, Room
+    from app.models import Group, Level, Room
     from app.services.clock import local
     from app.services.values import rate
 
     rows = (await db.execute(
-        select(Accrual, Lesson, Group.kind, Room.teacher_rate).outerjoin(Lesson, (Accrual.ref_type == "lesson") & (Lesson.id == Accrual.ref_id))
-        .outerjoin(Group, Group.id == Lesson.group_id).outerjoin(Room, Room.id == Lesson.room_id)
+        select(Accrual, Lesson, Group.kind, Room.teacher_rate, Level.teacher_rate).outerjoin(Lesson, (Accrual.ref_type == "lesson") & (Lesson.id == Accrual.ref_id))
+        .outerjoin(Group, Group.id == Lesson.group_id).outerjoin(Room, Room.id == Lesson.room_id).outerjoin(Level, Level.id == Lesson.level_id)
         .where(Accrual.user_id == user_id, Accrual.period == period, *extra_filter).order_by(Accrual.id))).all()
     lessons = {k: {"key": k, "title": t, "count": 0, "amount": 0} for k, t in LESSON_SECTIONS}
     kpi = {"key": "kpi", "title": "KPI: доплата за учеников", "count": 0, "amount": 0}
     other: dict[str, dict] = {}
     bases: dict = {}
-    for a, lesson, gkind, room_rate in rows:
+    for a, lesson, gkind, room_rate, level_rate in rows:
         if a.kind == "lesson" and lesson is not None:
             kind = "support" if lesson.is_support else (gkind or "group") if lesson.group_id else "individual"
             if room_rate and kind in ("group", "duo", "individual") and a.amount == room_rate:
                 kind = "room"
+            if level_rate and kind in ("group", "duo", "individual") and a.amount == level_rate:
+                kind = "level"
             sec = lessons.get(kind) or lessons["group"]
             sec["count"] += 1
             if kind == "group":
@@ -158,8 +161,9 @@ async def person(user_id: int, db: DB, actor: Actor = require("payroll", "view")
                  branch_id: int | None = None) -> dict:
     """The salary page of one staff member: every held lesson of the month by group and by day, then everything
     else (оклад, KPI, премии, удержания) line by line, and what was already paid out."""
-    from app.models import Group
+    from app.models import Group, Level, Room
     from app.services.clock import local
+    from app.services.values import rate
 
     period = period or period_of(today())
     month_bounds(period)
@@ -168,25 +172,34 @@ async def person(user_id: int, db: DB, actor: Actor = require("payroll", "view")
     if u is None:
         raise not_found("Сотрудник")
     rows = (await db.execute(
-        select(Accrual, Lesson, Group).outerjoin(Lesson, (Accrual.ref_type == "lesson") & (Accrual.kind == "lesson") & (Lesson.id == Accrual.ref_id))
-        .outerjoin(Group, Group.id == Lesson.group_id)
+        select(Accrual, Lesson, Group, Room.teacher_rate, Level.teacher_rate).outerjoin(Lesson, (Accrual.ref_type == "lesson") & (Accrual.kind == "lesson") & (Lesson.id == Accrual.ref_id))
+        .outerjoin(Group, Group.id == Lesson.group_id).outerjoin(Room, Room.id == Lesson.room_id).outerjoin(Level, Level.id == Lesson.level_id)
         .where(Accrual.user_id == user_id, Accrual.period == period, *flt).order_by(Accrual.id))).all()
     if not rows and actor.scope("payroll", "view") == OWN and user_id != actor.id:
         raise not_found("Сотрудник")
     groups: dict[str, dict] = {}
     other: list[dict] = []
-    for a, lesson, g in rows:
+    bases: dict = {}
+    for a, lesson, g, room_rate, level_rate in rows:
         if a.kind == "lesson" and lesson is not None:
             kind = "support" if lesson.is_support else g.kind if g else "individual"
             key = f"g{g.id}" if g else kind
             name = g.name if g else ("Support-уроки" if lesson.is_support else "Индивидуальные уроки")
             sec = groups.setdefault(key, {"key": key, "group_id": g.id if g else None, "name": name, "kind": kind,
-                                          "count": 0, "amount": 0, "lessons": []})
+                                          "count": 0, "amount": 0, "base": 0, "kpi": 0, "lessons": []})
             at = local(lesson.starts_at)
             sec["count"] += 1
             sec["amount"] += a.amount
+            # «Ставка» and «KPI» apart: in a group lesson the pay above the base rate is the extra for students
+            base = a.amount
+            if kind == "group" and not (room_rate and a.amount == room_rate) and not (level_rate and a.amount == level_rate):
+                if at.date() not in bases:
+                    bases[at.date()] = await rate(db, "teacher_lesson_base", at.date())
+                base = min(a.amount, bases[at.date()])
+            sec["base"] += base
+            sec["kpi"] += a.amount - base
             sec["lessons"].append({"lesson_id": lesson.id, "day": at.day, "date": at.date().isoformat(), "time": f"{at:%H:%M}",
-                                   "amount": a.amount, "note": a.description})
+                                   "amount": a.amount, "base": base, "kpi": a.amount - base, "note": a.description})
         else:
             other.append({"id": a.id, "kind": a.kind, "title": KIND_NAMES.get(a.kind, a.kind), "amount": a.amount,
                           "description": a.description, "created_at": a.created_at.isoformat()})
@@ -200,7 +213,8 @@ async def person(user_id: int, db: DB, actor: Actor = require("payroll", "view")
     days = (date(y + (m == 12), m % 12 + 1, 1) - timedelta(days=1)).day
     return {"user": {"id": u.id, "full_name": u.full_name, "position": u.position, "pay_scheme": u.pay_scheme},
             "period": period, "days": days, "groups": sorted(groups.values(), key=lambda s: -s["amount"]),
-            "lessons_total": lessons_total, "lessons_count": sum(s["count"] for s in groups.values()),
+            "lessons_total": lessons_total, "rate_total": sum(s["base"] for s in groups.values()),
+            "kpi_total": sum(s["kpi"] for s in groups.values()), "lessons_count": sum(s["count"] for s in groups.values()),
             "other": other, "other_total": total - lessons_total, "total": total, "paid": paid, "left": total - paid,
             "payouts": payouts}
 

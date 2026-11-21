@@ -46,8 +46,9 @@ const days = computed(() => {
 function cell(g: PayPersonGroup, day: number) {
   const ls = g.lessons.filter((l) => l.day === day)
   if (!ls.length) return null
-  return { amount: ls.reduce((s, l) => s + l.amount, 0), count: ls.length, tip: ls.map((l) => `${l.time} · ${l.note}`).join('\n') }
+  return { amount: ls.reduce((s, l) => s + l.amount, 0), base: ls.reduce((s, l) => s + l.base, 0), kpi: ls.reduce((s, l) => s + l.kpi, 0), count: ls.length, tip: ls.map((l) => `${l.time} · ${l.note}`).join('\n') }
 }
+const dayPart = (day: number, k: 'base' | 'kpi') => (data.value?.groups ?? []).reduce((s, g) => s + g.lessons.filter((l) => l.day === day).reduce((x, l) => x + l[k], 0), 0)
 const dayTotal = (day: number) => (data.value?.groups ?? []).reduce((s, g) => s + g.lessons.filter((l) => l.day === day).reduce((x, l) => x + l.amount, 0), 0)
 const short = (n: number) => n.toLocaleString(intlLocale(loc.value))
 const kindLabel = (k: string) => (te(`payroll.kind.${k}`) ? t(`payroll.kind.${k}`) : k)
@@ -71,7 +72,8 @@ const canSettle = computed(() => auth.can('payroll.adjust') && (userId.value !==
     <template v-else>
       <div class="pp-tiles">
         <div class="pp-tile main"><span>{{ t('nv.payp.total') }}</span><b class="num">{{ money(data.total, loc) }}</b></div>
-        <div class="pp-tile"><span>{{ t('nv.payp.lessons', { n: data.lessons_count }) }}</span><b class="num">{{ money(data.lessons_total, loc) }}</b></div>
+        <div class="pp-tile"><span>{{ t('nv.payp.rate', { n: data.lessons_count }) }}</span><b class="num">{{ money(data.rate_total, loc) }}</b></div>
+        <div class="pp-tile"><span>{{ t('nv.payp.kpi') }}</span><b class="num">{{ money(data.kpi_total, loc) }}</b></div>
         <div class="pp-tile"><span>{{ t('nv.payp.other') }}</span><b class="num">{{ money(data.other_total, loc) }}</b></div>
         <div class="pp-tile"><span>{{ t('nv.payp.paid') }}</span><b class="num">{{ money(data.paid, loc) }}</b></div>
         <div class="pp-tile"><span>{{ t('nv.payp.left') }}</span><b class="num" :class="data.left > 0 ? 'okc' : undefined">{{ money(data.left, loc) }}</b></div>
@@ -94,10 +96,11 @@ const canSettle = computed(() => auth.can('payroll.adjust') && (userId.value !==
                   <template v-else>{{ g.name }}</template>
                   <span>{{ formatLabel(g.kind) }} · {{ t('nv.payp.nLessons', { n: g.count }) }}</span>
                 </th>
-                <td class="tot num">{{ short(g.amount) }}</td>
+                <td class="tot num"><b>{{ short(g.amount) }}</b><span class="pp-split">{{ t('nv.payp.rateShort') }} {{ short(g.base) }}</span><span class="pp-split k">KPI {{ short(g.kpi) }}</span></td>
                 <td v-for="d in days" :key="d.n" :class="{ sun: d.sun }">
                   <template v-for="c in [cell(g, d.n)]" :key="0">
-                    <span v-if="c" class="pp-cell num" :class="{ zero: c.amount === 0 }" :title="c.tip">{{ short(c.amount) }}<i v-if="c.count > 1">×{{ c.count }}</i></span>
+                    <span v-if="c" class="pp-cell num" :class="{ zero: c.amount === 0 }" :title="c.tip">{{ short(c.base) }}<i v-if="c.count > 1">×{{ c.count }}</i></span>
+                    <span v-if="c && c.kpi" class="pp-kpi num" :title="'KPI'">+{{ short(c.kpi) }}</span>
                   </template>
                 </td>
               </tr>
@@ -107,6 +110,16 @@ const canSettle = computed(() => auth.can('payroll.adjust') && (userId.value !==
                 <th class="g">{{ t('nv.payp.perDay') }}</th>
                 <td class="tot num">{{ short(data.lessons_total) }}</td>
                 <td v-for="d in days" :key="d.n" class="num" :class="{ sun: d.sun }">{{ dayTotal(d.n) ? short(dayTotal(d.n)) : '' }}</td>
+              </tr>
+              <tr class="sub">
+                <th class="g">{{ t('nv.payp.rateRow') }}</th>
+                <td class="tot num">{{ short(data.rate_total) }}</td>
+                <td v-for="d in days" :key="d.n" class="num" :class="{ sun: d.sun }">{{ dayPart(d.n, 'base') ? short(dayPart(d.n, 'base')) : '' }}</td>
+              </tr>
+              <tr class="sub k">
+                <th class="g">KPI</th>
+                <td class="tot num">{{ short(data.kpi_total) }}</td>
+                <td v-for="d in days" :key="d.n" class="num" :class="{ sun: d.sun }">{{ dayPart(d.n, 'kpi') ? short(dayPart(d.n, 'kpi')) : '' }}</td>
               </tr>
             </tfoot>
           </table>
@@ -142,7 +155,11 @@ const canSettle = computed(() => auth.can('payroll.adjust') && (userId.value !==
 <style scoped>
 .crumbs { color: var(--muted); font-size: 13px; margin-bottom: 10px }
 .crumbs a { color: inherit }
-.pp-tiles { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px }
+.pp-split { display: block; font-size: 11px; font-weight: 500; color: var(--muted); white-space: nowrap }
+.pp-split.k, .pp-kpi, tr.sub.k td { color: var(--ok, #1a8a4a) }
+.pp-kpi { display: block; font-size: 11px; font-weight: 600; margin-top: 2px }
+tr.sub th, tr.sub td { font-weight: 500; font-size: 12px }
+.pp-tiles { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px }
 .pp-tile { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px }
 .pp-tile span { color: var(--muted); font-size: 12px }
 .pp-tile b { font-size: 20px }

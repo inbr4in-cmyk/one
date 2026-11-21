@@ -34,6 +34,7 @@ export interface Level {
   duration_months: number
   next_level_id: number | null
   is_kids: boolean
+  teacher_rate?: number | null
 }
 
 export interface LevelIn {
@@ -45,6 +46,7 @@ export interface LevelIn {
   track: 'adults' | 'kids' | 'exam'
   duration_months: number
   next_level_id: number | null
+  teacher_rate?: number | null
 }
 
 export interface StaffMember {

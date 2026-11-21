@@ -61,7 +61,8 @@ export default {
     join: { title: 'Добавить в группу', since: 'В группе с', action: 'Добавить', done: 'Ученик добавлен в группу' },
     cal: { month: 'Месяц', year: 'Год', frozen: 'Заморозка' },
     payp: {
-      total: 'Начислено за месяц', lessons: 'За уроки · {n}', other: 'Оклад, KPI, премии, удержания', paid: 'Выплачено', left: 'Осталось выплатить',
+      rate: 'Ставка · уроков: {n}', kpi: 'KPI', rateShort: 'ставка', rateRow: 'Ставка',
+      total: 'Начислено за месяц', lessons: 'За уроки · {n}', other: 'Оклад, бонусы, премии, удержания', paid: 'Выплачено', left: 'Осталось выплатить',
       byGroup: 'Уроки по группам и дням', group: 'Группа', nLessons: '{n} ур.', perDay: 'Итого за день', noLessons: 'В этом месяце уроков нет',
       otherLines: 'Остальные начисления', noOther: 'Других начислений нет', payouts: 'Выплаты', noPayouts: 'Выплат за месяц нет', notFound: 'Сотрудник не найден', open: 'Открыть страницу зарплаты',
       format: { group: 'группа', duo: 'дуэт', individual: 'индивидуально', support: 'support', club: 'открытый урок' },
@@ -172,6 +173,7 @@ export default {
     leadNote: 'Заметка',
     memberSince: 'В группе с',
     memberSinceEdit: 'Изменить дату «в группе с»',
+    levelRate: 'Ставка учителю за урок этого курса',
     rulePast: 'Создано уроков: {n}, из них прошедших: {p}',
     profile: {
       title: 'Профиль сотрудника',

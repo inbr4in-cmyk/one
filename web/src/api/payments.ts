@@ -1,4 +1,4 @@
-import { http, qs } from './http'
+import { download, http, qs } from './http'
 import type { Page } from './org'
 
 export type PaymentMethod = 'cash' | 'card' | 'kaspi' | 'transfer' | 'online'
@@ -67,6 +67,8 @@ export const paymentsApi = {
   refundable: (id: number) => http.get<{ lessons_max: number; amount_max: number; amount_left: number }>(`/payments/${id}/refundable`, { silent: true }),
   list: (p: { student_id?: number; branch_id?: number | null; date_from?: string; date_to?: string; limit?: number; offset?: number; category?: string }) =>
     http.get<Page<Payment>>(`/payments${qs(p)}`),
+  exportXlsx: (p: { branch_id?: number | null; date_from?: string; date_to?: string; category?: string }) =>
+    download(`/payments-export.xlsx${qs(p)}`, `payments-${p.date_from ?? ''}-${p.date_to ?? ''}.xlsx`),
   remove: (id: number) => http.delete<{ lessons_left: number; money_balance: number; bonuses_reversed: number }>(`/payments/${id}`, { silent: true }),
   refund: (id: number, body: { lessons: number; amount: number; reason: string }) =>
     http.post<{ refund_id: number; bonuses_reversed: number }>(`/payments/${id}/refund`, body, { silent: true }),

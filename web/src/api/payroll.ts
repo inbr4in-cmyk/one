@@ -76,14 +76,16 @@ export interface TimesheetPerson {
 }
 export interface Timesheet { period: string; branch_id: number; norm: number; workdays: number[]; locked: boolean; can_edit: boolean; people: TimesheetPerson[] }
 
-export interface PayPersonLesson { lesson_id: number; day: number; date: string; time: string; amount: number; note: string }
-export interface PayPersonGroup { key: string; group_id: number | null; name: string; kind: string; count: number; amount: number; lessons: PayPersonLesson[] }
+export interface PayPersonLesson { lesson_id: number; day: number; date: string; time: string; amount: number; base: number; kpi: number; note: string }
+export interface PayPersonGroup { key: string; group_id: number | null; name: string; kind: string; count: number; amount: number; base: number; kpi: number; lessons: PayPersonLesson[] }
 export interface PayPerson {
   user: { id: number; full_name: string; position: string | null; pay_scheme: string | null }
   period: string
   days: number
   groups: PayPersonGroup[]
   lessons_total: number
+  rate_total: number
+  kpi_total: number
   lessons_count: number
   other: { id: number; kind: string; title: string; amount: number; description: string; created_at: string }[]
   other_total: number

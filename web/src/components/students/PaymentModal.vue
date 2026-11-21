@@ -72,6 +72,8 @@ const body = computed(() => ({
 watch(open, (v) => {
   if (!v) return
   Object.assign(form, { by: props.mode ?? 'amount', lessons: '12', amount: '', method: 'kaspi', discount: '', promo: '', note: '', paid_on: todayIso(), used: '', seller: 0 })
+  /* came from a lead: the manager who led it is offered as the seller */
+  if (props.student.sales_user_id && props.student.sales_user_id !== auth.user?.id) form.seller = props.student.sales_user_id
   void refs.loadStaff()
   levelPick.value = 0
   pkgId.value = 0

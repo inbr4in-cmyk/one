@@ -100,14 +100,14 @@ async function saveSrc() {
 /* ---------- levels and prices ---------- */
 const levelModal = ref(false)
 const levelId = ref<number | null>(null)
-const lf = reactive({ name: '', lesson_price: '', track: 'adults' as Level['track'], duration_months: '3', color: '#1A6FD1', next_level_id: 0 })
+const lf = reactive({ rate: '', name: '', lesson_price: '', track: 'adults' as Level['track'], duration_months: '3', color: '#1A6FD1', next_level_id: 0 })
 const trackOptions = computed(() => (['adults', 'kids', 'exam'] as const).map((v) => ({ value: v, label: t(`dict.track.${v}`) })))
 const nextOptions = computed(() => [{ value: 0, label: '—' }, ...refs.levels.filter((l) => l.id !== levelId.value).map((l) => ({ value: l.id, label: l.name }))])
 function openLevel(l: Level | null) {
   levelId.value = l?.id ?? null
   Object.assign(lf, l
-    ? { name: l.name, lesson_price: String(l.lesson_price), track: l.track, duration_months: String(l.duration_months), color: l.color, next_level_id: l.next_level_id ?? 0 }
-    : { name: '', lesson_price: '', track: 'adults', duration_months: '3', color: '#1A6FD1', next_level_id: 0 })
+    ? { rate: l.teacher_rate ? String(l.teacher_rate) : '', name: l.name, lesson_price: String(l.lesson_price), track: l.track, duration_months: String(l.duration_months), color: l.color, next_level_id: l.next_level_id ?? 0 }
+    : { rate: '', name: '', lesson_price: '', track: 'adults', duration_months: '3', color: '#1A6FD1', next_level_id: 0 })
   levelModal.value = true
 }
 async function saveLevel() {
@@ -115,7 +115,7 @@ async function saveLevel() {
   if (lf.name.trim().length < 2 || !(price >= 0) || lf.lesson_price === '') return toast.error(t('dict.levelInvalid'))
   const cur = levelId.value ? refs.levels.find((l) => l.id === levelId.value) : null
   const body: LevelIn = {
-    name: lf.name.trim(), code: cur?.code ?? null, color: lf.color, lesson_price: price, track: lf.track,
+    name: lf.name.trim(), code: cur?.code ?? null, color: lf.color, lesson_price: price, teacher_rate: Math.max(0, Math.round(Number(lf.rate) || 0)) || null, track: lf.track,
     duration_months: Math.max(1, Math.round(Number(lf.duration_months) || 1)), next_level_id: lf.next_level_id || null,
     order: cur?.order ?? Math.max(0, ...refs.levels.map((l) => l.order)) + 1,
   }
@@ -388,7 +388,7 @@ watch(tab, loadTab)
           <tr v-for="l in refs.levels" :key="l.id">
             <td><span class="dot" :style="{ background: l.color }" /> <b>{{ l.name }}</b></td>
             <td>{{ t(`dict.track.${l.track}`) }}</td>
-            <td class="r num">{{ money(l.lesson_price, loc) }}</td>
+            <td class="r num">{{ money(l.lesson_price, loc) }}<span v-if="l.teacher_rate" class="chip xs" style="margin-left: 8px">{{ t('dict.roomRateChip', { n: money(l.teacher_rate, loc) }) }}</span></td>
             <td class="r num">{{ l.duration_months }}</td>
             <td class="r">
               <div class="row-acts nowrap">
@@ -535,6 +535,7 @@ watch(tab, loadTab)
       <UiInput v-model="lf.name" :label="t('dict.levelName')" :placeholder="t('dict.levelPh')" :maxlength="80" autofocus />
       <div class="form-2">
         <UiInput v-model="lf.lesson_price" type="number" inputmode="numeric" :min="0" :label="t('dict.price')" />
+        <UiInput v-model="lf.rate" type="number" inputmode="numeric" :min="0" :label="t('nv.levelRate')" />
         <UiInput v-model="lf.duration_months" type="number" inputmode="numeric" :min="1" :label="t('dict.months')" />
       </div>
       <div class="form-2">

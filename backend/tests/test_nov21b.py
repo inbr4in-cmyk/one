@@ -327,3 +327,84 @@ async def test_member_since_is_corrected_and_the_student_appears_in_past_lessons
     assert (await client.patch(url, headers=owner_h, json={"joined_on": (today() - timedelta(days=15)).isoformat()})).status_code == 200
     note = await db.scalar(select(Notification).where(Notification.user_id == teacher.id, Notification.kind == "attendance"))
     assert note is not None and "MS-1" in note.title and note.link == f"/groups/{g['id']}"
+
+
+async def test_payments_excel_by_filter_and_old_finished_groups_are_closed(client, db, owner_h):
+    import io
+
+    from openpyxl import load_workbook
+
+    from app.models import Group, GroupMember, ScheduleRule
+    from app.services.clock import today
+    from tests.test_core_learning import _student
+
+    bid = await branch_id(db, YANGI)
+    teacher = await make_staff(db, "teacher", [YANGI], "+77052227095", "Учитель")
+    lvl = await level_id(db, "ELE")
+    g = (await client.post("/api/groups", headers=owner_h, json={"name": "FX-1", "branch_id": bid, "level_id": lvl, "teacher_id": teacher.id})).json()
+    sid = (await _student(db, client, owner_h, bid, "Эксель Оплата", "+77052227096"))["id"]
+    await client.post(f"/api/groups/{g['id']}/members", headers=owner_h, json={"student_id": sid})
+    await client.post("/api/payments", headers=owner_h, json={"student_id": sid, "lessons": 8, "method": "cash", "level_id": lvl})
+    d = today().isoformat()
+    r = await client.get(f"/api/payments-export.xlsx?date_from={d}&date_to={d}&category=course", headers=owner_h)
+    assert r.status_code == 200, r.text
+    ws = load_workbook(io.BytesIO(r.content)).active
+    assert ws.cell(1, 13).value == "Продал" and any(row[2] == "Эксель Оплата" for row in ws.iter_rows(min_row=2, values_only=True))
+    r = await client.get(f"/api/payments-export.xlsx?date_from={d}&date_to={d}&category=book", headers=owner_h)
+    assert not any(row[2] == "Эксель Оплата" for row in load_workbook(io.BytesIO(r.content)).active.iter_rows(min_row=2, values_only=True))
+    th = await login(client, "+77052227095")
+    assert (await client.get("/api/payments-export.xlsx", headers=th)).status_code == 403
+
+    # a group finished the old way: archived, but its lessons and members were left behind
+    room = await db.scalar(select(Room).where(Room.branch_id == bid))
+    grp = await db.get(Group, g["id"])
+    grp.archived_at = now() - timedelta(days=2)
+    db.add(Lesson(group_id=grp.id, branch_id=bid, level_id=lvl, teacher_id=teacher.id, room_id=room.id,
+                  starts_at=now() + timedelta(days=1), ends_at=now() + timedelta(days=1, hours=1)))
+    await db.commit()
+    pre = await jobs.close_finished_groups(db, commit=False)
+    assert pre["lessons"] == 1 and pre["members"] == 1
+    assert await db.scalar(select(GroupMember.left_on).where(GroupMember.group_id == grp.id)) is None
+    await jobs.close_finished_groups(db, commit=True)
+    assert await db.scalar(select(GroupMember.left_on).where(GroupMember.group_id == grp.id)) is not None
+    assert (await jobs.close_finished_groups(db, commit=False))["groups"] == []
+
+
+async def test_course_with_its_own_teacher_rate_pays_it_in_any_format_and_salary_page_splits_rate_and_kpi(client, db, owner_h):
+    from app.models import Level
+    from app.services.clock import period_of, today
+    from tests.test_core_learning import _lesson_now, _setup, _student
+
+    bid, teacher, room, g = await _setup(db, client, owner_h)
+    ids, teacher_id, room_id = [], teacher.id, room.id
+    for i in range(7):
+        s = await _student(db, client, owner_h, bid, f"Ставка {i}", f"+7705222810{i}")
+        await client.post(f"/api/groups/{g['id']}/members", headers=owner_h, json={"student_id": s["id"]})
+        ids.append(s["id"])
+    marks = {"marks": [{"student_id": sid, "status": "present"} for sid in ids]}
+    l1 = (await _lesson_now(db, g, teacher, room)).id
+    await db.commit()
+    assert (await client.put(f"/api/lessons/{l1}/attendance", headers=owner_h, json=marks)).status_code == 200
+    p = (await client.get(f"/api/payroll/person?user_id={teacher_id}&period={period_of(today())}", headers=owner_h)).json()
+    assert (p["rate_total"], p["kpi_total"], p["lessons_total"]) == (2500, 200, 2700)
+    assert p["groups"][0]["lessons"][0]["base"] == 2500 and p["groups"][0]["lessons"][0]["kpi"] == 200
+
+    lv = await db.get(Level, g["level_id"])
+    await db.refresh(lv)
+    body = {"name": lv.name, "color": lv.color, "lesson_price": lv.lesson_price, "track": lv.track, "order": lv.order,
+            "duration_months": lv.duration_months, "next_level_id": lv.next_level_id}
+    r = await client.patch(f"/api/levels/{g['level_id']}", headers=owner_h, json={**body, "teacher_rate": 5000})
+    assert r.status_code == 200 and r.json()["teacher_rate"] == 5000
+    assert (await client.patch(f"/api/levels/{g['level_id']}", headers=owner_h, json=body)).json()["teacher_rate"] == 5000  # kept
+    l2 = Lesson(branch_id=g["branch_id"], group_id=g["id"], level_id=g["level_id"], teacher_id=teacher_id, room_id=room_id,
+                starts_at=now() - timedelta(hours=3), ends_at=now() - timedelta(hours=2))
+    db.add(l2)
+    await db.flush()
+    l2 = l2.id
+    await db.commit()
+    r = await client.put(f"/api/lessons/{l2}/attendance", headers=owner_h, json={**marks, "reason": "позже"})
+    assert r.status_code == 200, r.text
+    acc = await db.scalar(select(Accrual).where(Accrual.kind == "lesson", Accrual.ref_id == l2))
+    assert acc.amount == 5000  # the course rate, no per-student extra on top
+    p = (await client.get(f"/api/payroll/person?user_id={teacher_id}&period={period_of(today())}", headers=owner_h)).json()
+    assert (p["rate_total"], p["kpi_total"]) == (7500, 200)

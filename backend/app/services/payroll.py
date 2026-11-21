@@ -6,7 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Accrual, Lesson, PayrollPeriod, Room
+from app.models import Accrual, Lesson, Level, PayrollPeriod, Room
 from app.services.clock import period_of
 from app.services.values import rate
 
@@ -120,6 +120,7 @@ async def accrue_lesson(db: AsyncSession, *, teacher_id: int, lesson_id: int, n:
     """Upsert the pay for one held lesson. If the attendance is corrected later the amount follows; once the
     period is approved, the difference goes into the next open period as a correction."""
     room_rate = await db.scalar(select(Room.teacher_rate).join(Lesson, Lesson.room_id == Room.id).where(Lesson.id == lesson_id))
+    level_rate = await db.scalar(select(Level.teacher_rate).join(Lesson, Lesson.level_id == Level.id).where(Lesson.id == lesson_id))
     if kind == "support":
         # Support: paid by the length of the lesson, the rate is for 30 minutes (1000 → an hour is 2000).
         les = await db.get(Lesson, lesson_id)
@@ -127,6 +128,9 @@ async def accrue_lesson(db: AsyncSession, *, teacher_id: int, lesson_id: int, n:
         amount = round(await rate(db, "teacher_support_lesson", on) * minutes / 30)
     elif kind == "club":
         amount = await rate(db, "teacher_club_lesson", on)
+    elif level_rate:
+        # A course with its own pay (IELTS): the same fixed sum for a group, duo or individual lesson.
+        amount = level_rate
     elif room_rate:
         # A room with its own pay: the same fixed sum for a group, duo or individual lesson, no per-student extra.
         amount = room_rate

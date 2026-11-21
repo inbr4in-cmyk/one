@@ -60,6 +60,7 @@ export default {
     join: { title: 'Топқа қосу', since: 'Топта қай күннен', action: 'Қосу', done: 'Оқушы топқа қосылды' },
     cal: { month: 'Ай', year: 'Жыл', frozen: 'Тоқтатылған' },
     payp: {
+      rate: 'Ставка · сабақ: {n}', kpi: 'KPI', rateShort: 'ставка', rateRow: 'Ставка',
       total: 'Ай бойынша есептелді', lessons: 'Сабақтар үшін · {n}', other: 'Жалақы, KPI, сыйақы, ұстап қалу', paid: 'Төленді', left: 'Төлеу қалды',
       byGroup: 'Топтар мен күндер бойынша сабақтар', group: 'Топ', nLessons: '{n} сабақ', perDay: 'Күн бойынша', noLessons: 'Бұл айда сабақ жоқ',
       otherLines: 'Басқа есептеулер', noOther: 'Басқа есептеулер жоқ', payouts: 'Төлемдер', noPayouts: 'Бұл айда төлем жоқ', notFound: 'Қызметкер табылмады', open: 'Жалақы бетін ашу',
@@ -171,6 +172,7 @@ export default {
     leadNote: 'Ескертпе',
     memberSince: 'Топта қай күннен',
     memberSinceEdit: '«Топта қай күннен» күнін өзгерту',
+    levelRate: 'Осы курстың сабағы үшін мұғалім ставкасы',
     rulePast: 'Құрылған сабақтар: {n}, оның ішінде өткендері: {p}',
     profile: {
       title: 'Қызметкер профилі',

@@ -18,7 +18,7 @@ from app.core.audit import write_audit
 from app.core.db import SessionLocal
 from app.core.kv import get_kv
 from app.models import (
-    Attendance, BalanceEntry, Complaint, Expense, Freeze, GroupMember, Lead, LeadEvent, LeadStage, Lesson, Student, Task,
+    Attendance, BalanceEntry, Complaint, Expense, Freeze, Group, GroupMember, Lead, LeadEvent, LeadStage, Lesson, Student, Task,
     TaskAssignee,
 )
 from app.models.learning import AttendanceStatus
@@ -53,7 +53,9 @@ async def attendance_reminders(db: AsyncSession) -> int:
     t = now()
     rows = await db.scalars(select(Lesson).where(
         Lesson.status == LessonStatus.PLANNED, Lesson.attendance_marked_at.is_(None),
-        Lesson.ends_at <= t - timedelta(minutes=remind), Lesson.ends_at > t - timedelta(days=1)))
+        Lesson.ends_at <= t - timedelta(minutes=remind), Lesson.ends_at > t - timedelta(days=1),
+        # a finished group keeps no attendance: nobody is reminded about its lessons
+        or_(Lesson.group_id.is_(None), Lesson.group_id.not_in(select(Group.id).where(Group.archived_at.is_not(None))))))
     sent = 0
     for lesson in rows:
         teacher = lesson.actual_teacher_id or lesson.teacher_id
@@ -293,6 +295,36 @@ async def close_left_members(db: AsyncSession) -> int:
     return n
 
 
+async def close_finished_groups(db: AsyncSession, commit: bool) -> dict:
+    """One-off, run by hand: groups finished before «Завершить» learned to stop the schedule. Their schedule ends,
+    lessons that have not started are cancelled, members leave. Held and marked lessons are not touched. Safe to repeat."""
+    from app.models import ScheduleRule
+
+    out = {"commit": commit, "groups": [], "rules": 0, "lessons": 0, "members": 0}
+    for g in await db.scalars(select(Group).where(Group.archived_at.is_not(None)).order_by(Group.id)):
+        day = local(g.archived_at).date()
+        rules = [r for r in await db.scalars(select(ScheduleRule).where(ScheduleRule.group_id == g.id, ScheduleRule.archived_at.is_(None)))
+                 if r.valid_to is None or r.valid_to > day]
+        lessons = list(await db.scalars(select(Lesson).where(
+            Lesson.group_id == g.id, Lesson.status == LessonStatus.PLANNED, Lesson.attendance_marked_at.is_(None),
+            Lesson.starts_at > g.archived_at)))
+        members = list(await db.scalars(select(GroupMember).where(GroupMember.group_id == g.id, GroupMember.left_on.is_(None))))
+        if not (rules or lessons or members):
+            continue
+        out["groups"].append(f"{g.id} {g.name}: расписаний {len(rules)}, уроков {len(lessons)}, учеников {len(members)}")
+        out["rules"] += len(rules); out["lessons"] += len(lessons); out["members"] += len(members)
+        if commit:
+            for r in rules:
+                r.valid_to = max(day, r.valid_from)
+            for x in lessons:
+                x.status, x.cancel_reason = LessonStatus.CANCELLED, "Группа закрыта"
+            for m in members:
+                m.left_on = max(day, m.joined_on)
+    if commit:
+        await db.commit()
+    return out
+
+
 async def instagram_names(db: AsyncSession) -> int:
     """Instagram contacts saved without a name get the name and @username from their profile. Safe to repeat."""
     from app.models import ExternalContact, Lead
@@ -479,5 +511,7 @@ if __name__ == "__main__":
         print(asyncio.run(_run({"minutely": minutely, "nightly": nightly, "leave-followups": leave_followups,
                                  "close-left-members": close_left_members,
                                  "instagram-names": instagram_names,
+                                 "finished-groups-preview": lambda db: close_finished_groups(db, commit=False),
+                                 "finished-groups-fix": lambda db: close_finished_groups(db, commit=True),
                                  "book-lessons-preview": lambda db: bookpay.restore_lessons(db, commit=False),
                                  "book-lessons-fix": lambda db: bookpay.restore_lessons(db, commit=True)}[cmd])))

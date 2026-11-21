@@ -63,6 +63,7 @@ class LevelIn(In):
     track: str = Field(default="adults", pattern="^(adults|kids|exam)$")
     duration_months: int = 3
     next_level_id: int | None = None
+    teacher_rate: int | None = Field(default=None, ge=0, le=1_000_000)
 
 
 class LevelOut(ORM):
@@ -76,6 +77,7 @@ class LevelOut(ORM):
     duration_months: int
     next_level_id: int | None
     is_kids: bool
+    teacher_rate: int | None = None
     archived_at: datetime | None
 
 
@@ -206,12 +208,14 @@ async def update_level(level_id: int, body: LevelIn, db: DB, actor: Actor = requ
     before = snapshot(lv)
     if body.code and body.code != lv.code and await db.scalar(select(Level.id).where(Level.code == body.code)):
         raise bad_request("Уровень с таким кодом уже есть")
-    for k, v in body.model_dump(exclude={"code"} if not body.code else set()).items():
-        setattr(lv, k, v)
+    skip = (set() if body.code else {"code"}) | (set() if "teacher_rate" in body.model_fields_set else {"teacher_rate"})
+    for k, v in body.model_dump(exclude=skip).items():
+        setattr(lv, k, v or None if k == "teacher_rate" else v)
     lv.is_kids = lv.track == "kids"
     bb, aa = diff(before, snapshot(lv))
     await write_audit(db, actor_id=actor.id, action="level.update", entity="level", entity_id=lv.id, ip=actor.ip, before=bb, after=aa)
     await db.commit()
+    await db.refresh(lv)
     return LevelOut.model_validate(lv)
 
 

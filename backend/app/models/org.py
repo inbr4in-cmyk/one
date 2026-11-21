@@ -41,3 +41,5 @@ class Level(IdMixin, TimestampMixin, ArchiveMixin, Base):
     duration_months: Mapped[Int]
     next_level_id: Mapped[int | None] = fk("levels.id", nullable=True)
     is_kids: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Teacher pay per held lesson of this course in any format (group, duo, individual); None = the usual rates.
+    teacher_rate: Mapped[int | None] = mapped_column(Integer, nullable=True)
