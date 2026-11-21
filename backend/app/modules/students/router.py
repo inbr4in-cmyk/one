@@ -1,14 +1,14 @@
 from datetime import date, datetime, time, timedelta
 
 from fastapi import APIRouter, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
 from app.core.audit import diff, snapshot, write_audit
 from app.core.deps import DB, Actor, require
 from app.core.errors import bad_request, conflict, forbidden, not_found
 from app.core.query import contains_digits, icontains, paginate
-from app.core.schemas import Page
+from app.core.schemas import In, Page
 from app.core.security import mask_phone, normalize_phone
 from app.models import (
     Attendance,
@@ -566,6 +566,10 @@ async def history(student_id: int, db: DB, actor: Actor = require("students", "v
             out.append(HistoryItem(at=a.at, kind="transfer", actor=who,
                                    text=f"Переведён из «{b.get('group') or '—'}» в «{af.get('group')}»"
                                         + (f". Причина: {a.note}" if a.note else "")))
+        elif a.action == "student.branch":
+            out.append(HistoryItem(at=a.at, kind="branch", actor=who,
+                                   text=f"Филиал: {b.get('branch') or '—'} → {af.get('branch') or '—'}"
+                                        + (f". Причина: {a.note}" if a.note else "")))
         elif a.action == "student.update":
             for k, v in af.items():
                 if k == "status":
@@ -680,6 +684,36 @@ async def transfer(student_id: int, body: TransferIn, db: DB, actor: Actor = req
                       before={"group": current[1].name if current else None, "lessons": calc.lessons_before, "money": calc.money_before},
                       after={"group": to_group.name, "lessons": calc.lessons_after, "money": calc.money_after, "on": on.isoformat()},
                       note=reason + (f". Возвращено уроков: {returned}" if returned else ""))
+    await db.commit()
+    return await card(db, s, actor)
+
+
+class BranchMoveIn(In):
+    branch_id: int = Field(ge=1)
+    reason: str = Field(min_length=3, max_length=255)
+
+
+@router.post("/{student_id}/branch", response_model=StudentOut)
+async def move_branch(student_id: int, body: BranchMoveIn, db: DB, actor: Actor = require("students", "transfer")) -> StudentOut:
+    """«Перенести» → another branch without a group yet (owner, 21.11.2026). The student leaves the groups of the old
+    branch from today and waits for a group in the new one; balance, payments and history stay as they are (past
+    payments keep the branch they were taken in). The new branch's staff then put the student into a group."""
+    from app.models import Branch
+
+    s = await get_student_scoped(db, actor, student_id, "students", "transfer")
+    target = await db.get(Branch, body.branch_id)
+    if target is None or target.archived_at is not None:
+        raise not_found("Филиал")
+    if target.id == s.branch_id:
+        raise bad_request("Ученик уже в этом филиале")
+    old = await db.get(Branch, s.branch_id)
+    closed = await retention.leave_groups(db, s, today() - timedelta(days=1))
+    if closed and s.status == StudentStatus.ACTIVE:
+        s.status = StudentStatus.WAITING
+    s.branch_id = target.id
+    await write_audit(db, actor_id=actor.id, action="student.branch", entity="student", entity_id=s.id, branch_id=target.id,
+                      ip=actor.ip, before={"branch_id": old.id if old else None, "branch": old.name if old else None},
+                      after={"branch_id": target.id, "branch": target.name, "groups_closed": closed}, note=body.reason.strip())
     await db.commit()
     return await card(db, s, actor)
 

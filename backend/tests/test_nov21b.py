@@ -247,3 +247,24 @@ async def test_lesson_rating_by_qr_three_questions_and_only_admins_see_the_answe
     r = await client.put("/api/lesson-surveys/questions", headers=owner_h, json={"questions": [{"text": "Как урок?", "kind": "stars"}]})
     assert r.status_code == 200 and len(r.json()) == 1
     assert len((await client.get(f"/api/public/lesson-survey/{token}")).json()["questions"]) == 3
+
+
+async def test_student_is_moved_to_another_branch_without_a_group(client, db, owner_h):
+    from tests.test_core_learning import _student
+
+    bid, north = await branch_id(db, YANGI), await branch_id(db, "Север")
+    teacher = await make_staff(db, "teacher", [YANGI], "+77052227081", "Учитель")
+    g = (await client.post("/api/groups", headers=owner_h, json={"name": "BR-1", "branch_id": bid,
+                                                                 "level_id": await level_id(db, "ELE"), "teacher_id": teacher.id})).json()
+    sid = (await _student(db, client, owner_h, bid, "Переезд Филиал", "+77052227082"))["id"]
+    await client.post(f"/api/groups/{g['id']}/members", headers=owner_h, json={"student_id": sid})
+    await client.post("/api/payments", headers=owner_h, json={"student_id": sid, "lessons": 8, "method": "cash", "level_id": await level_id(db, "ELE")})
+    before = (await client.get(f"/api/students/{sid}", headers=owner_h)).json()
+    assert (await client.post(f"/api/students/{sid}/branch", headers=owner_h, json={"branch_id": bid, "reason": "тот же"})).status_code == 400
+    r = await client.post(f"/api/students/{sid}/branch", headers=owner_h, json={"branch_id": north, "reason": "Переехали ближе к Северу"})
+    assert r.status_code == 200, r.text
+    after = r.json()
+    assert after["branch_id"] == north and after["lessons_left"] == before["lessons_left"] and after["status"] == "waiting"
+    assert all(x["left_on"] for x in after["groups"])
+    hist = (await client.get(f"/api/students/{sid}/history", headers=owner_h)).json()
+    assert any(h["kind"] == "branch" and "Север" in h["text"] for h in hist)

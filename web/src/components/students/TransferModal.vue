@@ -6,6 +6,7 @@ import { studentsApi, type Student, type TransferPreview } from '@/api/students'
 import { academicsApi, type Group } from '@/api/academics'
 import { ApiError } from '@/api/http'
 import { useToastStore } from '@/stores/toast'
+import { useRefsStore } from '@/stores/refs'
 import { addDays, isoDate, money, schoolNow, todayIso } from '@/utils/dates'
 import type { Locale } from '@/i18n'
 
@@ -14,6 +15,11 @@ const open = defineModel<boolean>('open', { required: true })
 const emit = defineEmits<{ done: [Student] }>()
 const { t, locale } = useI18n()
 const toast = useToastStore()
+const refs = useRefsStore()
+/** The branch the student goes to: his own, or another one (then a group may be picked now or later by that branch). */
+const branchId = ref(0)
+const otherBranch = computed(() => branchId.value !== props.student.branch_id)
+const branchOptions = computed(() => refs.branches.map((b) => ({ value: b.id, label: b.name })))
 const loc = computed(() => locale.value as Locale)
 
 const groups = ref<Group[]>([])
@@ -42,7 +48,14 @@ watch(open, async (v) => {
   on.value = todayIso()
   preview.value = null
   error.value = null
+  await refs.load()
+  branchId.value = props.student.branch_id
   groups.value = await academicsApi.groups({ branch_id: props.student.branch_id }).catch(() => [])
+})
+watch(branchId, async (id, old) => {
+  if (!open.value || !id || !old) return
+  target.value = 0
+  groups.value = await academicsApi.groups({ branch_id: id }).catch(() => [])
 })
 
 watch(target, async (id) => {
@@ -60,16 +73,32 @@ watch(target, async (id) => {
 })
 
 async function submit() {
-  if (!target.value || !preview.value) return
+  if (!target.value && !otherBranch.value) return
+  if (target.value && !preview.value) return
   if (reason.value.trim().length < 3) {
     error.value = t('nv.transferReason')
+    return
+  }
+  if (!target.value) {
+    error.value = null
+    busy.value = true
+    try {
+      const s = await studentsApi.moveBranch(props.student.id, branchId.value, reason.value.trim())
+      toast.ok(t('nv.branchMoved', { branch: refs.branchName(branchId.value) }))
+      emit('done', s)
+      open.value = false
+    } catch (e) {
+      if (e instanceof ApiError) error.value = e.detail
+    } finally {
+      busy.value = false
+    }
     return
   }
   error.value = null
   busy.value = true
   try {
     const s = await studentsApi.transfer(props.student.id, target.value, reason.value.trim() || null, on.value)
-    toast.ok(t('students.transfer.done', { group: preview.value.to_group }))
+    toast.ok(t('students.transfer.done', { group: preview.value!.to_group }))
     emit('done', s)
     open.value = false
   } catch (e) {
@@ -83,6 +112,10 @@ async function submit() {
 <template>
   <UiModal v-model:open="open" :title="t('students.transfer.title')">
     <form id="tr-form" class="stack" @submit.prevent="submit">
+      <UiField v-if="branchOptions.length > 1" :label="t('branch.label')">
+        <UiSelect v-model="branchId" :options="branchOptions" :label="t('branch.label')" block />
+      </UiField>
+      <p v-if="otherBranch && !target" class="form-note m0">{{ t('nv.branchMoveNote') }}</p>
       <UiField :label="t('students.transfer.to')">
         <UiSelect v-model="target" :options="options" :label="t('students.transfer.to')" block />
       </UiField>
@@ -108,13 +141,13 @@ async function submit() {
         <div v-if="!preview.same_price" class="alert info"><UiIcon name="alert" /><div class="grow"><span>{{ t('students.transfer.recalc') }}</span></div></div>
         <div v-if="preview.book_hint" class="alert"><UiIcon name="book" /><div class="grow"><span>{{ preview.book_hint }}</span></div></div>
       </div>
-      <UiInput v-model="on" type="date" :min="minOn" :max="todayIso()" :label="t('nv.transferOn')" />
+      <UiInput v-if="target" v-model="on" type="date" :min="minOn" :max="todayIso()" :label="t('nv.transferOn')" />
       <UiTextarea v-model="reason" :label="t('students.transfer.reason')" :rows="2" :maxlength="255" required />
       <p v-if="error" class="form-err m0" role="alert">{{ error }}</p>
     </form>
     <template #footer="{ close }">
       <UiButton @click="close">{{ t('common.cancel') }}</UiButton>
-      <UiButton variant="navy" type="submit" form="tr-form" icon="arrow" :loading="busy" :disabled="!preview">{{ t('students.transfer.confirm') }}</UiButton>
+      <UiButton variant="navy" type="submit" form="tr-form" icon="arrow" :loading="busy" :disabled="!preview && !(otherBranch && !target)">{{ t('students.transfer.confirm') }}</UiButton>
     </template>
   </UiModal>
 </template>

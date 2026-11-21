@@ -169,6 +169,7 @@ export const studentsApi = {
     http.post<TransferPreview>(`/students/${id}/transfer/preview`, { to_group_id }),
   transfer: (id: number, to_group_id: number, reason: string | null, on?: string | null) =>
     http.post<Student>(`/students/${id}/transfer`, { to_group_id, reason, on: on || null }),
+  moveBranch: (id: number, branch_id: number, reason: string) => http.post<Student>(`/students/${id}/branch`, { branch_id, reason }),
   freeze: (id: number, starts_on: string, ends_on: string, reason: string | null) =>
     http.post<Student>(`/students/${id}/freeze`, { starts_on, ends_on, reason }),
   unfreeze: (id: number) => http.post<Student>(`/students/${id}/unfreeze`),
