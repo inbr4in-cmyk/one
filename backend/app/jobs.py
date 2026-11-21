@@ -144,6 +144,29 @@ async def lead_control(db: AsyncSession) -> dict:
                             body=f"«{stage.name}». Кто первым поработает с лидом, тот станет ответственным",
                             link=f"/crm/leads/{lead.id}")
         out["freed"] += 1
+    # (4) Paid an hour ago and still in no group: the branch admin is told on the screen, then once a day for a week.
+    from app.services import retention
+
+    paid = await crm.stage_by_code(db, "main", "paid")
+    out["paid_no_group"] = 0
+    if paid:
+        in_group = select(GroupMember.id).where(GroupMember.student_id == Lead.student_id, GroupMember.left_on.is_(None)).exists()
+        waiting = list(await db.scalars(select(Lead).where(
+            Lead.stage_id == paid.id, Lead.archived_at.is_(None), Lead.stage_changed_at <= t - timedelta(hours=1),
+            Lead.stage_changed_at > t - timedelta(days=7), ~in_group).limit(200)))
+        for lead in waiting:
+            if lead.student_id:
+                st = await db.get(Student, lead.student_id)
+                if st is None or st.archived_at is not None or st.status in (StudentStatus.LEFT, StudentStatus.FINISHED):
+                    continue
+            if not await once(f"paid-no-group:{lead.id}:{local(t).date()}", 2 * DAY):
+                continue
+            link = f"/students/{lead.student_id}" if lead.student_id else f"/crm/leads/{lead.id}"
+            for uid in await retention.branch_admins(db, lead.branch_id):
+                await crm.alert(db, uid, "lead", f"{lead.full_name} оплатил, но ещё не в группе",
+                                body="Добавьте ученика в группу" if lead.student_id else "Создайте карточку ученика и добавьте в группу",
+                                link=link)
+            out["paid_no_group"] += 1
     hours = int(await setting(db, "lead_idle_hours") or 0)
     if hours and _day_time(t):
         has_note = select(LeadEvent.id).where(LeadEvent.lead_id == Lead.id, crm.manual_event()).exists()

@@ -268,3 +268,29 @@ async def test_student_is_moved_to_another_branch_without_a_group(client, db, ow
     assert all(x["left_on"] for x in after["groups"])
     hist = (await client.get(f"/api/students/{sid}/history", headers=owner_h)).json()
     assert any(h["kind"] == "branch" and "Север" in h["text"] for h in hist)
+
+
+async def test_paid_lead_without_a_group_for_an_hour_alerts_the_branch_admin(client, db, owner_h):
+    bid = await branch_id(db, YANGI)
+    admin = await make_staff(db, "branch_admin", [YANGI], "+77052227091", "Админ Филиала")
+    teacher = await make_staff(db, "teacher", [YANGI], "+77052227092", "Учитель")
+    await db.commit()
+    lead = (await client.post("/api/crm/leads", headers=owner_h, json={"full_name": "Оплатил Безгруппы", "phone": "+77052227093", "branch_id": bid})).json()
+    paid = await stage_by_code(db, "main", "paid")
+    assert (await client.post(f"/api/crm/leads/{lead['id']}/stage", headers=owner_h, json={"stage_id": paid.id})).status_code == 200
+    sid = (await client.post(f"/api/crm/leads/{lead['id']}/convert", headers=owner_h, json={})).json()["student_id"]
+    assert (await jobs.lead_control(db))["paid_no_group"] == 0  # the hour has not passed
+    row = await db.get(Lead, lead["id"])
+    row.stage_changed_at = now() - timedelta(hours=2)
+    await db.flush()
+    assert (await jobs.lead_control(db))["paid_no_group"] == 1
+    assert (await jobs.lead_control(db))["paid_no_group"] == 0  # once a day
+    titles = [n.title for n in await db.scalars(select(Notification).where(Notification.user_id == admin.id))]
+    assert "Оплатил Безгруппы оплатил, но ещё не в группе" in titles
+    # in a group: nothing more to remind about
+    g = (await client.post("/api/groups", headers=owner_h, json={"name": "PG-1", "branch_id": bid,
+                                                                 "level_id": await level_id(db, "ELE"), "teacher_id": teacher.id})).json()
+    assert (await client.post(f"/api/groups/{g['id']}/members", headers=owner_h, json={"student_id": sid})).status_code in (200, 201)
+    from app.core.kv import get_kv
+    await get_kv().delete(f"once:paid-no-group:{lead['id']}:{__import__('app.services.clock', fromlist=['local']).local(now()).date()}")
+    assert (await jobs.lead_control(db))["paid_no_group"] == 0
