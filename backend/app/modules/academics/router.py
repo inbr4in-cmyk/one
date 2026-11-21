@@ -223,6 +223,19 @@ async def archive_group(group_id: int, db: DB, actor: Actor = require("students"
     await db.commit()
 
 
+async def _backdated_notice(db, g: Group, s: Student, since: date, until: date, actor: Actor) -> None:
+    """A student entered with a past «в группе с»: the group's teacher is told on screen to fill in the attendance
+    of the lessons already held from that day."""
+    n = await db.scalar(select(func.count()).select_from(Lesson).where(
+        Lesson.group_id == g.id, Lesson.status != LessonStatus.CANCELLED, Lesson.starts_at < now(),
+        Lesson.starts_at >= at_local(since, time(0, 0)), Lesson.starts_at < at_local(until, time(0, 0))))
+    if not n or not g.teacher_id or g.teacher_id == actor.id:
+        return
+    await crm.alert(db, g.teacher_id, "attendance", f"{s.full_name} добавлен(а) в группу {g.name} с {since:%d.%m}",
+                    body=f"{actor.user.full_name} записал(а) ученика прошлой датой. Заполните посещаемость за прошедшие уроки: {n}.",
+                    link=f"/groups/{g.id}")
+
+
 class MemberIn(In):
     student_id: int
     joined_on: date | None = None  # «в группе с»: today when empty
@@ -269,6 +282,8 @@ async def add_member(group_id: int, body: MemberIn, db: DB, actor: Actor = requi
     await chats.sync_student_in_group_chat(db, g, s, True)
     await write_audit(db, actor_id=actor.id, action="group.member_add", entity="group", entity_id=g.id,
                       branch_id=g.branch_id, ip=actor.ip, after={"student_id": s.id})
+    if since < today():
+        await _backdated_notice(db, g, s, since, today(), actor)
     await db.commit()
     return {"ok": True}
 
@@ -306,6 +321,8 @@ async def change_member_since(group_id: int, student_id: int, body: MemberSinceI
         if marked:
             raise bad_request("До этой даты у ученика уже отмечены уроки в группе — выберите дату раньше")
     before = {"joined_on": m.joined_on.isoformat()}
+    if since < m.joined_on:
+        await _backdated_notice(db, g, await db.get(Student, student_id), since, m.joined_on, actor)
     m.joined_on = since
     await write_audit(db, actor_id=actor.id, action="group.member_since", entity="group", entity_id=g.id,
                       branch_id=g.branch_id, ip=actor.ip, before={"student_id": student_id, **before},

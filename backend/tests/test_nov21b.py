@@ -318,3 +318,12 @@ async def test_member_since_is_corrected_and_the_student_appears_in_past_lessons
     assert m.joined_on == back
     rows = (await client.get(f"/api/groups/{g['id']}/members", headers=owner_h)).json()
     assert rows[0]["joined_on"] == back.isoformat()
+    note = await db.scalar(select(Notification).where(Notification.user_id == teacher.id, Notification.kind == "attendance"))
+    assert note is None  # no lessons were held in those days: nothing to fill in
+    room = await db.scalar(select(Room).where(Room.branch_id == bid))
+    db.add(Lesson(group_id=g["id"], branch_id=bid, teacher_id=teacher.id, room_id=room.id,
+                  starts_at=now() - timedelta(days=12), ends_at=now() - timedelta(days=12) + timedelta(hours=1)))
+    await db.commit()
+    assert (await client.patch(url, headers=owner_h, json={"joined_on": (today() - timedelta(days=15)).isoformat()})).status_code == 200
+    note = await db.scalar(select(Notification).where(Notification.user_id == teacher.id, Notification.kind == "attendance"))
+    assert note is not None and "MS-1" in note.title and note.link == f"/groups/{g['id']}"
