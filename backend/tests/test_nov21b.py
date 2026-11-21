@@ -408,3 +408,73 @@ async def test_course_with_its_own_teacher_rate_pays_it_in_any_format_and_salary
     assert acc.amount == 5000  # the course rate, no per-student extra on top
     p = (await client.get(f"/api/payroll/person?user_id={teacher_id}&period={period_of(today())}", headers=owner_h)).json()
     assert (p["rate_total"], p["kpi_total"]) == (7500, 200)
+
+
+async def test_second_lesson_of_the_day_is_not_marked_and_old_duplicates_are_undone(client, db, owner_h):
+    from datetime import time
+
+    from app.models import ScheduleRule, Student
+    from app.services import dupes
+    from app.services.clock import at_local, local, today
+    from tests.test_core_learning import _setup, _student
+
+    bid, teacher, room, g = await _setup(db, client, owner_h)
+    tid, rid, gid = teacher.id, room.id, g["id"]
+    sid = (await _student(db, client, owner_h, bid, "Дубль Урок", "+77052227111"))["id"]
+    day = today() - timedelta(days=3)
+    await client.post(f"/api/groups/{gid}/members", headers=owner_h, json={"student_id": sid, "joined_on": (day - timedelta(days=2)).isoformat()})
+    await client.post("/api/payments", headers=owner_h, json={"student_id": sid, "lessons": 8, "method": "cash", "level_id": g["level_id"]})
+    r1 = ScheduleRule(group_id=gid, weekdays=[day.weekday()], start_time=time(16, 30), end_time=time(17, 30), room_id=rid, teacher_id=tid,
+                      valid_from=day - timedelta(days=30), valid_to=day)
+    r2 = ScheduleRule(group_id=gid, weekdays=[day.weekday()], start_time=time(15, 0), end_time=time(16, 0), room_id=rid, teacher_id=tid,
+                      valid_from=day - timedelta(days=30))
+    db.add_all([r1, r2])
+    await db.flush()
+    old = Lesson(branch_id=bid, group_id=gid, level_id=g["level_id"], teacher_id=tid, room_id=rid, rule_id=r1.id,
+                 starts_at=at_local(day, time(16, 30)), ends_at=at_local(day, time(17, 30)), created_at=now() - timedelta(days=10))
+    new = Lesson(branch_id=bid, group_id=gid, level_id=g["level_id"], teacher_id=tid, room_id=rid, rule_id=r2.id,
+                 starts_at=at_local(day, time(15, 0)), ends_at=at_local(day, time(16, 0)))
+    db.add_all([old, new])
+    await db.flush()
+    old_id, new_id, r2_id = old.id, new.id, r2.id
+    await db.commit()
+    marks = {"marks": [{"student_id": sid, "status": "present"}], "reason": "позже"}
+    assert (await client.put(f"/api/lessons/{old_id}/attendance", headers=owner_h, json=marks)).status_code == 200
+    r = await client.put(f"/api/lessons/{new_id}/attendance", headers=owner_h, json=marks)
+    assert r.status_code == 409 and "уже отмечен" in r.json()["detail"]  # the second time is refused
+
+    # «Прошедшие уроки» does not put a second lesson on a day that already has one
+    rule2 = await db.get(ScheduleRule, r2_id)
+    await db.delete(await db.get(Lesson, new_id))
+    await db.commit()
+    from app.models import Group
+    from app.modules.academics import schedule as sched
+    made, _ = await sched.backfill(db, rule2, await db.get(Group, gid), day, day)
+    assert made == 0
+
+    # what was doubled before the guard existed: both marked, the student charged twice, the teacher paid twice
+    dup = Lesson(branch_id=bid, group_id=gid, level_id=g["level_id"], teacher_id=tid, room_id=rid, rule_id=r2_id,
+                 starts_at=at_local(day, time(15, 0)), ends_at=at_local(day, time(16, 0)), status="done", attendance_marked_at=now())
+    db.add(dup)
+    await db.flush()
+    dup_id = dup.id
+    from app.models import Attendance
+    db.add(Attendance(lesson_id=dup_id, student_id=sid, status="present", charged=True, marked_by=tid))
+    db.add(Accrual(user_id=tid, kind="lesson", amount=2500, ref_type="lesson", ref_id=dup_id, period=f"{day:%Y-%m}", branch_id=bid,
+                   description="Урок EL-5: 1 уч."))
+    s = await db.get(Student, sid)
+    s.lessons_left -= 1
+    s.lessons_done += 1
+    await db.commit()
+    left = (await client.get(f"/api/students/{sid}", headers=owner_h)).json()["lessons_left"]
+    pre = await dupes.find(db, day - timedelta(days=1), "old")
+    assert [(x["lesson_id"], x["keep_id"], x["charged"], x["pay"]) for x in pre] == [(dup_id, old_id, 1, 2500)]
+    assert [(x["lesson_id"], x["keep_id"]) for x in await dupes.find(db, day - timedelta(days=1), "new")] == [(old_id, dup_id)]
+    res = await dupes.fix(db, day - timedelta(days=1), "old", None)
+    assert (res["lessons"], res["returned_to_students"], res["teacher_pay_removed"]) == (1, 1, 2500)
+    assert (await client.get(f"/api/students/{sid}", headers=owner_h)).json()["lessons_left"] == left + 1
+    assert await db.scalar(select(Accrual.amount).where(Accrual.ref_type == "lesson", Accrual.ref_id == dup_id)) == 0
+    assert await db.scalar(select(Accrual.amount).where(Accrual.ref_type == "lesson", Accrual.ref_id == old_id)) == 2500
+    assert await dupes.find(db, day - timedelta(days=1), "old") == []
+    att = (await client.get(f"/api/students/{sid}/attendance", headers=owner_h)).json()
+    assert [a["lesson_id"] for a in att] == [old_id]

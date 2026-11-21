@@ -1045,6 +1045,16 @@ async def mark(lesson_id: int, body: MarksIn, db: DB, actor: Actor = require("at
     trial_counts = bool(await setting(db, "trial_counts_in_n"))
     group = await db.get(Group, lesson.group_id) if lesson.group_id else None
     loc = local(lesson.starts_at)
+    if lesson.group_id and lesson.attendance_marked_at is None and lesson.rule_id and not lesson.moved_from_id and not lesson.is_support:
+        # One lesson of a group a day is marked once. A second schedule lesson on a day already marked is a
+        # duplicate (students would be charged twice, the teacher paid twice); a moved or hand-made lesson is not.
+        twin = await db.scalar(select(Lesson).where(
+            Lesson.group_id == lesson.group_id, Lesson.id != lesson.id, Lesson.status != LessonStatus.CANCELLED,
+            Lesson.attendance_marked_at.is_not(None), Lesson.is_support.is_(False),
+            Lesson.starts_at >= at_local(loc.date(), time(0)), Lesson.starts_at < at_local(loc.date() + timedelta(days=1), time(0))).limit(1))
+        if twin is not None:
+            raise conflict(f"У группы в этот день уже отмечен урок в {local(twin.starts_at):%H:%M}. Второй раз отметить нельзя: "
+                           "это дубликат урока, отмените его.")
     allowed_students = {r.student_id for r in (await roster(lesson.id, db, actor)).rows if r.student_id}
     allowed_leads = set((await db.scalars(select(Lead.id).where(Lead.trial_lesson_id == lesson.id))).all())
     changes = []

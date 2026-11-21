@@ -74,10 +74,17 @@ async def backfill(db: AsyncSession, rule: ScheduleRule, group: Group, start: da
     own = (await db.execute(select(Lesson.starts_at, Lesson.ends_at).where(
         Lesson.group_id == group.id, Lesson.status != LessonStatus.CANCELLED,
         Lesson.ends_at > at_local(start, time(0)), Lesson.starts_at < at_local(end + timedelta(days=1), time(0))))).all()
+    # One lesson of a group a day: a day that already has a lesson (at any hour), or whose lesson was moved to
+    # another day, does not get a second one — else the students are charged twice and the teacher is paid twice.
+    taken = {local(a).date() for a, _ in own}
+    taken |= {local(x).date() for x in await db.scalars(select(Lesson.starts_at).where(
+        Lesson.group_id == group.id, Lesson.status == LessonStatus.CANCELLED,
+        Lesson.id.in_(select(Lesson.moved_from_id).where(Lesson.moved_from_id.is_not(None))),
+        Lesson.ends_at > at_local(start, time(0)), Lesson.starts_at < at_local(end + timedelta(days=1), time(0))))}
     created, problems = 0, []
     d = start
     while d <= end:
-        if d.weekday() in rule.weekdays:
+        if d.weekday() in rule.weekdays and d not in taken:
             s, e = at_local(d, rule.start_time), at_local(d, rule.end_time)
             if not any(a < e and b > s for a, b in own):
                 c = await conflicts(db, room_id=rule.room_id, teacher_id=rule.teacher_id, starts_at=s, ends_at=e,
@@ -89,6 +96,7 @@ async def backfill(db: AsyncSession, rule: ScheduleRule, group: Group, start: da
                                   teacher_id=rule.teacher_id, room_id=rule.room_id, rule_id=rule.id, starts_at=s, ends_at=e))
                     await db.flush()
                     own.append((s, e))
+                    taken.add(d)
                     created += 1
         d += timedelta(days=1)
     return created, problems

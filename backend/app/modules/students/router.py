@@ -819,7 +819,8 @@ async def student_attendance_month(student_id: int, db: DB, month: str = Query(p
     rows = (await db.execute(
         select(Attendance, Lesson.starts_at, Group.name).join(Lesson, Lesson.id == Attendance.lesson_id)
         .outerjoin(Group, Group.id == Lesson.group_id)
-        .where(Attendance.student_id == s.id, Lesson.starts_at >= at_local(start, time(0)), Lesson.starts_at < at_local(end, time(0)))
+        .where(Attendance.student_id == s.id, Lesson.starts_at >= at_local(start, time(0)), Lesson.starts_at < at_local(end, time(0)),
+               Lesson.status != "cancelled")
         .order_by(Lesson.starts_at))).all()
     frozen: set[str] = set()
     for f in await db.scalars(select(Freeze).where(Freeze.student_id == s.id, Freeze.starts_on < end,
@@ -843,7 +844,7 @@ async def student_attendance(student_id: int, db: DB, actor: Actor = require("st
     s = await get_student_scoped(db, actor, student_id)
     rows = (await db.execute(
         select(Attendance, Lesson.starts_at, Group.name).join(Lesson, Lesson.id == Attendance.lesson_id)
-        .outerjoin(Group, Group.id == Lesson.group_id).where(Attendance.student_id == s.id)
+        .outerjoin(Group, Group.id == Lesson.group_id).where(Attendance.student_id == s.id, Lesson.status != "cancelled")
         .order_by(Lesson.starts_at.desc()).limit(min(limit, 300)))).all()
     return [{"lesson_id": a.lesson_id, "at": at, "group": g, "status": a.status, "charged": a.charged, "grade": a.grade,
              "comment": a.comment} for a, at, g in rows]

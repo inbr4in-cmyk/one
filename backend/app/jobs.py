@@ -295,6 +295,19 @@ async def close_left_members(db: AsyncSession) -> int:
     return n
 
 
+async def _dupes(db: AsyncSession, keep: str, commit: bool):
+    """One-off, run by hand: a group's day with two lessons where one was created over a held one. `old` keeps the
+    lesson that was there first, `new` the lesson of the schedule in force. Preview changes nothing."""
+    import json
+    from datetime import date
+
+    from app.services import dupes
+
+    since = date(2026, 11, 1)
+    res = await dupes.fix(db, since, keep, None) if commit else {"items": await dupes.find(db, since, keep)}
+    return json.dumps(res, ensure_ascii=False, indent=1)
+
+
 async def close_finished_groups(db: AsyncSession, commit: bool) -> dict:
     """One-off, run by hand: groups finished before «Завершить» learned to stop the schedule. Their schedule ends,
     lessons that have not started are cancelled, members leave. Held and marked lessons are not touched. Safe to repeat."""
@@ -511,6 +524,10 @@ if __name__ == "__main__":
         print(asyncio.run(_run({"minutely": minutely, "nightly": nightly, "leave-followups": leave_followups,
                                  "close-left-members": close_left_members,
                                  "instagram-names": instagram_names,
+                                 "lesson-duplicates-preview-old": lambda db: _dupes(db, "old", False),
+                                 "lesson-duplicates-preview-new": lambda db: _dupes(db, "new", False),
+                                 "lesson-duplicates-fix-old": lambda db: _dupes(db, "old", True),
+                                 "lesson-duplicates-fix-new": lambda db: _dupes(db, "new", True),
                                  "finished-groups-preview": lambda db: close_finished_groups(db, commit=False),
                                  "finished-groups-fix": lambda db: close_finished_groups(db, commit=True),
                                  "book-lessons-preview": lambda db: bookpay.restore_lessons(db, commit=False),
