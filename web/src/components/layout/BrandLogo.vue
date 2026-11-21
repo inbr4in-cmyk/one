@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import logo from '@/assets/brand/logo.svg'
-import logoTagline from '@/assets/brand/logo-tagline.svg'
+import logo from '@/assets/brand/logo-dark.svg'
+import logoTagline from '@/assets/brand/logo-tagline-dark.svg'
 
-/** The school's original logo (owner's vector file, 21.11.2026), on a white plate so its colours stay true on any background. */
+/** The school's original logo (owner's vector file, 21.11.2026), drawn straight on the dark side panels: the navy parts are white there, the red stays. */
 withDefaults(defineProps<{ size?: number; tagline?: boolean }>(), { size: 46, tagline: true })
 </script>
 
