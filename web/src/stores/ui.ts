@@ -9,12 +9,12 @@ import { useAuthStore } from './auth'
  * Token sets live in styles/tokens.css. `swatch` colors are a static preview for the picker.
  */
 export const THEMES = [
-  { id: 'auto', dark: null, swatch: { paper: '#FAF6F3', side: '#01225F', alt: '#0A1630', accent: '#0A1630', cta: '#BB1027' } },
-  { id: 'light', dark: false, swatch: { paper: '#FAF6F3', side: '#01225F', alt: '#FFFFFF', accent: '#01225F', cta: '#BB1027' } },
+  { id: 'auto', dark: null, swatch: { paper: '#FAF6F3', side: '#012169', alt: '#0A1630', accent: '#0A1630', cta: '#C8102E' } },
+  { id: 'light', dark: false, swatch: { paper: '#FAF6F3', side: '#012169', alt: '#FFFFFF', accent: '#012169', cta: '#C8102E' } },
   { id: 'dark', dark: true, swatch: { paper: '#0A1630', side: '#07102A', alt: '#111F3D', accent: '#3A63B8', cta: '#D42A41' } },
-  { id: 'ocean', dark: false, swatch: { paper: '#F2F7F7', side: '#0A4652', alt: '#FFFFFF', accent: '#12707F', cta: '#BB1027' } },
+  { id: 'ocean', dark: false, swatch: { paper: '#F2F7F7', side: '#0A4652', alt: '#FFFFFF', accent: '#12707F', cta: '#C8102E' } },
   { id: 'graphite', dark: true, swatch: { paper: '#15171B', side: '#0F1114', alt: '#1E2126', accent: '#6B7587', cta: '#D42A41' } },
-  { id: 'sand', dark: false, swatch: { paper: '#F6F0E6', side: '#3A2C21', alt: '#FFFDF9', accent: '#6B5440', cta: '#BB1027' } },
+  { id: 'sand', dark: false, swatch: { paper: '#F6F0E6', side: '#3A2C21', alt: '#FFFDF9', accent: '#6B5440', cta: '#C8102E' } },
 ] as const
 
 export type ThemePref = (typeof THEMES)[number]['id']
@@ -41,7 +41,7 @@ function applyMetaColor(t: ThemePref) {
   if (!meta) return
   const theme = THEMES.find((x) => x.id === t)
   const dark = t === 'auto' && window.matchMedia?.('(prefers-color-scheme: dark)').matches
-  meta.setAttribute('content', dark ? '#07102A' : (theme?.swatch.side ?? '#01225F'))
+  meta.setAttribute('content', dark ? '#07102A' : (theme?.swatch.side ?? '#012169'))
 }
 
 export const useUiStore = defineStore('ui', () => {

@@ -1,6 +1,7 @@
 /** Requests of 14.11: leave via the methodist, book out of a payment, pay breakdown, finance by dates. */
 export default {
   nv: {
+    upd: { title: 'Доступна новая версия', text: 'Обновите страницу, чтобы работать в новой версии', update: 'Обновить', later: 'Позже' },
     sv: {
       title: 'Оценка урока',
       group: 'Группа',

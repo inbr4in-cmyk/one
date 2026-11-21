@@ -41,7 +41,7 @@ watch(groupId, async (id) => {
     const r = await surveyApi.open(id)
     link.value = r
     url.value = new URL(router.resolve(r.path).href, window.location.href).href
-    img.value = await toDataURL(url.value, { margin: 1, width: 480, errorCorrectionLevel: 'M', color: { dark: '#01225F', light: '#FFFFFF' } })
+    img.value = await toDataURL(url.value, { margin: 1, width: 480, errorCorrectionLevel: 'M', color: { dark: '#012169', light: '#FFFFFF' } })
   } catch (e) {
     err.value = apiErr(e) ?? t('errors.generic')
   }

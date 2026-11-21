@@ -10,31 +10,31 @@
  * Every theme keeps text at WCAG AA (4.5:1) and red stays the one CTA / urgent color.
  */
 :root {
-  --navy: #01225F; --navy-700: #0B2E73; --navy-600: #1A3F8A; --navy-100: #E6ECF7; --navy-50: #F3F6FB;
-  --red: #BB1027; --red-600: #9E0D21; --red-100: #FBE7EA;
+  --navy: #012169; --navy-700: #0B2E73; --navy-600: #1A3F8A; --navy-100: #E6ECF7; --navy-50: #F3F6FB;
+  --red: #C8102E; --red-600: #A80D26; --red-100: #FBE7EA;
   /* Red used as text (chips, errors, active tab label); differs from --red only on dark themes */
-  --red-ink: #BB1027;
+  --red-ink: #C8102E;
   --paper: #FAF6F3; --surface: #FFFFFF; --line: #E3E6EE; --ink: #0F1A33; --muted: #5B6782;
   /* ok / warn / info are used as text on their -bg and on white: all ≥ 4.5:1 */
   --ok: #16774A; --warn: #8A5D00; --info: #1560BD;
   --ig: #D6286E; --wa: #1FAF54;
   --ok-bg: #E5F4EC; --warn-bg: #FBF1DC; --info-bg: #E4EFFB;
-  --side: #01225F; --side-ink: #FFFFFF; --side-muted: rgba(255,255,255,.7); --side-hover: rgba(255,255,255,.08); --side-active: rgba(255,255,255,.14);
+  --side: #012169; --side-ink: #FFFFFF; --side-muted: rgba(255,255,255,.7); --side-hover: rgba(255,255,255,.08); --side-active: rgba(255,255,255,.14);
   --side-indicator: #FF4D63; --logo-accent: #FF6B7E;
-  --bubble-in: #FFFFFF; --bubble-out: #01225F; --bubble-out-ink: #FFFFFF;
-  --chart-bar: #01225F; --chart-bar-soft: #9DB0D6; --grid: #ECEEF3;
+  --bubble-in: #FFFFFF; --bubble-out: #012169; --bubble-out-ink: #FFFFFF;
+  --chart-bar: #012169; --chart-bar-soft: #9DB0D6; --grid: #ECEEF3;
   --shadow: 0 1px 2px rgba(15,26,51,.06), 0 4px 16px rgba(15,26,51,.05);
   --shadow-pop: 0 12px 32px rgba(0,0,0,.14);
   --scrim: rgba(5,12,30,.45);
   --lv-beg: #2E9A6E; --lv-ele: #1A6FD1; --lv-pre: #C9631A; --lv-int: #7B52C7; --lv-up: #B08900; --lv-ielts: #C2417F; --lv-kids: #0E8FA8;
   /* Avatar fills carry white initials: all ≥ 4.5:1 */
-  --av-1: #7B52C7; --av-2: #1A6FD1; --av-3: #237A56; --av-4: #A9520F; --av-5: #C2417F; --av-6: #0B7287; --av-7: #01225F; --av-8: #8A6D00;
+  --av-1: #7B52C7; --av-2: #1A6FD1; --av-3: #237A56; --av-4: #A9520F; --av-5: #C2417F; --av-6: #0B7287; --av-7: #012169; --av-8: #8A6D00;
   /* Semantic tokens for the few places the prototype switches color in dark mode */
-  --btn-navy: #01225F;       /* .btn.navy, selected pills */
+  --btn-navy: #012169;       /* .btn.navy, selected pills */
   --accent-ink: #1A3F8A;     /* tinted icons on light chips */
   --kpi-ico: #1A3F8A;
   --on-accent: #FFFFFF;
-  --qr-bg: #FFFFFF; --qr-ink: #01225F;
+  --qr-bg: #FFFFFF; --qr-ink: #012169;
   --glow: #1A3F8A;           /* login panel glow */
 
   --r: 12px; --r-sm: 8px;

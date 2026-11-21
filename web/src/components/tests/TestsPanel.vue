@@ -46,7 +46,7 @@ watch(branchId, async (id) => {
     // router.resolve keeps the link right for the hash-routed demo build too.
     qrLink.value = new URL(router.resolve(r.path).href, window.location.href).href
     // The printed code stays dark-on-white in every theme so any camera reads it.
-    qrImg.value = await toDataURL(qrLink.value, { margin: 1, width: 480, errorCorrectionLevel: 'M', color: { dark: '#01225F', light: '#FFFFFF' } })
+    qrImg.value = await toDataURL(qrLink.value, { margin: 1, width: 480, errorCorrectionLevel: 'M', color: { dark: '#012169', light: '#FFFFFF' } })
   } catch {
     /* toast shown by the client */
   }

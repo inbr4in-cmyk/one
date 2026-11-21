@@ -56,7 +56,7 @@ class OeLogoMark extends StatelessWidget {
   @override
   Widget build(BuildContext context) => SizedBox(
         width: width,
-        height: width * 48 / 60,
+        height: width,
         child: FittedBox(child: OeIcon('logo', size: width, strokeWidth: 0)),
       );
 }

@@ -50,7 +50,7 @@ async function load() {
     password.value = ''
     // QR stays dark-on-white in both themes so every camera reads it.
     qr.value = await toDataURL(setup.value.uri, {
-      margin: 0, width: 328, errorCorrectionLevel: 'M', color: { dark: '#01225F', light: '#FFFFFF' },
+      margin: 0, width: 328, errorCorrectionLevel: 'M', color: { dark: '#012169', light: '#FFFFFF' },
     })
   } catch (e) {
     if (e instanceof ApiError && (e.status === 400 || e.status === 429)) {

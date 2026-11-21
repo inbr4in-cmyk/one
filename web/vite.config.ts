@@ -26,10 +26,22 @@ function demoHtml(): Plugin {
   }
 }
 
+/** Every build gets an id: it is baked into the bundle and written to /version.json, so an open tab can see that a newer build is on the server. */
+const BUILD_ID = Date.now().toString(36)
+function buildVersion(): Plugin {
+  return {
+    name: 'one-english-build-version',
+    generateBundle() {
+      this.emitFile({ type: 'asset', fileName: 'version.json', source: JSON.stringify({ build: BUILD_ID }) })
+    },
+  }
+}
+
 export default defineConfig(({ mode }) => ({
-  plugins: mode === 'demo' ? [vue(), demoHtml()] : [vue()],
+  plugins: mode === 'demo' ? [vue(), demoHtml()] : [vue(), buildVersion()],
   ...(mode === 'demo' ? { base: './', build: { outDir: 'dist-demo', emptyOutDir: true } } : {}),
   define: {
+    __BUILD_ID__: JSON.stringify(BUILD_ID),
     // vue-i18n feature flags: Composition API only, no devtools in production.
     __VUE_I18N_FULL_INSTALL__: true,
     __VUE_I18N_LEGACY_API__: false,

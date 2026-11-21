@@ -1,6 +1,6 @@
 /* One English service worker: makes the site installable and opens it fast and offline-tolerant.
    Never touches /api (always live, never cached: personal data stays out of the cache). */
-const VERSION = 'oe-v1'
+const VERSION = 'oe-v2'
 const SHELL = ['/', '/manifest.webmanifest', '/favicon.svg', '/theme-init.js', '/icon-192.png']
 
 self.addEventListener('install', (e) => {
@@ -19,6 +19,7 @@ self.addEventListener('fetch', (e) => {
   if (req.method !== 'GET') return
   const url = new URL(req.url)
   if (url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return
+  if (url.pathname === '/version.json') return // the update check always asks the server
 
   // Pages: always try the network (fresh app), fall back to the cached shell when offline.
   if (req.mode === 'navigate') {

@@ -25,10 +25,10 @@ class OeColors extends ThemeExtension<OeColors> {
 
   static const light = OeColors(
     paper: Color(0xFFFAF6F3), surface: Color(0xFFFFFFFF), line: Color(0xFFE3E6EE), ink: Color(0xFF0F1A33),
-    muted: Color(0xFF5B6782), navy100: Color(0xFFE6ECF7), navy50: Color(0xFFF3F6FB), red: Color(0xFFBB1027),
+    muted: Color(0xFF5B6782), navy100: Color(0xFFE6ECF7), navy50: Color(0xFFF3F6FB), red: Color(0xFFC8102E),
     red100: Color(0xFFFBE7EA), ok: Color(0xFF1E8E5A), warn: Color(0xFFC98A06), info: Color(0xFF1A6FD1),
-    primary: Color(0xFF01225F), onPrimary: Color(0xFFFFFFFF), brandInk: Color(0xFF01225F), tint: Color(0xFF1A3F8A),
-    logoE: Color(0xFF01225F), hero: Color(0xFF01225F), hero2: Color(0xFF0B2E73), onHero2: Color(0xFFB9C6E2),
+    primary: Color(0xFF012169), onPrimary: Color(0xFFFFFFFF), brandInk: Color(0xFF012169), tint: Color(0xFF1A3F8A),
+    logoE: Color(0xFF012169), hero: Color(0xFF012169), hero2: Color(0xFF0B2E73), onHero2: Color(0xFFB9C6E2),
     chip: Color(0xFFF3F6FB), fill: Color(0x0F0F1A33), outline: Color(0xFF8A93A8), m3nav: Color(0xFFF2EEEA),
     ok100: Color(0xFFE3F3EA), warn100: Color(0xFFFBF1DA), info100: Color(0xFFE4EEFA), coin: Color(0xFFD99A12),
     coin100: Color(0xFFFCF1D6), scrim: Color(0x6B0A1630),

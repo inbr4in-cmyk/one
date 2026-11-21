@@ -385,7 +385,7 @@ def _xlsx(title: str, header: list[str], rows: list[list], filename: str) -> Str
     ws.append(header)
     for c in ws[1]:
         c.font = Font(bold=True, color="FFFFFF")
-        c.fill = PatternFill("solid", fgColor="01225F")
+        c.fill = PatternFill("solid", fgColor="012169")
     for r in rows:
         ws.append(r)
         # Values come from user input: a text starting with "=" must stay text, never become a formula.
