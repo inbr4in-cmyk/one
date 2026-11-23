@@ -116,3 +116,12 @@ async def rejoin_groups(db: AsyncSession, s: Student, last_day: date) -> int:
         await chats.sync_student_in_group_chat(db, g, s, True)
         n += 1
     return n
+
+
+async def no_trial_bonus(db: AsyncSession, user_id: int) -> bool:
+    """Owner, 23.11.2026: a branch admin or office manager is not paid for a trial visit, only for the
+    sale where he is the seller.
+    The sales department keeps the trial bonus (also when the same person holds both roles)."""
+    codes = set((await db.scalars(select(Role.code).join(UserRole, UserRole.role_id == Role.id)
+                                  .where(UserRole.user_id == user_id, Role.archived_at.is_(None)))).all())
+    return bool(codes & {"branch_admin", "office_manager"}) and "sales" not in codes

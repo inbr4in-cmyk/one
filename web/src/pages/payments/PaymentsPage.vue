@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { kept } from '@/utils/kept'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { UiAvatar, UiButton, UiCard, UiChip, UiEmptyState, UiInput, UiModal, UiPager, UiTable, type TableColumn } from '@/components/ui'
 import PaymentModal from '@/components/students/PaymentModal.vue'
@@ -22,7 +23,7 @@ const refs = useRefsStore()
 const loc = computed(() => locale.value as Locale)
 
 const today = schoolNow()
-const f = reactive({ from: isoDate(new Date(today.getFullYear(), today.getMonth(), 1)), to: isoDate(today), offset: 0, category: '' })
+const f = kept('payments.f', () => ({ from: isoDate(new Date(today.getFullYear(), today.getMonth(), 1)), to: isoDate(today), offset: 0, category: '' }))
 const rows = ref<Payment[]>([])
 const total = ref(0)
 const loading = ref(true)

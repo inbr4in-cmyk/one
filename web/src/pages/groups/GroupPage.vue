@@ -219,10 +219,12 @@ watch(homework, (list) => {
   }
 })
 
+const finishedOn = ref(todayIso())
+const finishMin = computed(() => isoDate(addDays(schoolNow(), -31)))
 async function archive() {
   busy.value = true
   try {
-    await academicsApi.archiveGroup(id.value)
+    await academicsApi.archiveGroup(id.value, finishedOn.value)
     toast.ok(t('groups.archived'))
     router.push('/groups')
   } finally {
@@ -262,7 +264,7 @@ const lessonState = (l: Lesson) => (l.status === 'cancelled' ? 'red' : l.attenda
         <div class="head-acts">
           <UiButton v-if="auth.can('chats.use') && g.chat_id" icon="chat" :to="`/chats/${g.chat_id}`">{{ t('groups.chat') }}</UiButton>
           <UiButton v-if="auth.can('schedule.edit')" icon="edit" @click="modal = 'edit'">{{ t('common.edit') }}</UiButton>
-          <UiButton v-if="auth.can('students.archive')" variant="ghost" danger icon="check" :aria-label="t('groups.archive')" @click="modal = 'archive'">{{ t('groups.archive') }}</UiButton>
+          <UiButton v-if="auth.can('students.archive')" variant="ghost" danger icon="check" :aria-label="t('groups.archive')" @click="finishedOn = todayIso(); modal = 'archive'">{{ t('groups.archive') }}</UiButton>
         </div>
       </div>
     </div>
@@ -385,6 +387,13 @@ const lessonState = (l: Lesson) => (l.status === 'cancelled' ? 'red' : l.attenda
     </UiModal>
     <UiPrompt :open="removing !== null" :title="t('groups.removeMember')" :text="t('groups.removeText', { name: removing?.full_name ?? '' })" :confirm-label="t('common.remove')" danger :busy="busy" @update:open="(v) => !v && (removing = null)" @confirm="removeMember" />
     <UiPrompt :open="endingRule !== null" :title="t('groups.rule.end')" :text="t('groups.rule.endText')" :confirm-label="t('groups.rule.end')" danger :busy="busy" @update:open="(v) => !v && (endingRule = null)" @confirm="endRule" />
-    <UiPrompt :open="modal === 'archive'" :title="t('groups.archive')" :text="t('groups.archiveText', { name: g.name })" :confirm-label="t('groups.archive')" danger :busy="busy" @update:open="(v) => !v && (modal = null)" @confirm="archive" />
+    <UiModal :open="modal === 'archive'" :title="t('groups.archive')" @update:open="(v) => !v && (modal = null)">
+      <p class="m0" style="margin-bottom: 12px">{{ t('groups.archiveText', { name: g.name }) }}</p>
+      <UiInput v-model="finishedOn" type="date" :min="finishMin" :max="todayIso()" :label="t('nv.finishedOn')" />
+      <template #footer="{ close }">
+        <UiButton variant="ghost" @click="close">{{ t('common.cancel') }}</UiButton>
+        <UiButton variant="primary" danger :loading="busy" :disabled="!finishedOn" @click="archive">{{ t('groups.archive') }}</UiButton>
+      </template>
+    </UiModal>
   </template>
 </template>

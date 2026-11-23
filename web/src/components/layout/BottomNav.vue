@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { resetKept } from '@/utils/kept'
 import UiIcon from '@/components/ui/UiIcon.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useCountersStore } from '@/stores/counters'
@@ -19,7 +20,7 @@ const items = computed(() => visibleNav(auth.can).filter((i) => i.group === 'mai
 
 <template>
   <nav class="bnav" :aria-label="t('nav.menu')">
-    <RouterLink v-for="it in items" :key="it.key" :to="it.path" :class="{ on: activeKey === it.key }">
+    <RouterLink v-for="it in items" :key="it.key" :to="it.path" @click="resetKept()" :class="{ on: activeKey === it.key }">
       <UiIcon :name="it.icon" :size="24" /><span class="t">{{ t(`nav.${it.key}`) }}</span>
       <span v-if="counters.get(it.counter) && !it.soft" class="cnt">{{ counters.get(it.counter) }}</span>
     </RouterLink>

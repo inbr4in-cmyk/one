@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { resetKept } from '@/utils/kept'
 import BrandLogo from './BrandLogo.vue'
 import BranchSwitcher from './BranchSwitcher.vue'
 import UiIcon from '@/components/ui/UiIcon.vue'
@@ -56,13 +57,13 @@ watch(() => [activeKey.value, items.value.length, ui.locale], () => nextTick(pla
         aria-hidden="true"
         :style="{ transform: `translateY(${ind.y}px)`, opacity: ind.visible ? 1 : 0, transition: ind.animate ? undefined : 'none' }"
       />
-      <RouterLink v-for="it in main" :key="it.key" :to="it.path" :class="{ on: activeKey === it.key }" :aria-current="activeKey === it.key ? 'page' : undefined">
+      <RouterLink v-for="it in main" :key="it.key" :to="it.path" @click="resetKept()" :class="{ on: activeKey === it.key }" :aria-current="activeKey === it.key ? 'page' : undefined">
         <UiIcon :name="it.icon" />{{ t(`nav.${it.key}`) }}
         <span v-if="counters.get(it.counter)" class="cnt" :class="{ soft: it.soft }">{{ counters.get(it.counter) }}</span>
       </RouterLink>
       <template v-if="settings.length">
         <div class="sep">{{ t('nav.settings') }}</div>
-        <RouterLink v-for="it in settings" :key="it.key" :to="it.path" :class="{ on: activeKey === it.key }" :aria-current="activeKey === it.key ? 'page' : undefined">
+        <RouterLink v-for="it in settings" :key="it.key" :to="it.path" @click="resetKept()" :class="{ on: activeKey === it.key }" :aria-current="activeKey === it.key ? 'page' : undefined">
           <UiIcon :name="it.icon" />{{ t(`nav.${it.key}`) }}
         </RouterLink>
       </template>

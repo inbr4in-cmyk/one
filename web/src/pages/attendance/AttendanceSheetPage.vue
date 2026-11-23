@@ -56,7 +56,8 @@ onBeforeUnmount(() => clearInterval(tick))
 
 const id = computed(() => Number(route.params.lessonId))
 const lesson = computed(() => roster.value?.lesson)
-const editable = computed(() => !!roster.value?.can_edit && lesson.value?.status !== 'cancelled')
+const lockedFrozen = computed(() => !!lesson.value?.frozen && !lesson.value?.attendance_marked_at)
+const editable = computed(() => !!roster.value?.can_edit && lesson.value?.status !== 'cancelled' && !lockedFrozen.value)
 const liveMin = computed(() => {
   const l = lesson.value
   if (!l) return null
@@ -171,6 +172,7 @@ onBeforeRouteLeave(() => (dirty.value && editable.value ? window.confirm(t('atte
     </div>
 
     <div v-if="lesson.status === 'cancelled'" class="alert red"><UiIcon name="alert" :size="24" /><div class="grow"><b>{{ t('schedule.cancelled') }}</b><span>{{ lesson.cancel_reason }}</span></div></div>
+    <div v-else-if="lockedFrozen" class="alert info"><UiIcon name="lock" :size="24" /><div class="grow"><b>{{ t('nv.frozen') }}</b><span>{{ t('nv.frozenFull') }}</span></div></div>
     <div v-else-if="!editable" class="alert info"><UiIcon name="lock" :size="24" /><div class="grow"><b>{{ t('attendance.closedTitle') }}</b><span>{{ t('attendance.closedText') }}</span></div></div>
     <div v-else-if="roster.needs_reason" class="alert"><UiIcon name="alert" :size="24" /><div class="grow"><b>{{ t('attendance.fixTitle') }}</b><span>{{ t('attendance.fixText') }}</span></div></div>
 

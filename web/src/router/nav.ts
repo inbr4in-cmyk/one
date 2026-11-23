@@ -43,6 +43,7 @@ export const NAV: NavItem[] = [
   { key: 'books', path: '/books', route: '/books/:tab(transfers|report)?', icon: 'book', perm: 'books.view', group: 'main', page: () => import('@/pages/books/BooksPage.vue') },
   { key: 'complaints', path: '/complaints', icon: 'flag', perm: 'complaints.view', group: 'main', route: '/complaints/:id(\\d+)?', page: () => import('@/pages/complaints/ComplaintsPage.vue') },
   { key: 'training', path: '/training', icon: 'learning-base', perm: 'training.view', group: 'main', page: () => import('@/pages/training/TrainingPage.vue') },
+  { key: 'tests', path: '/tests', icon: 'tests', perm: 'tests.view', group: 'main', page: () => import('@/pages/tests/TestsPage.vue') },
   { key: 'roles', path: '/settings/roles', icon: 'key', perm: 'roles.view', group: 'settings', page: () => import('@/pages/settings/RolesPage.vue') },
   { key: 'staff', path: '/settings/staff', icon: 'teachers', perm: 'staff.view', group: 'settings', page: () => import('@/pages/settings/StaffPage.vue') },
   { key: 'dictionaries', path: '/settings/dictionaries', icon: 'book', perm: ['settings.edit', 'finance.edit', 'branches.edit'], group: 'settings', page: () => import('@/pages/settings/DictionariesPage.vue') },

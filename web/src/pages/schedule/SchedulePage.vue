@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { keptRef } from '@/utils/kept'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
@@ -29,10 +30,14 @@ const refs = useRefsStore()
 const loc = computed(() => locale.value as Locale)
 const narrow = useMediaQuery('(max-width:820px)')
 
-const start = ref(weekStart(schoolNow()))
-const view = ref<View>(route.query.group ? 'groups' : 'rooms')
+const start = keptRef('schedule.start', () => weekStart(schoolNow()))
+const view = keptRef<View>('schedule.view', () => 'rooms')
 /** Selected room / teacher / group id; 0 = all */
-const pick = ref<number>(Number(route.query.group) || 0)
+const pick = keptRef<number>('schedule.pick', () => 0)
+if (route.query.group) {
+  view.value = 'groups'
+  pick.value = Number(route.query.group) || 0
+}
 const lessons = ref<Lesson[]>([])
 const groups = ref<Group[]>([])
 const rooms = ref<Room[]>([])
@@ -44,19 +49,20 @@ function newAt(d: Date, sl: { from: string; to: string }, roomId: number | null)
   slotPick.value = { date: isoDate(d), start: sl.from, end: sl.to, roomId }
   creating.value = true
 }
-const dayIdx = ref((schoolNow().getDay() + 6) % 7)
+const dayIdx = keptRef('schedule.day', () => (schoolNow().getDay() + 6) % 7)
 const now = ref(schoolNow())
 const timer = setInterval(() => (now.value = schoolNow()), 60_000)
 onBeforeUnmount(() => clearInterval(timer))
 const teachers = useTeachers()
 
 /** Course format filter: all, group, duo, individual */
-const kind = ref<LessonKind | ''>('')
+const kind = keptRef<LessonKind | ''>('schedule.kind', () => '')
 const AUTO_CANCEL = ['Расписание изменено', 'Группа закрыта', 'Дубликат урока']
 /** Status seen right on the lesson: moved away, cancelled, moved here, substitute teacher. */
 function badge(l: Lesson): { text: string; tone: string; tip?: string } | null {
   const when = (iso: string) => `${dmy(iso, loc.value).slice(0, 5)} ${hm(iso, loc.value)}`
   if (l.status === 'cancelled') return l.moved_to_at ? { text: t('nv.ls.movedTo', { d: when(l.moved_to_at) }), tone: 'warn' } : { text: t('nv.ls.cancelled'), tone: 'red', tip: l.cancel_reason ?? undefined }
+  if (l.frozen) return { text: t('nv.frozen'), tone: 'info' }
   if (l.moved_from_at) return { text: t('nv.ls.movedFrom', { d: when(l.moved_from_at) }), tone: 'info' }
   if (l.actual_teacher_id) return { text: t('nv.ls.sub'), tone: 'info' }
   return null
@@ -226,7 +232,7 @@ const legend = computed(() => {
   return [...seen].map(([id, code]) => ({ id, code, c: tone(refs.level(id)?.color) }))
 })
 /** Desktop layout: the week as two tables, or one day with rooms as columns. */
-const layout = ref<'week' | 'day'>('week')
+const layout = keptRef<'week' | 'day'>('schedule.layout', () => 'week')
 const layoutOptions = computed(() => [
   { value: 'week' as const, label: t('schedule.layoutWeek') },
   { value: 'day' as const, label: t('schedule.layoutDayRooms') },

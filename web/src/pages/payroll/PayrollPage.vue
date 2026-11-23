@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { keptRef } from '@/utils/kept'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
@@ -29,12 +30,14 @@ const loc = computed(() => locale.value as Locale)
 /** Own-scope payroll.view is "my pay" only; branch or network scope also sees the sheet. */
 const canSheet = computed(() => auth.can('payroll.view', 'branch'))
 type Tab = 'sheet' | 'timesheet' | 'my'
-const tab = ref<Tab>(route.query.tab === 'timesheet' && canSheet.value ? 'timesheet' : canSheet.value && route.query.tab !== 'my' ? 'sheet' : 'my')
+const tab = keptRef<Tab>('payroll.tab', () => (canSheet.value ? 'sheet' : 'my'))
+if (route.query.tab === 'timesheet' && canSheet.value) tab.value = 'timesheet'
+else if (route.query.tab === 'my' || !canSheet.value) tab.value = 'my'
 const tabs = computed(() => [
   ...(canSheet.value ? [{ value: 'sheet' as const, label: t('payroll.tab.sheet') }, { value: 'timesheet' as const, label: t('payroll.tab.timesheet') }] : []),
   { value: 'my' as const, label: t('nav.myPay') },
 ])
-const period = ref(periodOf())
+const period = keptRef('payroll.period', () => periodOf())
 const sheet = ref<PayrollSheet | null>(null)
 const my = ref<{ total: number; rates_total?: number; salary_total?: number; paid?: number; items: Accrual[]; breakdown?: PayBreakdown } | null>(null)
 const breakdown = ref<PayBreakdown | null>(null)

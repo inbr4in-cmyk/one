@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { keptRef } from '@/utils/kept'
 import { nowMs } from '@/utils/clock'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -17,7 +18,7 @@ const router = useRouter()
 const branch = useBranchStore()
 const refs = useRefsStore()
 const loc = computed(() => locale.value as Locale)
-const date = ref(isoDate(schoolNow()))
+const date = keptRef('attendance.date', () => isoDate(schoolNow()))
 const lessons = ref<Lesson[]>([])
 const loading = ref(true)
 
@@ -38,6 +39,7 @@ const now = nowMs()
 const live = (l: Lesson) => new Date(l.starts_at).getTime() - 15 * 60000 <= now && now < new Date(l.ends_at).getTime()
 const state = (l: Lesson) => {
   if (l.attendance_marked_at) return { tone: 'ok' as const, text: t('attendance.marked') }
+  if (l.frozen) return { tone: 'info' as const, text: t('nv.frozen') }
   if (live(l)) return { tone: 'ok' as const, text: t('attendance.live', { n: Math.max(0, Math.round((now - new Date(l.starts_at).getTime()) / 60000)) }) }
   if (new Date(l.starts_at).getTime() < now) return { tone: 'warn' as const, text: t('attendance.notMarked') }
   return { tone: undefined, text: t('attendance.upcoming') }

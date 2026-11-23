@@ -75,7 +75,9 @@ async def on_trial_attended(db: AsyncSession, lead: Lead, lesson: Lesson, actor_
     if stage:
         await move(db, lead, stage, actor_id, "Пришёл на пробный урок")
     lead.trial_lesson_id = lesson.id
-    if lead.owner_id:
+    from app.services import retention
+
+    if lead.owner_id and not await retention.no_trial_bonus(db, lead.owner_id):
         d = local(lesson.starts_at).date()
         created = await accrue_once(db, user_id=lead.owner_id, kind="trial_visit", amount=await rate(db, "sales_trial_visit", d),
                                     ref=("lead", lead.id), on=d, branch_id=lead.branch_id,

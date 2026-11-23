@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { keptRef } from '@/utils/kept'
 import { useSourceLabel } from '@/composables/useSourceLabel'
 import { useSourcesStore } from '@/stores/sources'
 import { computed, onMounted, ref, watch } from 'vue'
@@ -29,12 +30,12 @@ const branch = useBranchStore()
 const toast = useToastStore()
 
 const pipelines = ref<Pipeline[]>([])
-const tab = ref<string>('main')
+const tab = keptRef<string>('crm.tab', () => 'main')
 const board = ref<Board | null>(null)
 const loading = ref(true)
-const q = ref('')
-const source = ref('')
-const owner = ref(0)
+const q = keptRef('crm.q', () => '')
+const source = keptRef('crm.source', () => '')
+const owner = keptRef('crm.owner', () => 0)
 const waitingOnly = ref(false)
 const freeOnly = ref(false)
 const creating = ref(false)

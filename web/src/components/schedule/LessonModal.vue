@@ -163,6 +163,7 @@ async function submit() {
         </div>
         <UiChip v-if="l.status === 'cancelled' && l.moved_to_at" tone="warn">{{ t('nv.ls.movedToFull', { d: `${dayLabel(l.moved_to_at, loc, { day: 'numeric', month: 'long' })}, ${hm(l.moved_to_at, loc)}` }) }}</UiChip>
         <UiChip v-else-if="l.status === 'cancelled'" tone="red">{{ t('schedule.cancelled') }}<template v-if="l.cancel_reason"> · {{ l.cancel_reason }}</template></UiChip>
+        <UiChip v-else-if="l.frozen" tone="info">{{ t('nv.frozenFull') }}</UiChip>
         <UiChip v-else-if="l.moved_from_at" tone="info">{{ t('nv.ls.movedFromFull', { d: `${dayLabel(l.moved_from_at, loc, { day: 'numeric', month: 'long' })}, ${hm(l.moved_from_at, loc)}` }) }}</UiChip>
         <div v-if="conflicts.length" class="alert red" role="alert">
           <UiIcon name="alert" />
@@ -196,7 +197,7 @@ async function submit() {
     </template>
     <template #footer="{ close }">
       <template v-if="l && mode === 'view'">
-        <UiButton v-if="auth.can('attendance.view') && l.status !== 'cancelled'" :to="`/attendance/${l.id}`" icon="check">{{ t('nav.attendance') }}</UiButton>
+        <UiButton v-if="auth.can('attendance.view') && l.status !== 'cancelled' && !(l.frozen && !l.attendance_marked_at)" :to="`/attendance/${l.id}`" icon="check">{{ t('nav.attendance') }}</UiButton>
         <UiButton v-if="canDelete" variant="ghost" danger icon="delete" @click="start('delete')">{{ t('schedule.delete') }}</UiButton>
         <span class="sp" />
         <template v-if="canEdit && !past">

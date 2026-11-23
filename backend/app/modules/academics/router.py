@@ -201,25 +201,45 @@ async def update_group(group_id: int, body: GroupIn, db: DB, actor: Actor = requ
     return await _group_out(db, g)
 
 
+class ArchiveIn(In):
+    finished_on: date | None = None  # «Группа закончила»: today when empty, up to 31 days back
+
+
 @router.post("/groups/{group_id}/archive", status_code=204)
-async def archive_group(group_id: int, db: DB, actor: Actor = require("students", "archive")) -> None:
-    """«Удалить группу»: only admins (owner, branch admin). The group goes to the archive, history stays."""
+async def archive_group(group_id: int, db: DB, body: ArchiveIn | None = None, actor: Actor = require("students", "archive")) -> None:
+    """«Завершить группу»: only admins (owner, branch admin). The group goes to the archive, history stays.
+    finished_on is the last day the group studied: managers often press the button a few days late."""
     g = await _get_group(db, actor, group_id)
+    fin = (body.finished_on if body else None) or today()
+    if fin > today():
+        raise bad_request("Дата завершения не может быть позже сегодняшнего дня")
+    if fin < today() - timedelta(days=31):
+        raise bad_request("Дату завершения можно поставить не больше чем на 31 день назад")
+    after = at_local(fin + timedelta(days=1), time(0, 0))
+    if fin < today():
+        held = (await db.scalars(select(Lesson.starts_at).where(
+            Lesson.group_id == g.id, Lesson.starts_at >= after, Lesson.status != LessonStatus.CANCELLED,
+            or_(Lesson.attendance_marked_at.is_not(None), Lesson.status == LessonStatus.DONE)).order_by(Lesson.starts_at))).all()
+        if held:
+            days = ", ".join(f"{local(x):%d.%m}" for x in held[:6])
+            raise conflict(f"После этой даты у группы есть проведённые уроки: {days}. Выберите дату не раньше последнего урока.")
     g.archived_at = now()
     g.status = "finished"
-    for lesson in await db.scalars(select(Lesson).where(Lesson.group_id == g.id, Lesson.starts_at > now(),
+    cut = now() if fin == today() else after
+    for lesson in await db.scalars(select(Lesson).where(Lesson.group_id == g.id, Lesson.starts_at >= cut,
                                                          Lesson.status == LessonStatus.PLANNED)):
         lesson.status, lesson.cancel_reason = LessonStatus.CANCELLED, "Группа закрыта"
     # «Завершить»: nobody stays a member of an archived group, and its schedule stops making lessons.
+    end = fin if fin == today() else fin + timedelta(days=1)  # left_on is the first day out
     closed = 0
     for m in await db.scalars(select(GroupMember).where(GroupMember.group_id == g.id, GroupMember.left_on.is_(None))):
-        m.left_on = max(today(), m.joined_on)
+        m.left_on = max(end, m.joined_on)
         closed += 1
     for r in await db.scalars(select(ScheduleRule).where(ScheduleRule.group_id == g.id)):
-        if r.valid_to is None or r.valid_to > today():
-            r.valid_to = max(today(), r.valid_from)
+        if r.valid_to is None or r.valid_to > fin:
+            r.valid_to = max(fin, r.valid_from)
     await write_audit(db, actor_id=actor.id, action="group.archive", entity="group", entity_id=g.id, branch_id=g.branch_id, ip=actor.ip,
-                      after={"members_closed": closed})
+                      after={"members_closed": closed, "finished_on": fin.isoformat()})
     await db.commit()
 
 
@@ -567,6 +587,37 @@ class LessonOut(ORM):
     moved_from_at: datetime | None = None
     moved_to_id: int | None = None
     moved_to_at: datetime | None = None
+    # individual / duo lesson whose every student is frozen that day: shown «Заморожено», attendance closed
+    frozen: bool = False
+
+
+async def _frozen_lessons(db: DB, lessons: list[Lesson]) -> set[int]:
+    """Individual and duo lessons where every student is on a freeze that day."""
+    from app.models import Freeze
+
+    gids = {x.group_id for x in lessons if x.group_id}
+    small = set((await db.scalars(select(Group.id).where(Group.id.in_(gids), Group.kind.in_(("individual", "duo"))))).all()) if gids else set()
+    cand = [x for x in lessons if not x.is_support and not x.is_trial and x.status != LessonStatus.CANCELLED
+            and ((x.group_id in small) if x.group_id else x.student_id is not None)]
+    if not cand:
+        return set()
+    mem = (await db.execute(select(GroupMember.group_id, GroupMember.student_id, GroupMember.joined_on, GroupMember.left_on)
+                            .where(GroupMember.group_id.in_(small)))).all() if small else []
+    sids = {m[1] for m in mem} | {x.student_id for x in cand if x.student_id}
+    fr: dict[int, list] = {}
+    if sids:
+        for sid, a, b in (await db.execute(select(Freeze.student_id, Freeze.starts_on,
+                                                  func.coalesce(Freeze.ended_early_on, Freeze.ends_on))
+                                           .where(Freeze.student_id.in_(sids)))).all():
+            fr.setdefault(sid, []).append((a, b))
+    out = set()
+    for x in cand:
+        d = local(x.starts_at).date()
+        who = ([sid for gid, sid, j, l in mem if gid == x.group_id and j <= d and (l is None or l > d)]
+               if x.group_id else [x.student_id])
+        if who and all(any(a <= d < b for a, b in fr.get(sid, ())) for sid in who):
+            out.add(x.id)
+    return out
 
 
 def lesson_filter(actor: Actor):
@@ -604,9 +655,11 @@ async def _lesson_outs(db: DB, lessons: list[Lesson]) -> list[LessonOut]:
     gone_ids = [x.id for x in lessons if x.status == LessonStatus.CANCELLED]
     went = {old: (nid, at) for old, nid, at in (await db.execute(
         select(Lesson.moved_from_id, Lesson.id, Lesson.starts_at).where(Lesson.moved_from_id.in_(gone_ids)))).all()} if gone_ids else {}
+    frozen = await _frozen_lessons(db, lessons)
     out = []
     for x in lessons:
         o = LessonOut.model_validate(x)
+        o.frozen = x.id in frozen
         o.moved_from_at = came.get(x.moved_from_id) if x.moved_from_id else None
         if x.id in went:
             o.moved_to_id, o.moved_to_at = went[x.id]
@@ -1071,6 +1124,8 @@ async def mark(lesson_id: int, body: MarksIn, db: DB, actor: Actor = require("at
         if twin is not None:
             raise conflict(f"У группы в этот день уже отмечен урок в {local(twin.starts_at):%H:%M}. Второй раз отметить нельзя: "
                            "это дубликат урока, отмените его.")
+    if lesson.attendance_marked_at is None and lesson.id in await _frozen_lessons(db, [lesson]):
+        raise conflict("Ученик на заморозке: посещаемость этого урока закрыта.")
     allowed_students = {r.student_id for r in (await roster(lesson.id, db, actor)).rows if r.student_id}
     allowed_leads = set((await db.scalars(select(Lead.id).where(Lead.trial_lesson_id == lesson.id))).all())
     changes = []

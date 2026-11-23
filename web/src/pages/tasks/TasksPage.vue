@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { kept } from '@/utils/kept'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { UiButton, UiCard, UiChip, UiEmptyState, UiIcon, UiPager, UiSelect, UiSkeleton, UiTabs } from '@/components/ui'
@@ -22,7 +23,7 @@ const router = useRouter()
 const loc = computed(() => locale.value as Locale)
 
 type Box = 'mine' | 'created' | 'all'
-const f = reactive({ box: 'mine' as Box, status: '' as TaskStatus | '', overdue: false, offset: 0 })
+const f = kept('tasks.f', () => ({ box: 'mine' as Box, status: '' as TaskStatus | '', overdue: false, offset: 0 }))
 const rows = ref<Task[]>([])
 const total = ref(0)
 const loading = ref(true)

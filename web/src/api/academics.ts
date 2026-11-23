@@ -93,6 +93,7 @@ export interface Lesson {
   moved_from_at?: string | null
   moved_to_id?: number | null
   moved_to_at?: string | null
+  frozen?: boolean
 }
 
 export type AttendanceStatus = 'present' | 'late' | 'absent' | 'excused'
@@ -175,7 +176,7 @@ export const academicsApi = {
   group: (id: number) => http.get<Group>(`/groups/${id}`),
   createGroup: (body: GroupIn) => http.post<Group>('/groups', body),
   updateGroup: (id: number, body: GroupIn) => http.patch<Group>(`/groups/${id}`, body),
-  archiveGroup: (id: number) => http.post<null>(`/groups/${id}/archive`),
+  archiveGroup: (id: number, finished_on?: string) => http.post<null>(`/groups/${id}/archive`, { finished_on }),
   members: (id: number) => http.get<GroupMember[]>(`/groups/${id}/members`),
   addMember: (id: number, student_id: number, joined_on?: string) => http.post<{ ok: boolean }>(`/groups/${id}/members`, { student_id, joined_on }),
   memberSince: (id: number, studentId: number, joined_on: string) => http.patch<{ ok: boolean }>(`/groups/${id}/members/${studentId}`, { joined_on }),

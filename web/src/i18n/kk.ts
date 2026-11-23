@@ -73,6 +73,7 @@ const kk: Messages = {
     payroll: 'Жалақы',
     complaints: 'Шағымдар',
     training: 'Оқыту',
+    tests: 'Тесттер',
     roles: 'Рөлдер мен қолжетімділік',
     staff: 'Қызметкерлер',
     security: 'Қауіпсіздік',

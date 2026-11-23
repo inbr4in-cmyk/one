@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { keptRef } from '@/utils/kept'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
@@ -24,9 +25,9 @@ const loc = computed(() => locale.value as Locale)
 
 const groups = ref<Group[]>([])
 const loading = ref(true)
-const q = ref('')
-const level = ref(0)
-const status = ref<'' | Group['status']>('')
+const q = keptRef('groups.q', () => '')
+const level = keptRef('groups.level', () => 0)
+const status = keptRef<'' | Group['status']>('groups.status', () => '')
 const creating = ref(false)
 const teachers = useTeachers()
 

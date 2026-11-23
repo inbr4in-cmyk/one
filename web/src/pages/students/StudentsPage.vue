@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { kept } from '@/utils/kept'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { UiAvatar, UiButton, UiCard, UiChip, UiEmptyState, UiInput, UiPager, UiPrompt, UiSelect, UiTable, type TableColumn } from '@/components/ui'
@@ -18,14 +19,13 @@ import type { Locale } from '@/i18n'
 
 const LIMIT = 25
 /** Filters survive leaving the page and coming back from a student card. */
-const saved = reactive({ q: '', status: 'active', level_id: 0, group_id: 0, debt: false, offset: 0 })
 
 const { t, locale } = useI18n()
 const router = useRouter()
 const auth = useAuthStore()
 const branch = useBranchStore()
 const refs = useRefsStore()
-const f = saved
+const f = kept('students.f', () => ({ q: '', status: 'active', level_id: 0, group_id: 0, debt: false, offset: 0 }))
 // A link from the dashboard (?status=left / frozen) opens the list with that filter.
 const route = useRoute()
 if (typeof route.query.status === 'string') Object.assign(f, { q: '', status: route.query.status, level_id: 0, group_id: 0, debt: false, offset: 0 })

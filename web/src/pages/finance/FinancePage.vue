@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { keptRef } from '@/utils/kept'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { UiButton, UiCard, UiChip, UiEmptyState, UiInput, UiPager, UiPeriod, UiPrompt, UiSelect, UiSkeleton, UiTable, UiTabs, type TableColumn } from '@/components/ui'
@@ -22,14 +23,14 @@ const toast = useToastStore()
 const loc = computed(() => locale.value as Locale)
 
 type Tab = 'pnl' | 'expenses'
-const tab = ref<Tab>('pnl')
-const period = ref(periodOf())
+const tab = keptRef<Tab>('finance.tab', () => 'pnl')
+const period = keptRef('finance.period', () => periodOf())
 const pnl = ref<Pnl | null>(null)
 const categories = ref<ExpenseCategory[]>([])
 const expenses = ref<Expense[]>([])
 const total = ref(0)
 const offset = ref(0)
-const catFilter = ref(0)
+const catFilter = keptRef('finance.cat', () => 0)
 const expLoading = ref(true)
 const drawer = ref(false)
 const editing = ref<Expense | null>(null)

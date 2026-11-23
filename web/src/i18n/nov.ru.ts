@@ -175,6 +175,9 @@ export default {
     memberSinceEdit: 'Изменить дату «в группе с»',
     workAs: { title: 'Работать как', all: 'Все мои роли' },
     ls: { movedTo: 'Перенесён на {d}', movedFrom: 'Перенос с {d}', cancelled: 'Отменён', sub: 'Замена', movedToFull: 'Урок перенесён на {d}. Посещаемость отмечается там.', movedFromFull: 'Перенесён с {d}' },
+    finishedOn: 'Дата завершения',
+    frozen: 'Заморожено',
+    frozenFull: 'Ученик на заморозке. Посещаемость закрыта.',
     levelRate: 'Ставка учителю за урок этого курса',
     rulePast: 'Создано уроков: {n}, из них прошедших: {p}',
     profile: {

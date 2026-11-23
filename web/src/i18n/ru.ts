@@ -72,6 +72,7 @@ const ru = {
     payroll: 'Зарплата',
     complaints: 'Жалобы',
     training: 'Обучение',
+    tests: 'Тесты',
     roles: 'Роли и доступы',
     staff: 'Сотрудники',
     security: 'Безопасность',

@@ -8,9 +8,8 @@ import { adminApi, type Role } from '@/api/admin'
 import { useAuthStore } from '@/stores/auth'
 import { useToastStore } from '@/stores/toast'
 import { apiErr } from '@/utils/err'
-import TestsPanel from '@/components/tests/TestsPanel.vue'
 
-type Tab = 'courses' | 'progress' | 'tests'
+type Tab = 'courses' | 'progress'
 const { t, te } = useI18n()
 const router = useRouter()
 const auth = useAuthStore()
@@ -20,9 +19,9 @@ const tab = ref<Tab>('courses')
 const tabs = computed(() => [
   { value: 'courses' as const, label: t('training.tab.courses') },
   ...(auth.can('training.progress') ? [{ value: 'progress' as const, label: t('training.tab.progress') }] : []),
-  ...(auth.can('tests.view') ? [{ value: 'tests' as const, label: t('tests.tab') }] : []),
 ])
-// Deep link (?tab=tests) only to a tab this user can see.
+// Tests live in their own menu item now: old links (?tab=tests) land there.
+if (route.query.tab === 'tests') router.replace('/tests')
 if (tabs.value.some((x) => x.value === route.query.tab)) tab.value = route.query.tab as Tab
 const courses = ref<Course[] | null>(null)
 const progress = ref<ProgressRow[] | null>(null)
@@ -37,7 +36,7 @@ onMounted(async () => {
   if (auth.can('training.edit') && auth.can('roles.view')) roles.value = (await adminApi.roles().catch(() => [])).filter((r) => !r.archived_at)
 })
 watch(tab, async (v) => {
-  router.replace({ query: v === 'courses' ? {} : { tab: v } })
+  if (route.query.tab !== 'tests') router.replace({ query: v === 'courses' ? {} : { tab: v } })
   if (v === 'progress' && !progress.value) progress.value = await workApi.progress().catch(() => [])
 }, { immediate: true })
 const pct = (c: { done: number; materials?: number; total?: number }) => {
@@ -97,7 +96,6 @@ async function create() {
     </div>
   </template>
 
-  <TestsPanel v-else-if="tab === 'tests'" />
 
   <UiCard v-else flush>
     <div v-if="!progress" class="card-pad"><UiSkeleton :lines="5" /></div>
