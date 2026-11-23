@@ -36,6 +36,8 @@ class User(IdMixin, TimestampMixin, ArchiveMixin, Base):
     locked_until: Mapped[DTN]
     # Rules (Правила платформы): access opens only after accepting the rules.
     rules_accepted_version: Mapped[StrN]
+    # «Работать как»: of several roles the person works in this one for now (its accesses only); None = all roles
+    active_role: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     roles: Mapped[list["UserRole"]] = relationship(back_populates="user", lazy="selectin")
     branches: Mapped[list["UserBranch"]] = relationship(lazy="selectin")

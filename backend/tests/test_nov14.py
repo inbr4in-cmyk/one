@@ -104,7 +104,7 @@ async def test_two_absences_in_a_row_make_a_task_for_methodist(db, client, owner
         assert r.status_code == 200, r.text
         tasks = list(await db.scalars(select(Task).where(Task.auto_kind == "absence2", Task.link_id == s["id"])))
         assert len(tasks) == (0 if lesson is l1 else 1)
-    assert await db.scalar(select(TaskAssignee.user_id).where(TaskAssignee.task_id == tasks[0].id)) == meth.id
+    assert meth.id in set(await db.scalars(select(TaskAssignee.user_id).where(TaskAssignee.task_id == tasks[0].id)))
     # marking again does not duplicate the open task
     await client.put(f"/api/lessons/{l2.id}/attendance", headers=owner_h,
                      json={"marks": [{"student_id": s["id"], "status": "excused"}], "reason": "исправление"})

@@ -29,6 +29,9 @@ export interface Me {
   rules_accepted_version: string | null
   /** Staff must enable 2FA before using the app (older backends omit it). */
   mfa_setup_required?: boolean
+  /** every role the person holds; `roles` holds only the one picked in «Работать как» */
+  all_roles?: { code: string; name: string }[]
+  active_role?: string | null
 }
 
 export interface SessionOut {
@@ -54,6 +57,7 @@ export const authApi = {
   otpRequest: (phone: string) => http.post<null>('/auth/otp/request', { phone }, anon),
   otpVerify: (phone: string, code: string) => http.post<TokenOut>('/auth/otp/verify', { phone, code }, anon),
   me: () => http.get<Me>('/auth/me', { silent: true }),
+  setActiveRole: (role: string | null) => http.post<null>('/auth/active-role', { role }),
   logout: () => http.post<null>('/auth/logout', undefined, { silent: true }),
   /** The current password is asked again, so a stolen session alone can't attach an authenticator (QA H-5). */
   totpSetup: (password: string) => http.post<TotpSetup>('/auth/2fa/setup', { password }, { silent: true }),

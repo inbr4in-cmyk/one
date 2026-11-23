@@ -89,6 +89,10 @@ export interface Lesson {
   trials: number
   /** support lesson: names of the students it is for */
   students?: string[]
+  moved_from_id?: number | null
+  moved_from_at?: string | null
+  moved_to_id?: number | null
+  moved_to_at?: string | null
 }
 
 export type AttendanceStatus = 'present' | 'late' | 'absent' | 'excused'

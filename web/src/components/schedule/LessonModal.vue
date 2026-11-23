@@ -161,7 +161,9 @@ async function submit() {
           <div v-if="l.students?.length"><UiIcon name="users" :size="18" />{{ l.students.join(', ') }}</div>
           <div v-if="l.trials"><UiIcon name="flag" :size="18" />{{ t('schedule.trials', { n: l.trials }) }}</div>
         </div>
-        <UiChip v-if="l.status === 'cancelled'" tone="red">{{ t('schedule.cancelled') }}<template v-if="l.cancel_reason"> · {{ l.cancel_reason }}</template></UiChip>
+        <UiChip v-if="l.status === 'cancelled' && l.moved_to_at" tone="warn">{{ t('nv.ls.movedToFull', { d: `${dayLabel(l.moved_to_at, loc, { day: 'numeric', month: 'long' })}, ${hm(l.moved_to_at, loc)}` }) }}</UiChip>
+        <UiChip v-else-if="l.status === 'cancelled'" tone="red">{{ t('schedule.cancelled') }}<template v-if="l.cancel_reason"> · {{ l.cancel_reason }}</template></UiChip>
+        <UiChip v-else-if="l.moved_from_at" tone="info">{{ t('nv.ls.movedFromFull', { d: `${dayLabel(l.moved_from_at, loc, { day: 'numeric', month: 'long' })}, ${hm(l.moved_from_at, loc)}` }) }}</UiChip>
         <div v-if="conflicts.length" class="alert red" role="alert">
           <UiIcon name="alert" />
           <div class="grow"><b>{{ t('schedule.conflict') }}</b><span v-for="(c, i) in conflicts" :key="i" style="display: block">{{ c }}</span></div>

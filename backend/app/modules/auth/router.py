@@ -292,6 +292,8 @@ class MeOut(BaseModel):
     permissions: dict[str, str]
     rules_accepted_version: str | None
     mfa_setup_required: bool = False
+    all_roles: list[dict] = []
+    active_role: str | None = None
 
 
 @router.get("/me", response_model=MeOut)
@@ -304,7 +306,25 @@ async def me(actor: CurrentActor) -> MeOut:
         permissions={f"{m}.{a}": s for (m, a), s in actor.grants.scopes.items()},
         rules_accepted_version=u.rules_accepted_version,
         mfa_setup_required=actor.is_staff and get_settings().require_staff_2fa and not u.totp_enabled,
+        all_roles=[{"code": c, "name": n} for c, n in sorted(actor.all_roles.items(), key=lambda x: x[1])],
+        active_role=u.active_role if u.active_role in actor.all_roles and len(actor.all_roles) > 1 else None,
     )
+
+
+class ActiveRoleIn(In):
+    role: str | None = Field(default=None, max_length=64)
+
+
+@router.post("/active-role", status_code=204)
+async def set_active_role(body: ActiveRoleIn, actor: CurrentActor, db: DB) -> None:
+    """«Работать как»: a person with several roles picks one, and only its accesses are in force (None = all again).
+    It can only narrow what the person already has."""
+    if body.role is not None and body.role not in actor.all_roles:
+        raise bad_request("У вас нет такой роли")
+    actor.user.active_role = body.role
+    await write_audit(db, actor_id=actor.id, action="auth.active_role", entity="user", entity_id=actor.id, ip=actor.ip,
+                      after={"role": body.role})
+    await db.commit()
 
 
 @router.get("/catalog")

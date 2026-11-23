@@ -29,6 +29,8 @@ class Actor:
     grants: Grants = field(default_factory=Grants)
     branch_ids: set[int] = field(default_factory=set)
     role_codes: set[str] = field(default_factory=set)
+    # every role the person holds (code → name); role_codes is narrowed to the one picked in «Работать как»
+    all_roles: dict[str, str] = field(default_factory=dict)
     # Funnel stages the admin closed for this person (table «сотрудник × этап»): hidden, or view only.
     stage_hidden: set[int] = field(default_factory=set)
     stage_readonly: set[int] = field(default_factory=set)
@@ -72,10 +74,12 @@ class Actor:
 async def load_actor(db: AsyncSession, user: User, session_id: int, mfa: bool, ip: str) -> Actor:
     actor = Actor(user=user, session_id=session_id, mfa=mfa, ip=ip)
     actor.branch_ids = {b.branch_id for b in user.branches}
-    for ur in user.roles:
-        role = ur.role
-        if role.archived_at is not None:
-            continue
+    live = [ur.role for ur in user.roles if ur.role.archived_at is None]
+    actor.all_roles = {r.code: r.name for r in live}
+    only = user.active_role if user.active_role in actor.all_roles and len(live) > 1 else None
+    for role in live:
+        if only and role.code != only:
+            continue  # «Работать как»: the other roles' accesses are switched off until the person switches back
         actor.role_codes.add(role.code)
         for p in role.permissions:
             actor.grants.add(p.module, p.action, p.scope)

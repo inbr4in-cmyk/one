@@ -13,7 +13,7 @@ import { useBranchStore } from '@/stores/branch'
 import { useRefsStore } from '@/stores/refs'
 import { useTeachers } from '@/composables/useTeachers'
 import { useMediaQuery } from '@/composables/useMediaQuery'
-import { addDays, dayLabel, hm, hoursOf, isoDate, sameDay, weekStart, schoolNow, toSchool } from '@/utils/dates'
+import { addDays, dayLabel, dmy, hm, hoursOf, isoDate, sameDay, weekStart, schoolNow, toSchool } from '@/utils/dates'
 import { tone } from '@/utils/levels'
 import type { Locale } from '@/i18n'
 
@@ -52,6 +52,15 @@ const teachers = useTeachers()
 
 /** Course format filter: all, group, duo, individual */
 const kind = ref<LessonKind | ''>('')
+const AUTO_CANCEL = ['Расписание изменено', 'Группа закрыта', 'Дубликат урока']
+/** Status seen right on the lesson: moved away, cancelled, moved here, substitute teacher. */
+function badge(l: Lesson): { text: string; tone: string; tip?: string } | null {
+  const when = (iso: string) => `${dmy(iso, loc.value).slice(0, 5)} ${hm(iso, loc.value)}`
+  if (l.status === 'cancelled') return l.moved_to_at ? { text: t('nv.ls.movedTo', { d: when(l.moved_to_at) }), tone: 'warn' } : { text: t('nv.ls.cancelled'), tone: 'red', tip: l.cancel_reason ?? undefined }
+  if (l.moved_from_at) return { text: t('nv.ls.movedFrom', { d: when(l.moved_from_at) }), tone: 'info' }
+  if (l.actual_teacher_id) return { text: t('nv.ls.sub'), tone: 'info' }
+  return null
+}
 const titleOf = (l: Lesson) => l.group_name ?? (l.kind === 'support' ? `Support · ${l.topic ?? ''}` : t('schedule.individual'))
 const kindOf = (l: Lesson): LessonKind => l.kind ?? (l.group_id ? 'group' : 'individual')
 const kindOptions = computed(() => [
@@ -67,7 +76,9 @@ const viewOptions = computed(() => [
 async function load() {
   loading.value = true
   try {
-    lessons.value = await academicsApi.lessons({ from: isoDate(start.value), to: isoDate(addDays(start.value, 6)), branch_id: branch.filterId })
+    const all = await academicsApi.lessons({ from: isoDate(start.value), to: isoDate(addDays(start.value, 6)), branch_id: branch.filterId, include_cancelled: true })
+    // cancelled lessons stay on the grid with their status; the ones the program removed itself do not
+    lessons.value = all.filter((l) => l.status !== 'cancelled' || !AUTO_CANCEL.some((r) => (l.cancel_reason ?? '').startsWith(r)))
   } catch {
     lessons.value = []
   } finally {
@@ -94,7 +105,7 @@ onMounted(() => {
 
 /* Filter chips for the current view, with the week's load */
 const chips = computed(() => {
-  const count = (fn: (l: Lesson) => boolean) => lessons.value.filter(fn).length
+  const count = (fn: (l: Lesson) => boolean) => lessons.value.filter((l) => l.status !== 'cancelled' && fn(l)).length
   if (view.value === 'rooms') {
     const many = new Set(rooms.value.map((r) => r.branch_id)).size > 1
     return rooms.value.map((r) => ({ id: r.id, name: many ? `${r.name} · ${refs.branchName(r.branch_id)}` : r.name, n: count((l) => l.room_id === r.id), icon: 'door' }))
@@ -288,6 +299,7 @@ const nConflicts = computed(() => shown.value.filter((l) => conflicts.value.has(
         <button v-for="l in dayLessons" :key="l.id" type="button" class="agenda" :class="{ conflict: conflicts.has(l.id), 'has-trial': l.trials }" :style="{ '--c': levelColor(l) }" @click="selected = l">
           <span class="tm num">{{ hm(l.starts_at, loc) }}<small>{{ hm(l.ends_at, loc) }}</small></span>
           <span class="grow"><b><UiIcon :name="KIND_ICON[kindOf(l)]" :size="14" class="kind-ico" :label="t(`kind.${kindOf(l)}`)" />{{ titleOf(l) }}<span v-if="membersOf(l) !== undefined" class="mem" :title="t('schedule.members', { n: membersOf(l) })"><UiIcon name="users" :size="14" />{{ membersOf(l) }}</span></b><small>{{ l.room_name }} · {{ l.teacher_name }}<template v-if="l.actual_teacher_id"> · {{ t('schedule.sub') }}</template></small></span>
+          <span v-if="badge(l)" class="chip xs" :class="badge(l)!.tone" :title="badge(l)!.tip">{{ badge(l)!.text }}</span>
           <span v-if="conflicts.has(l.id)" class="chip red xs">{{ t('schedule.conflictShort') }}</span>
           <span v-else-if="l.trials" class="chip red xs">{{ t('schedule.trial') }}</span>
         </button>
@@ -319,7 +331,8 @@ const nConflicts = computed(() => shown.value.filter((l) => conflicts.value.has(
                 >
                   <b><UiIcon :name="KIND_ICON[kindOf(l)]" :size="14" class="kind-ico" :label="t(`kind.${kindOf(l)}`)" />{{ titleOf(l) }}</b>
                   <span v-if="membersOf(l) !== undefined" class="wl-n">{{ membersOf(l) }}<template v-if="capacityOf(l)">/{{ capacityOf(l) }}</template></span>
-                  <small>{{ l.teacher_name }}<template v-if="l.actual_teacher_id"> · {{ t('schedule.sub') }}</template></small>
+                  <small>{{ l.teacher_name }}</small>
+                  <span v-if="badge(l)" class="chip xs ls-b" :class="badge(l)!.tone" :title="badge(l)!.tip">{{ badge(l)!.text }}</span>
                 </button>
                 <button v-if="auth.can('schedule.create') && columns[dayIdx]" type="button" class="wl-add" :aria-label="t('schedule.addHere')" :title="t('schedule.addHere')" @click="newAt(columns[dayIdx]!.d, sl, r.id)">+</button>
               </td>
@@ -356,7 +369,8 @@ const nConflicts = computed(() => shown.value.filter((l) => conflicts.value.has(
                 >
                   <b><UiIcon :name="KIND_ICON[kindOf(l)]" :size="14" class="kind-ico" :label="t(`kind.${kindOf(l)}`)" />{{ titleOf(l) }}</b>
                   <span v-if="membersOf(l) !== undefined" class="wl-n" :title="t('schedule.members', { n: membersOf(l) })">{{ membersOf(l) }}<template v-if="capacityOf(l)">/{{ capacityOf(l) }}</template></span>
-                  <small>{{ l.room_name }} · {{ l.teacher_name }}<template v-if="l.actual_teacher_id"> · {{ t('schedule.sub') }}</template></small>
+                  <small>{{ l.room_name }} · {{ l.teacher_name }}</small>
+                  <span v-if="badge(l)" class="chip xs ls-b" :class="badge(l)!.tone" :title="badge(l)!.tip">{{ badge(l)!.text }}</span>
                   <span v-if="conflicts.has(l.id)" class="chip red xs">{{ t('schedule.conflictShort') }}</span>
                   <span v-else-if="l.trials" class="chip red xs">{{ t('schedule.trial') }}</span>
                 </button>
@@ -395,7 +409,9 @@ const nConflicts = computed(() => shown.value.filter((l) => conflicts.value.has(
 .wl .chip { margin-top: 4px }
 .wl.has-trial { outline: 1.5px dashed var(--red); outline-offset: -1.5px }
 .wl.conflict { outline: 2px solid var(--red); outline-offset: -2px }
-.wl.cancelled { opacity: 0.55; text-decoration: line-through }
+.wl.cancelled { opacity: 0.7 }
+.wl.cancelled > b, .wl.cancelled > small { text-decoration: line-through }
+.ls-b { text-decoration: none; align-self: flex-start; white-space: normal; text-align: left }
 .wl.marked::after { content: ""; position: absolute; right: 9px; bottom: 8px; width: 7px; height: 7px; border-radius: 50%; background: var(--ok) }
 .mem { display: inline-flex; align-items: center; gap: 2px; margin-left: 6px; font-weight: 600; opacity: 0.8; white-space: nowrap }
 .wk-t td { position: relative }

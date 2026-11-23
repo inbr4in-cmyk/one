@@ -562,6 +562,11 @@ class LessonOut(ORM):
     trials: int = 0
     # support lesson: who it is for
     students: list[str] = []
+    # moved lesson: where it came from; a lesson cancelled by a move: where it went
+    moved_from_id: int | None = None
+    moved_from_at: datetime | None = None
+    moved_to_id: int | None = None
+    moved_to_at: datetime | None = None
 
 
 def lesson_filter(actor: Actor):
@@ -594,9 +599,17 @@ async def _lesson_outs(db: DB, lessons: list[Lesson]) -> list[LessonOut]:
                                            .join(Student, Student.id == LessonStudent.student_id)
                                            .where(LessonStudent.lesson_id.in_(sup_ids)).order_by(Student.full_name))).all():
             sup.setdefault(lid, []).append(name)
+    src = [x.moved_from_id for x in lessons if x.moved_from_id]
+    came = dict((await db.execute(select(Lesson.id, Lesson.starts_at).where(Lesson.id.in_(src)))).all()) if src else {}
+    gone_ids = [x.id for x in lessons if x.status == LessonStatus.CANCELLED]
+    went = {old: (nid, at) for old, nid, at in (await db.execute(
+        select(Lesson.moved_from_id, Lesson.id, Lesson.starts_at).where(Lesson.moved_from_id.in_(gone_ids)))).all()} if gone_ids else {}
     out = []
     for x in lessons:
         o = LessonOut.model_validate(x)
+        o.moved_from_at = came.get(x.moved_from_id) if x.moved_from_id else None
+        if x.id in went:
+            o.moved_to_id, o.moved_to_at = went[x.id]
         o.students = sup.get(x.id, [])
         o.group_name = gn.get(x.group_id) if x.group_id else "Пробный урок" if x.is_trial else "Индивидуально"
         o.kind = "support" if x.is_support else gk.get(x.group_id, "group") if x.group_id else "individual"
@@ -1002,14 +1015,15 @@ async def _two_absences(db: DB, s: Student, lesson: Lesson, group: Group | None,
         select(Attendance.status, Lesson.starts_at).join(Lesson, Lesson.id == Attendance.lesson_id)
         .where(Attendance.student_id == s.id, same, Lesson.status != LessonStatus.CANCELLED,
                Lesson.starts_at <= lesson.starts_at).order_by(Lesson.starts_at.desc()).limit(2))).all()
-    if len(last) < 2 or any(st not in MISSED for st, _ in last):
+    # Only absences without a good reason count: «отпросился» is agreed in advance and nobody is alerted.
+    if len(last) < 2 or any(st != AttendanceStatus.ABSENT for st, _ in last):
         return
     days = " и ".join(f"{local(at):%d.%m}" for _, at in reversed(last))
     await retention.follow_up(
         db, s, "absence2", f"Связаться с родителями: {s.full_name} пропустил 2 урока подряд",
         f"Ученик не был на двух уроках подряд ({days})" + (f", группа «{group.name}»" if group else "")
         + ". Свяжитесь с родителями или учеником, узнайте причину и напишите результат в комментарии к задаче.",
-        actor_id)
+        actor_id, who=sorted(set(await retention.methodists(db, s.branch_id)) | set(await retention.branch_admins(db, s.branch_id))))
 
 
 async def accrue_for_lesson(db, lesson: Lesson, actor_id: int | None) -> int:
@@ -1051,6 +1065,8 @@ async def mark(lesson_id: int, body: MarksIn, db: DB, actor: Actor = require("at
         twin = await db.scalar(select(Lesson).where(
             Lesson.group_id == lesson.group_id, Lesson.id != lesson.id, Lesson.status != LessonStatus.CANCELLED,
             Lesson.attendance_marked_at.is_not(None), Lesson.is_support.is_(False),
+            # a lesson moved to this day (or added by hand) is a real second lesson: both are marked
+            Lesson.rule_id.is_not(None), Lesson.moved_from_id.is_(None),
             Lesson.starts_at >= at_local(loc.date(), time(0)), Lesson.starts_at < at_local(loc.date() + timedelta(days=1), time(0))).limit(1))
         if twin is not None:
             raise conflict(f"У группы в этот день уже отмечен урок в {local(twin.starts_at):%H:%M}. Второй раз отметить нельзя: "
@@ -1100,7 +1116,7 @@ async def mark(lesson_id: int, body: MarksIn, db: DB, actor: Actor = require("at
                 variables = {"time": f"{loc:%H:%M}", "group": group.name if group else ""}
                 if m.status == AttendanceStatus.ABSENT:
                     await notify_guardians(db, s, "absence", variables, ref=("attendance", lesson.id))
-                if m.status in MISSED and not await is_frozen_on(db, s.id, loc.date()):
+                if m.status == AttendanceStatus.ABSENT and not await is_frozen_on(db, s.id, loc.date()):
                     await db.flush()
                     await _two_absences(db, s, lesson, group, actor.id)
                 elif m.status == AttendanceStatus.PRESENT and await setting(db, "notify_present"):
