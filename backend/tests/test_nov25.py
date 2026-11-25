@@ -6,7 +6,7 @@ from sqlalchemy import select
 from app.models import Lesson, Level, Notification
 from app.services import plan
 from app.services.clock import at_local, today
-from tests.conftest import make_staff
+from tests.conftest import branch_id, login, make_staff
 from tests.test_core_learning import _setup, _student
 
 YANGI = "Янги шахар"
@@ -160,3 +160,45 @@ async def test_group_test_is_planned_taken_online_annulled_restored_and_ranked(c
     assert hist[0]["score"] == 3 and hist[0]["duration_sec"] is not None and hist[0]["test_title"] == "Progress Test 1"
     orders = [a.q_order for a in await db.scalars(select(Attempt).where(Attempt.session_id == sid))]
     assert all(sorted(o) == sorted(orders[0]) for o in orders)
+
+
+async def test_form_is_filled_by_link_kept_like_an_application_and_seen_by_admins_only(client, db, owner_h):
+    from app.models import FormResponse
+
+    forms = (await client.get("/api/forms", headers=owner_h)).json()
+    assert len(forms) == 1 and forms[0]["questions"] == 31 and forms[0]["sections"] == 4 and forms[0]["is_open"]
+    fid, token = forms[0]["id"], forms[0]["path"].split("/")[-1]
+    north = await branch_id(db, "Север")
+    teacher = await make_staff(db, "teacher", ["Север"], "+77075550001", "Учитель Анкеты")
+    th = await login(client, "+77075550001")
+    pub = (await client.get(f"/api/public/forms/{token}")).json()
+    assert teacher.id in [t["id"] for t in pub["teachers"]] and len(pub["sections"]) == 4
+    base = {"q1": "Айдана Серикова", "q2": "8 701 555 00 11", "q3": north, "q4": teacher.id, "q6": 0}
+    trial = {"q7": 9, "q8": 6, "q9": 10, "q10": 0, "q11": 1, "q12": 10, "q15": 1, "q16": {"picked": [1], "other": "далеко"}}
+    last = {"q30": 9, "q31": 1}
+    # a required question of the person's own path is missing
+    r = await client.post(f"/api/public/forms/{token}", json={"answers": {**base, **last}})
+    assert r.status_code == 400
+    # answers of the other branch of the form (new student) are dropped
+    r = await client.post(f"/api/public/forms/{token}", json={"answers": {**base, **trial, **last, "q18": 2}})
+    assert r.status_code == 201, r.text
+    row = await db.scalar(select(FormResponse))
+    assert row.phone == "+77015550011" and row.branch_id == north and row.teacher_id == teacher.id and "q18" not in row.answers
+    assert row.flags == ["Оценка 6: Насколько понятно преподаватель объяснял материал?", "Нужно подумать"]
+    # teachers never see the answers
+    assert (await client.get(f"/api/forms/{fid}/responses", headers=th)).status_code == 403
+    rows = (await client.get(f"/api/forms/{fid}/responses?status=new", headers=owner_h)).json()
+    assert len(rows) == 1 and rows[0]["kind"] == "Пробный урок" and rows[0]["branch"] == "Север"
+    full = (await client.get(f"/api/form-responses/{rows[0]['id']}", headers=owner_h)).json()
+    assert [s["title"] for s in full["sections"]] == ["Общие вопросы", "Пробный урок", "Последние вопросы"]
+    assert {"text": "Что может помешать начать обучение?", "value": "Цена, Другое: далеко", "low": False} in full["sections"][1]["items"]
+    r = await client.post(f"/api/form-responses/{rows[0]['id']}/done", headers=owner_h, json={"note": "Позвонили"})
+    assert r.json()["status"] == "done"
+    sm = (await client.get(f"/api/forms/{fid}/summary", headers=owner_h)).json()
+    q16 = next(q for q in sm["questions"] if q["id"] == "q16")
+    assert q16["options"][1]["by_branch"] == {str(north): 1} and q16["options"][-1]["total"] == 1
+    # closed: the link asks to sign in, a signed-in person can still send
+    assert (await client.patch(f"/api/forms/{fid}", headers=owner_h, json={"is_open": False})).json()["is_open"] is False
+    assert (await client.get(f"/api/public/forms/{token}")).json() == {"title": forms[0]["title"], "closed": True}
+    assert (await client.post(f"/api/public/forms/{token}", json={"answers": {**base, **trial, **last}})).status_code == 403
+    assert (await client.post(f"/api/my/forms/{token}", headers=th, json={"answers": {**base, **trial, **last}})).status_code == 201

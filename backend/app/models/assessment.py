@@ -110,3 +110,38 @@ class MaterialProgress(IdMixin, Base):
     material_id: Mapped[int] = fk("training_materials.id")
     done_at: Mapped[DT]
     score: Mapped[IntN]
+
+
+class Form(IdMixin, TimestampMixin, ArchiveMixin, Base):
+    """An «анкета» (owner, 25.11.2026): sections of questions with branching, filled by a link. Open: anyone with the
+    link, no account. Closed: signed-in users only. The answers are kept like applications and seen by admins only."""
+
+    __tablename__ = "forms"
+
+    code: Mapped[str] = mapped_column(String(40), unique=True)
+    title: Mapped[str] = mapped_column(String(255))
+    description: Mapped[TextN]
+    thanks: Mapped[TextN]
+    token: Mapped[str] = mapped_column(String(40), unique=True)
+    is_open: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # [{"id", "title", "text", "next", "questions": [{"id", "text", "kind", "required", "options": [{"text", "goto", "alert"}], ...}]}]
+    sections: Mapped[list] = mapped_column(JSONB, default=list)
+
+
+class FormResponse(IdMixin, Base):
+    __tablename__ = "form_responses"
+
+    form_id: Mapped[int] = fk("forms.id")
+    at: Mapped[DT]
+    branch_id: Mapped[int | None] = fk("branches.id", nullable=True)
+    teacher_id: Mapped[int | None] = fk("users.id", nullable=True, index=False)
+    user_id: Mapped[int | None] = fk("users.id", nullable=True, index=False)  # who filled it, when signed in
+    name: Mapped[StrN]
+    phone: Mapped[StrN]
+    answers: Mapped[dict] = mapped_column(JSONB, default=dict)  # {question id: value}
+    flags: Mapped[list] = mapped_column(JSONB, default=list)  # why the admin should call today
+    status: Mapped[str] = mapped_column(String(16), default="new")  # new | done
+    done_by: Mapped[int | None] = fk("users.id", nullable=True, index=False)
+    done_at: Mapped[DTN]
+    note: Mapped[TextN]

@@ -1,4 +1,5 @@
 from app.modules.assessment.router import router as tests_router
+from app.modules.assessment.forms import router as forms_router
 from app.modules.assessment.survey import router as survey_router
 from app.modules.assessment.sessions import router as test_sessions_router
 from app.modules.academics.router import router as academics_router
@@ -22,6 +23,6 @@ from app.modules.work.profile import router as profile_router
 from app.modules.store.router import router as store_router
 from app.modules.compliance.router import router as compliance_router
 
-ROUTERS = [auth_router, admin_router, org_router, students_router, academics_router, payments_router, crm_router, inbox_router, tests_router, survey_router, test_sessions_router, chats_router,
+ROUTERS = [auth_router, admin_router, org_router, students_router, academics_router, payments_router, crm_router, inbox_router, tests_router, survey_router, forms_router, test_sessions_router, chats_router,
            finance_router, payroll_router, tasks_router, staff_router, profile_router, store_router, compliance_router,
            portal_router, search_router, import_router, old_crm_import_router]

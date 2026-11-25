@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { formsApi } from '@/api/forms'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { UiAvatar, UiButton, UiCard, UiIcon, UiSegmented } from '@/components/ui'
@@ -20,11 +21,14 @@ async function logout() {
   router.replace({ name: 'login' })
 }
 const langs = computed(() => [{ value: 'ru' as const, label: t('lang.ru') }, { value: 'kk' as const, label: t('lang.kk') }])
+const myForms = ref<{ title: string; path: string }[]>([])
+onMounted(async () => (myForms.value = await formsApi.myList().catch(() => [])))
 const links = computed(() => [
   { to: '/portal/progress', icon: 'progress', label: t('portal.nav.progress') },
   { to: '/portal/payments', icon: 'wallet', label: t('portal.nav.payments') },
   { to: '/portal/coins', icon: 'coin', label: t('portal.nav.coins') },
   { to: '/portal/roadmap', icon: 'trend', label: t('nav.roadmap') },
+  ...myForms.value.map((f) => ({ to: f.path, icon: 'star', label: f.title })),
   { to: '/portal/feedback', icon: 'flag', label: t('nav.feedback') },
   { to: '/portal/rules', icon: 'file', label: t('nav.rules') },
 ])

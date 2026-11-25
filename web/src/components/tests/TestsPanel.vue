@@ -3,7 +3,6 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { toDataURL } from 'qrcode'
-import LessonSurveyCard from './LessonSurveyCard.vue'
 import { UiButton, UiCard, UiChip, UiEmptyState, UiField, UiIcon, UiSelect, UiSkeleton } from '@/components/ui'
 import TestDrawer from './TestDrawer.vue'
 import GroupTestsCard from './GroupTestsCard.vue'
@@ -84,7 +83,6 @@ function download() {
 <template>
   <div class="grid">
     <GroupTestsCard :tests="tests" :can-edit="canEdit" @open="open($event)" @create="open(null, $event)" />
-    <LessonSurveyCard />
     <UiCard :title="t('tests.qr.title')" icon="qr">
       <div class="qr-card">
         <div class="qr">

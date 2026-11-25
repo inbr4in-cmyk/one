@@ -44,6 +44,7 @@ export const NAV: NavItem[] = [
   { key: 'complaints', path: '/complaints', icon: 'flag', perm: 'complaints.view', group: 'main', route: '/complaints/:id(\\d+)?', page: () => import('@/pages/complaints/ComplaintsPage.vue') },
   { key: 'training', path: '/training', icon: 'learning-base', perm: 'training.view', group: 'main', page: () => import('@/pages/training/TrainingPage.vue') },
   { key: 'tests', path: '/tests', icon: 'tests', perm: 'tests.view', group: 'main', page: () => import('@/pages/tests/TestsPage.vue') },
+  { key: 'forms', path: '/forms', icon: 'star', perm: 'students.archive', group: 'main', page: () => import('@/pages/forms/FormsPage.vue') },
   { key: 'roadmap', path: '/roadmap', icon: 'trend', group: 'main', page: () => import('@/pages/RoadmapPage.vue') },
   { key: 'roles', path: '/settings/roles', icon: 'key', perm: 'roles.view', group: 'settings', page: () => import('@/pages/settings/RolesPage.vue') },
   { key: 'staff', path: '/settings/staff', icon: 'teachers', perm: 'staff.view', group: 'settings', page: () => import('@/pages/settings/StaffPage.vue') },

@@ -27,20 +27,17 @@ const levelId = keptRef('tests.level', () => 0)
 const levelOpts = computed(() => refs.levels.map((l) => ({ value: l.id, label: l.name })))
 watch(() => refs.levels, (ls) => { if (!ls.some((l) => l.id === levelId.value)) levelId.value = ls[0]?.id ?? 0 }, { immediate: true })
 
-const SLOTS: { kind: TestKind; title: string }[] = [
-  { kind: 'progress', title: 'Progress Test 1' },
-  { kind: 'progress', title: 'Progress Test 2' },
-  { kind: 'final', title: 'Final Test' },
-]
+/** Each level has its own set: any number of Progress Tests and a Final Test, each with its own questions */
 const bank = computed(() => {
   const mine = (props.tests ?? []).filter((x) => x.level_id === levelId.value && (x.kind === 'progress' || x.kind === 'final'))
-  const used = new Set<number>()
-  const slots = SLOTS.map((s) => {
-    const found = mine.find((x) => !used.has(x.id) && x.kind === s.kind && x.title.trim().toLowerCase() === s.title.toLowerCase())
-    if (found) used.add(found.id)
-    return { ...s, test: found ?? null }
-  })
-  return [...slots, ...mine.filter((x) => !used.has(x.id)).map((x) => ({ kind: x.kind, title: x.title, test: x as Test | null }))]
+  const sorted = [...mine].sort((x, y) => Number(x.kind === 'final') - Number(y.kind === 'final') || x.title.localeCompare(y.title, undefined, { numeric: true }))
+  const out: { kind: TestKind; title: string; test: Test | null }[] = sorted.map((x) => ({ kind: x.kind, title: x.title, test: x }))
+  const titles = new Set(mine.map((x) => x.title.trim().toLowerCase()))
+  let n = mine.filter((x) => x.kind === 'progress').length + 1
+  while (titles.has(`progress test ${n}`)) n++
+  out.push({ kind: 'progress', title: `Progress Test ${n}`, test: null })
+  if (!mine.some((x) => x.kind === 'final')) out.push({ kind: 'final', title: 'Final Test', test: null })
+  return out
 })
 
 /* ---------- planned tests ---------- */
@@ -106,11 +103,11 @@ async function plan() {
     <UiSkeleton v-if="!tests" :lines="3" />
     <div v-else class="gt-bank">
       <button v-for="(s, i) in bank" :key="s.test?.id ?? `n${i}`" type="button" class="gt-slot" :class="{ empty: !s.test, fin: s.kind === 'final' }"
-        :disabled="!s.test && !canEdit" @click="s.test ? emit('open', s.test) : emit('create', { kind: s.kind, title: s.title, level_id: levelId })">
+        :hidden="!s.test && !canEdit" @click="s.test ? emit('open', s.test) : emit('create', { kind: s.kind, title: s.title, level_id: levelId })">
         <span class="ic"><UiIcon :name="s.kind === 'final' ? 'trophy' : 'tests'" :size="24" /></span>
         <b>{{ s.title }}</b>
         <small v-if="s.test">{{ t('tests.questionsN', { n: s.test.questions }) }}</small>
-        <small v-else>{{ canEdit ? t('nv.gt.create') : t('nv.gt.notMade') }}</small>
+        <small v-else>{{ t('nv.gt.create') }}</small>
       </button>
     </div>
 
@@ -148,6 +145,8 @@ async function plan() {
 .gt-bank { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; margin-top: 12px }
 .gt-slot { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); text-align: left; font: inherit; color: var(--ink); cursor: pointer }
 .gt-slot:hover:not(:disabled) { border-color: var(--navy-600) }
+.gt-slot[hidden] { display: none }
+.gt-slot[hidden] { display: none }
 .gt-slot.empty { border-style: dashed; background: transparent }
 .gt-slot .ic { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--navy-50); color: var(--accent-ink) }
 .gt-slot.fin .ic { background: var(--red-100); color: var(--red-ink) }
