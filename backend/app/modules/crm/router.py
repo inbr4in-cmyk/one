@@ -459,10 +459,7 @@ async def add_event(lead_id: int, body: EventIn, db: DB, actor: Actor = require(
     if body.next_action_at:
         lead.next_action_at = body.next_action_at
     if body.kind == "call":
-        contacted = await crm_svc.stage_by_code(db, "main", "contacted")
-        cur = await db.get(LeadStage, lead.stage_id)
-        if contacted and cur and cur.code == "new":
-            await crm_svc.move(db, lead, contacted, actor.id)
+        await crm_svc.got_in_touch(db, lead, actor.id, answered=body.result != "no_answer")
     await crm_svc.worked(db, lead, actor.id)
     await db.commit()
     return EventOut.model_validate(e)

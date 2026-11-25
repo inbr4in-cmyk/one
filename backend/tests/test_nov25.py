@@ -308,3 +308,31 @@ async def test_staged_test_is_tried_by_staff_checked_by_key_and_marked_by_hand(c
     assert (await client.put(f"/api/attempts/{aid}/marks", headers=owner_h, json={"marks": {k: 99 for k in manual}})).status_code == 400
     d = (await client.put(f"/api/attempts/{aid}/marks", headers=owner_h, json={"marks": manual})).json()
     assert d["status"] == "done" and d["manual_score"] == 12 and d["score"] == 35
+
+
+async def test_unanswered_call_goes_to_no_answer_stage_and_an_answer_to_talks(client, db, owner_h):
+    from sqlalchemy import select
+
+    from app.models import Lead, LeadStage, Pipeline
+
+    main = await db.scalar(select(Pipeline).where(Pipeline.code == "main"))
+    na = LeadStage(pipeline_id=main.id, code="custom_1_9", name="Недозвон", color="#5B6782", order=1)
+    db.add(na)
+    await db.commit()
+    r = await client.post("/api/crm/leads", headers=owner_h, json={"full_name": "Лид Недозвон", "phone": "+77075550301", "source": "walk_in",
+                                                               "branch_id": await branch_id(db, "Север")})
+    lid = r.json()["id"]
+
+    async def stage() -> str:
+        db.expire_all()
+        return (await db.get(LeadStage, (await db.get(Lead, lid)).stage_id)).name
+
+    call = {"kind": "call", "text": "Звонок"}
+    assert (await client.post(f"/api/crm/leads/{lid}/events", headers=owner_h, json={**call, "result": "no_answer"})).status_code == 201
+    assert await stage() == "Недозвон"
+    assert (await client.get("/api/dashboard/day", headers=owner_h)).json()["leads"]["contacted"]["count"] == 0
+    assert (await client.post(f"/api/crm/leads/{lid}/events", headers=owner_h, json={**call, "result": "no_answer"})).status_code == 201
+    assert await stage() == "Недозвон"
+    assert (await client.post(f"/api/crm/leads/{lid}/events", headers=owner_h, json={**call, "result": "thinking"})).status_code == 201
+    assert (await db.get(LeadStage, (await db.get(Lead, lid)).stage_id)).code == "contacted"
+    assert (await client.get("/api/dashboard/day", headers=owner_h)).json()["leads"]["contacted"]["count"] == 1

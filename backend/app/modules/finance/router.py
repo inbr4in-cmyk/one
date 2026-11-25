@@ -404,11 +404,12 @@ async def dashboard_day(db: DB, actor: Actor = require("dashboard", "view"), bra
         contacted_ids = [i for i, s in stages.items() if s.code == "contacted"]
         ev = select(LeadEvent.lead_id).where(LeadEvent.at >= start, LeadEvent.at < end)
         to = LeadEvent.meta["to"].as_integer()
+        answered = LeadEvent.meta["result"].as_string().is_distinct_from("no_answer")  # «недозвон» is not a contact
         sets = {
             "new": select(Lead.id).where(Lead.created_at >= start, Lead.created_at < end),
             "contacted": ev.where(or_(
-                LeadEvent.kind.in_(("call", "meeting")),
-                (LeadEvent.kind == "note") & LeadEvent.meta.has_key("result") & LeadEvent.actor_id.is_not(None),
+                LeadEvent.kind.in_(("call", "meeting")) & answered,
+                (LeadEvent.kind == "note") & LeadEvent.meta.has_key("result") & answered & LeadEvent.actor_id.is_not(None),
                 (LeadEvent.kind == "message") & (LeadEvent.meta["out"].as_boolean().is_(True)),
                 (LeadEvent.kind == "stage") & to.in_(contacted_ids or [-1]))),
             "trial": ev.where(LeadEvent.kind == "stage", to.in_(booked_ids or [-1])),

@@ -213,12 +213,9 @@ async def _send(db: DB, actor: Actor, conv: Conversation, text: str, kind: str =
                 lead.owner_id = actor.id  # first responder brought the lead in (KPI basis)
             if lead.assignee_id is None:
                 lead.assignee_id = actor.id
-            from app.services.crm import move, stage_by_code
+            from app.services.crm import got_in_touch
 
-            st = await db.get(LeadStage, lead.stage_id)
-            contacted = await stage_by_code(db, "main", "contacted")
-            if st and st.code == "new" and contacted:
-                await move(db, lead, contacted, actor.id, "Ответили в " + ("WhatsApp" if conv.channel == "whatsapp" else "Instagram"))
+            await got_in_touch(db, lead, actor.id, "Ответили в " + ("WhatsApp" if conv.channel == "whatsapp" else "Instagram"))
             from app.services.crm import worked
 
             await worked(db, lead, actor.id)
