@@ -73,6 +73,7 @@ export const DETAIL_ROUTES: { name: string; path: string; parent?: string; perm?
   { name: 'lesson-attendance', path: '/attendance/:lessonId(\\d+)', parent: 'attendance', perm: 'attendance.view', page: () => import('@/pages/attendance/AttendanceSheetPage.vue') },
   { name: 'test-session', path: '/tests/sessions/:id(\\d+)', parent: 'tests', perm: 'tests.view', title: 'nv.gt.test', page: () => import('@/pages/tests/TestSessionPage.vue') },
   { name: 'test-attempt', path: '/tests/attempts/:id(\\d+)', parent: 'tests', perm: 'tests.review', title: 'nv.gt.test', page: () => import('@/pages/tests/AttemptPage.vue') },
+  { name: 'dashboard-students', path: '/dashboard/students/:status(left|frozen|waiting)', parent: 'dashboard', perm: 'dashboard.view', title: 'nv.dd.goneTitle', page: () => import('@/pages/dashboard/GoneStudentsPage.vue') },
   { name: 'task', path: '/tasks/:id(\\d+)', parent: 'tasks', perm: 'tasks.view', page: () => import('@/pages/tasks/TaskPage.vue') },
   { name: 'course', path: '/training/:id(\\d+)', parent: 'training', perm: 'training.view', page: () => import('@/pages/training/CoursePage.vue') },
   { name: 'payroll-person', path: '/payroll/staff/:id(\\d+)', parent: 'payroll', perm: 'payroll.view', page: () => import('@/pages/payroll/PayrollPersonPage.vue') },
