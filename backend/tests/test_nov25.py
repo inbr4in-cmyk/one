@@ -217,3 +217,36 @@ async def test_daily_report_counts_the_day_and_names_the_people(client, db, owne
     assert "debtors" in rep and rep["payers"] == {"count": 0, "total": 0, "items": []}
     y = (today() - timedelta(days=1)).isoformat()
     assert (await client.get(f"/api/dashboard/day?day={y}", headers=owner_h)).json()["leads"]["new"]["count"] == 0
+
+
+async def test_branch_admin_is_told_at_nine_whose_birthday_is_today(client, db, owner_h, monkeypatch):
+    from datetime import datetime
+
+    from app import jobs
+    from app.models import Student
+    from app.services import clock
+
+    bid = await branch_id(db, YANGI)
+    admin = await make_staff(db, "branch_admin", [YANGI], "+77075550201", "Админ ДР")
+    born = today().replace(year=2012)
+    people = {}
+    for i, (name, status) in enumerate([("Айша Именинница", "active"), ("Данияр Заморозка", "frozen"), ("Ерлан Ушёл", "left"), ("Жанна Архив", "active"),
+                                        ("Зере Завтра", "active")]):
+        s = (await _student(db, client, owner_h, bid, name, f"+7705777010{i}"))
+        st = await db.get(Student, s["id"])
+        st.birth_date, st.status = (born + timedelta(days=1) if "Завтра" in name else born), status
+        if "Архив" in name:
+            st.archived_at = clock.now()
+        people[name] = st
+    await db.commit()
+    day = at_local(today(), time(8, 30))
+    monkeypatch.setattr(jobs, "now", lambda: day)
+    assert await jobs.birthdays(db) == 0  # before nine nothing is sent
+    monkeypatch.setattr(jobs, "now", lambda: day + timedelta(minutes=31))
+    assert await jobs.birthdays(db) == 1
+    await db.commit()
+    n = await db.scalar(select(Notification).where(Notification.user_id == admin.id, Notification.kind == "birthday"))
+    assert n.title.startswith("Сегодня день рождения: 3")
+    assert "Айша Именинница (14)" in n.body and "Данияр Заморозка (14, заморозка)" in n.body and "Ерлан Ушёл (14, ушёл)" in n.body
+    assert "Архив" not in n.body and "Завтра" not in n.body
+    assert await jobs.birthdays(db) == 0  # once a day

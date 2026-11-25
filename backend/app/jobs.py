@@ -228,9 +228,45 @@ async def complaint_deadlines(db: AsyncSession) -> int:
     return sent
 
 
+async def birthdays(db: AsyncSession) -> int:
+    """09:00 school time, once a day (owner, 25.11.2026): each branch admin is told whose birthday is today, so that
+    nobody is forgotten. Frozen students and those who left are included; archived cards are not."""
+    from app.services import crm, retention
+
+    t = local(now())
+    if not 9 <= t.hour < 21 or not await once(f"birthdays:{t.date()}", 2 * DAY):
+        return 0
+    d = t.date()
+    days = [(d.month, d.day)]
+    if (d.month, d.day) == (2, 28) and (d + timedelta(days=1)).month == 3:
+        days.append((2, 29))  # born on 29 February: congratulated on the 28th in a common year
+    rows = list(await db.scalars(select(Student).where(
+        Student.archived_at.is_(None), Student.birth_date.is_not(None),
+        Student.status.in_((StudentStatus.ACTIVE, StudentStatus.FROZEN, StudentStatus.LEFT, StudentStatus.WAITING, StudentStatus.TRIAL)),
+        or_(*[and_(func.extract("month", Student.birth_date) == m, func.extract("day", Student.birth_date) == dd) for m, dd in days]))
+        .order_by(Student.full_name)))
+    by_branch: dict[int, list] = {}
+    for st in rows:
+        by_branch.setdefault(st.branch_id, []).append(st)
+    marks = {StudentStatus.FROZEN: "заморозка", StudentStatus.LEFT: "ушёл"}
+    sent = 0
+    for bid, people in by_branch.items():
+        names = []
+        for st in people:
+            age = d.year - st.birth_date.year
+            names.append(f"{st.full_name} ({age}{', ' + marks[st.status] if st.status in marks else ''})")
+        title = f"Сегодня день рождения: {len(people)}. Не забудьте поздравить"
+        link = f"/students/{people[0].id}" if len(people) == 1 else "/students"
+        for uid in await retention.branch_admins(db, bid):
+            await crm.alert(db, uid, "birthday", title, body="; ".join(names)[:900], link=link)
+            sent += 1
+    return sent
+
+
 async def minutely(db: AsyncSession) -> dict:
     out = {"attendance": await attendance_reminders(db), "stale_leads": await stale_leads(db),
-           "overdue_tasks": await overdue_tasks(db), "lead_control": await lead_control(db), "complaints": await complaint_deadlines(db)}
+           "overdue_tasks": await overdue_tasks(db), "lead_control": await lead_control(db), "complaints": await complaint_deadlines(db),
+           "birthdays": await birthdays(db)}
     await db.commit()
     out["wa_retried"] = await retry_failed(db)
     await db.commit()
@@ -523,7 +559,7 @@ if __name__ == "__main__":
     else:
         print(asyncio.run(_run({"minutely": minutely, "nightly": nightly, "leave-followups": leave_followups,
                                  "close-left-members": close_left_members,
-                                 "instagram-names": instagram_names,
+                                 "instagram-names": instagram_names, "birthdays": birthdays,
                                  "plan-seed": lambda db: __import__("app.services.plan", fromlist=["seed"]).seed(db),
                                  "lesson-duplicates-preview-old": lambda db: _dupes(db, "old", False),
                                  "lesson-duplicates-preview-new": lambda db: _dupes(db, "new", False),
