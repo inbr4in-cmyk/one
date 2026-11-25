@@ -391,7 +391,7 @@ const canRefund = (p: Payment) => auth.can('payments.refund') && p.refunded < p.
             <span class="grade">{{ a.score }}</span>
             <div class="grow">
               <b>{{ a.test_title ?? t('students.testN', { n: a.test_id }) }}</b>
-              <span>{{ t('students.score', { s: a.score, max: a.max_score ?? '—' }) }}<template v-if="a.finished_at"> · {{ shortDate(a.finished_at, loc) }}</template><template v-if="a.recommended_level_id"> · {{ t('students.recommended', { lv: refs.level(a.recommended_level_id)?.name }) }}</template></span>
+              <span>{{ t('students.score', { s: a.score, max: a.max_score ?? '—' }) }}<template v-if="a.duration_sec"> · {{ t('nv.gt.min', { m: Math.floor(a.duration_sec / 60), s: a.duration_sec % 60 }) }}</template><template v-if="a.finished_at"> · {{ shortDate(a.finished_at, loc) }}</template><template v-if="a.recommended_level_id"> · {{ t('students.recommended', { lv: refs.level(a.recommended_level_id)?.name }) }}</template></span>
             </div>
             <UiChip :tone="a.status === 'reviewed' || a.status === 'done' ? 'ok' : 'warn'" small>{{ t(`students.attempt.${a.status}`, a.status) }}</UiChip>
           </div>

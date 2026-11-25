@@ -159,6 +159,8 @@ async function submit() {
             <UiButton v-if="canSub && mode === 'view'" size="sm" icon="transfer" style="margin-left: auto" @click="start('sub')">{{ t('nv.sub.action') }}</UiButton></div>
           <div v-if="l.level_id"><UiIcon name="level" :size="18" /><LevelTag :id="l.level_id" full /></div>
           <div v-if="l.plan_title"><UiIcon name="notebook" :size="18" /><span><b v-if="l.plan_no" class="num">{{ t('nv.plan.lessonNo', { n: l.plan_no }) }} · </b>{{ l.plan_title }}</span></div>
+          <div v-if="l.test_session_id"><UiIcon name="tests" :size="18" /><span><b>{{ t('nv.gt.testBadge') }}: </b>{{ l.test_title }}</span>
+            <UiButton v-if="auth.can('tests.view')" size="sm" icon="tests" style="margin-left: auto" :to="`/tests/sessions/${l.test_session_id}`">{{ t('nv.gt.open') }}</UiButton></div>
           <div v-if="l.students?.length"><UiIcon name="users" :size="18" />{{ l.students.join(', ') }}</div>
           <div v-if="l.trials"><UiIcon name="flag" :size="18" />{{ t('schedule.trials', { n: l.trials }) }}</div>
         </div>

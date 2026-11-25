@@ -1,4 +1,4 @@
-from app.models.assessment import Attempt, Course, Material, MaterialProgress, Question, Test
+from app.models.assessment import Attempt, Course, Material, MaterialProgress, Question, Test, TestSession
 from app.models.audit import AuditLog
 from app.models.chat import Chat, ChatMember, ChatMessage
 from app.models.compliance import (

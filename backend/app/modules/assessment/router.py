@@ -70,7 +70,7 @@ class ScaleRow(In):
 
 
 class TestIn(In):
-    kind: str = Field(pattern="^(placement|final|training)$")
+    kind: str = Field(pattern="^(placement|progress|final|training)$")
     title: str = Field(min_length=2, max_length=255)
     level_id: int | None = Field(default=None, ge=1)
     max_score: int = Field(default=150, ge=1, le=1000)
@@ -351,6 +351,8 @@ class AttemptOut(ORM):
     test_title: str | None = None
     test_kind: str | None = None
     max_score: int | None = None
+    duration_sec: int | None = None  # a group test taken online: how long it took
+    session_id: int | None = None
 
 
 async def finalize_final(db: DB, a: Attempt, t: Test, actor_id: int | None) -> None:

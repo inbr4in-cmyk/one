@@ -11,7 +11,7 @@ import { apiErr } from '@/utils/err'
  * Test builder: settings (kind, title, scale, publish) and the question list.
  * `test` null = create; after the first save the drawer switches to editing so questions can be added.
  */
-const props = defineProps<{ test: Test | null; canEdit: boolean }>()
+const props = defineProps<{ test: Test | null; canEdit: boolean; preset?: { kind: TestKind; title: string; level_id: number } | null }>()
 const open = defineModel<boolean>('open', { required: true })
 const emit = defineEmits<{ saved: [test: Test] }>()
 
@@ -32,7 +32,7 @@ const qForm = reactive({ kind: 'single' as QuestionKind, text: '', options: ['',
 const qError = ref<string | null>(null)
 const qBusy = ref(false)
 
-const kinds = computed(() => (['placement', 'final', 'training'] as const).map((k) => ({ value: k, label: t(`tests.kind.${k}`) })))
+const kinds = computed(() => (['placement', 'progress', 'final', 'training'] as const).map((k) => ({ value: k, label: t(`tests.kind.${k}`) })))
 const qKinds = computed(() => (['single', 'multi', 'text'] as const).map((k) => ({ value: k, label: t(`tests.q.kind.${k}`) })))
 const levelOpts = computed(() => [{ value: 0, label: t('tests.noLevel') }, ...refs.levels.map((l) => ({ value: l.id, label: l.name }))])
 
@@ -44,10 +44,10 @@ watch(open, async (v) => {
   qOpen.value = false
   const x = props.test
   Object.assign(form, {
-    kind: x?.kind ?? 'placement',
-    title: x?.title ?? '',
-    level_id: x?.level_id ?? 0,
-    max_score: String(x?.max_score ?? 150),
+    kind: x?.kind ?? props.preset?.kind ?? 'placement',
+    title: x?.title ?? props.preset?.title ?? '',
+    level_id: x?.level_id ?? props.preset?.level_id ?? 0,
+    max_score: String(x?.max_score ?? (props.preset?.kind === 'progress' ? 100 : 150)),
     pass_score: x?.pass_score != null ? String(x.pass_score) : '',
     time_limit_min: x?.time_limit_min != null ? String(x.time_limit_min) : '',
     is_published: x?.is_published ?? false,

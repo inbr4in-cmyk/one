@@ -1,6 +1,7 @@
 """Placement test (QR), final level tests (150 points) and staff training tests."""
 
-from sqlalchemy import Boolean, String
+from sqlalchemy import Boolean, Integer, String
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import ArchiveMixin, Base, IdMixin, TimestampMixin
@@ -11,7 +12,7 @@ class Test(IdMixin, TimestampMixin, ArchiveMixin, Base):
     __tablename__ = "tests"
     __test__ = False  # not a pytest class
 
-    kind: Mapped[str] = mapped_column(String(16))  # placement | final | training
+    kind: Mapped[str] = mapped_column(String(16))  # placement | progress | final | training
     title: Mapped[str] = mapped_column(String(255))
     level_id: Mapped[int | None] = fk("levels.id", nullable=True)
     max_score: Mapped[int] = mapped_column(default=150)
@@ -54,6 +55,30 @@ class Attempt(IdMixin, TimestampMixin, Base):
     started_at: Mapped[DT]
     finished_at: Mapped[DTN]
     reviewed_by: Mapped[IntN]
+    # a group test taken online: the student's own order of questions, where he is, how long it took
+    session_id: Mapped[int | None] = fk("test_sessions.id", nullable=True)
+    q_order: Mapped[list | None] = mapped_column(JSONB, nullable=True, default=None)
+    position: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    duration_sec: Mapped[IntN]
+    voided_at: Mapped[DTN]  # left the test page: annulled until the teacher restores it
+    restores: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+
+
+class TestSession(IdMixin, TimestampMixin, Base):
+    """A test of the bank planned for a group's lesson. planned → running (the teacher starts it, timer) → finished."""
+    __tablename__ = "test_sessions"
+    __test__ = False
+
+    test_id: Mapped[int] = fk("tests.id")
+    group_id: Mapped[int] = fk("groups.id")
+    lesson_id: Mapped[int | None] = fk("lessons.id", nullable=True)
+    branch_id: Mapped[int] = fk("branches.id")
+    time_limit_min: Mapped[int] = mapped_column(Integer, default=60, server_default="60")
+    status: Mapped[str] = mapped_column(String(16), default="planned", server_default="planned")
+    started_at: Mapped[DTN]
+    ends_at: Mapped[DTN]
+    finished_at: Mapped[DTN]
+    created_by: Mapped[IntN]
 
 
 class Course(IdMixin, TimestampMixin, ArchiveMixin, Base):

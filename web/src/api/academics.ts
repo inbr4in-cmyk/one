@@ -99,6 +99,9 @@ export interface Lesson {
   plan_title?: string | null
   plan_kind?: string | null
   plan_guess?: boolean
+  test_session_id?: number | null
+  test_title?: string | null
+  test_status?: string | null
 }
 
 export type AttendanceStatus = 'present' | 'late' | 'absent' | 'excused'

@@ -129,6 +129,8 @@ const modules = {
       reviewed: 'Проверен',
       pending: 'Ждёт проверки',
       in_progress: 'Не завершён',
+      void: 'Аннулирован',
+      needs_review: 'Ждёт проверки',
     },
     form: {
       name: 'ФИО',

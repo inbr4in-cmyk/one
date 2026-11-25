@@ -6,7 +6,8 @@ import { toDataURL } from 'qrcode'
 import LessonSurveyCard from './LessonSurveyCard.vue'
 import { UiButton, UiCard, UiChip, UiEmptyState, UiField, UiIcon, UiSelect, UiSkeleton } from '@/components/ui'
 import TestDrawer from './TestDrawer.vue'
-import { testsApi, type Test } from '@/api/assessment'
+import GroupTestsCard from './GroupTestsCard.vue'
+import { testsApi, type Test, type TestKind } from '@/api/assessment'
 import { useAuthStore } from '@/stores/auth'
 import { useRefsStore } from '@/stores/refs'
 import { useToastStore } from '@/stores/toast'
@@ -52,8 +53,10 @@ watch(branchId, async (id) => {
   }
 })
 
-function open(x: Test | null) {
+const preset = ref<{ kind: TestKind; title: string; level_id: number } | null>(null)
+function open(x: Test | null, p: { kind: TestKind; title: string; level_id: number } | null = null) {
   editing.value = x
+  preset.value = p
   drawer.value = true
 }
 function onSaved(x: Test) {
@@ -80,6 +83,7 @@ function download() {
 
 <template>
   <div class="grid">
+    <GroupTestsCard :tests="tests" :can-edit="canEdit" @open="open($event)" @create="open(null, $event)" />
     <LessonSurveyCard />
     <UiCard :title="t('tests.qr.title')" icon="qr">
       <div class="qr-card">
@@ -128,5 +132,5 @@ function download() {
     </div>
   </div>
 
-  <TestDrawer v-model:open="drawer" :test="editing" :can-edit="canEdit" @saved="onSaved" />
+  <TestDrawer v-model:open="drawer" :test="editing" :preset="preset" :can-edit="canEdit" @saved="onSaved" />
 </template>

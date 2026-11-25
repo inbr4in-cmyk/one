@@ -127,6 +127,8 @@ export interface Attempt {
   test_kind: string | null
   max_score: number | null
   finished_at: string | null
+  duration_sec?: number | null
+  session_id?: number | null
 }
 
 /** GET /students/{id}/attendance: newest first. */

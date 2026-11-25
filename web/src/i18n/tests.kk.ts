@@ -11,7 +11,7 @@ const tests: typeof ru = {
     empty: 'Әзірге тест жоқ',
     emptyText: 'Деңгей тестін жасаңыз: оны филиалда QR-код арқылы кірусіз ашады.',
     kindLabel: 'Тест түрі',
-    kind: { placement: 'Деңгей тесті (QR)', final: 'Қорытынды', training: 'Оқу тесті' },
+    kind: { placement: 'Деңгей тесті (QR)', progress: 'Аралық (Progress)', final: 'Қорытынды', training: 'Оқу тесті' },
     title: 'Атауы',
     titlePh: 'Мысалы: Ересектерге арналған деңгей тесті',
     level: 'Деңгей',

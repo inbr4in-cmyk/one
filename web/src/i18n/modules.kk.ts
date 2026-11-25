@@ -130,6 +130,8 @@ const modules: typeof ru = {
       reviewed: 'Тексерілді',
       pending: 'Тексеруді күтуде',
       in_progress: 'Аяқталмаған',
+      void: 'Жойылды',
+      needs_review: 'Тексеруді күтуде',
     },
     form: {
       name: 'Аты-жөні',

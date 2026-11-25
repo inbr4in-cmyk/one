@@ -595,6 +595,10 @@ class LessonOut(ORM):
     plan_title: str | None = None
     plan_kind: str | None = None
     plan_guess: bool = False
+    # a test of the bank planned for this lesson
+    test_session_id: int | None = None
+    test_title: str | None = None
+    test_status: str | None = None
 
 
 async def _frozen_lessons(db: DB, lessons: list[Lesson]) -> set[int]:
@@ -663,9 +667,15 @@ async def _lesson_outs(db: DB, lessons: list[Lesson]) -> list[LessonOut]:
         select(Lesson.moved_from_id, Lesson.id, Lesson.starts_at).where(Lesson.moved_from_id.in_(gone_ids)))).all()} if gone_ids else {}
     frozen = await _frozen_lessons(db, lessons)
     planned = await plan.forecast(db, lessons)
+    from app.models import Test, TestSession
+    tests = {lid: (sid, title, st) for lid, sid, title, st in (await db.execute(
+        select(TestSession.lesson_id, TestSession.id, Test.title, TestSession.status).join(Test, Test.id == TestSession.test_id)
+        .where(TestSession.lesson_id.in_(lids)).order_by(TestSession.id))).all()} if lids else {}
     out = []
     for x in lessons:
         o = LessonOut.model_validate(x)
+        if x.id in tests:
+            o.test_session_id, o.test_title, o.test_status = tests[x.id]
         if x.id in planned:
             row, o.plan_guess = planned[x.id]
             o.plan_item_id, o.plan_no, o.plan_title, o.plan_kind = row["id"], row["no"] or None, row["title"], row["kind"]

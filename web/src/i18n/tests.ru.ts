@@ -9,7 +9,7 @@ const tests = {
     empty: 'Тестов пока нет',
     emptyText: 'Создайте тест уровня: его откроют по QR-коду в филиале без входа.',
     kindLabel: 'Тип теста',
-    kind: { placement: 'Тест уровня (QR)', final: 'Финальный', training: 'Учебный' },
+    kind: { placement: 'Тест уровня (QR)', progress: 'Пробный (Progress)', final: 'Финальный', training: 'Учебный' },
     title: 'Название',
     titlePh: 'Например: Тест уровня для взрослых',
     level: 'Уровень',

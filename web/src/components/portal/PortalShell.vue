@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter, type RouteLocationNormalizedLoaded } from 'vue-router'
 import { UiAvatar, UiButton, UiEmptyState, UiIcon, UiSkeleton } from '@/components/ui'
@@ -10,6 +10,7 @@ import UserDocsGate from '@/components/compliance/UserDocsGate.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useCountersStore } from '@/stores/counters'
 import { usePortalStore } from '@/stores/portal'
+import { myTestsApi } from '@/api/assessment'
 import { startRealtime, stopRealtime } from '@/composables/useRealtime'
 
 /** Student / parent cabinet. Mobile-first: bottom tabs on phones, a tab row on wide screens. The Flutter app follows this layout. */
@@ -50,6 +51,18 @@ onBeforeUnmount(() => {
   counters.stop()
   stopRealtime()
 })
+/** A group test that is running or planned: the student gets to it in one tap */
+const myTest = ref<{ id: number; title: string; status: string } | null>(null)
+let testPoll: ReturnType<typeof setInterval> | null = null
+async function checkTest() {
+  const id = portal.child?.id
+  if (!id || portal.isParent) return (myTest.value = null)
+  const list = await myTestsApi.list(id).catch(() => [])
+  myTest.value = list.find((x) => x.status === 'running' && (!x.my_status || x.my_status === 'in_progress' || x.my_status === 'void')) ?? list.find((x) => x.status === 'planned') ?? null
+}
+watch(() => portal.child?.id, checkTest)
+onMounted(() => (testPoll = setInterval(checkTest, 30000)))
+onBeforeUnmount(() => testPoll && clearInterval(testPoll))
 // Coins and blocked status change after payments and orders: refresh the overview on navigation home
 watch(() => route.name, (n) => n === 'portal-home' && portal.me && portal.load())
 </script>
@@ -84,6 +97,11 @@ watch(() => route.name, (n) => n === 'portal-home' && portal.me && portal.load()
         <UiIcon name="lock" :size="18" class="ico" />
         <div class="grow"><b>{{ t('portal.blockedTitle') }}</b><span>{{ t('portal.blockedText') }}</span></div>
         <UiButton v-if="active !== 'portal-payments'" size="sm" variant="primary" to="/portal/payments">{{ t('portal.toPayments') }}</UiButton>
+      </div>
+      <div v-if="myTest" class="alert p-block" role="status">
+        <UiIcon name="tests" :size="18" class="ico" />
+        <div class="grow"><b>{{ t(myTest.status === 'running' ? 'nv.gt.bannerRun' : 'nv.gt.bannerPlan', { t: myTest.title }) }}</b></div>
+        <UiButton size="sm" variant="primary" :to="`/portal/test/${myTest.id}`">{{ t('nv.gt.go') }}</UiButton>
       </div>
       <template v-if="portal.loading && !portal.me"><div class="card card-pad"><UiSkeleton :lines="5" /></div></template>
       <UiEmptyState v-else-if="portal.failed && !portal.me" large icon="alert" :title="t('errors.generic')"><UiButton @click="portal.load()">{{ t('common.retry') }}</UiButton></UiEmptyState>

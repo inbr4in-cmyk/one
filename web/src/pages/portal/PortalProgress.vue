@@ -102,7 +102,7 @@ const pct = (x: PortalTest) => (x.max_score ? Math.round((x.score / x.max_score)
     <UiEmptyState v-else-if="!tests.length" icon="tests" :title="t('portal.noTests')" />
     <div v-for="x in tests ?? []" :key="x.id" class="list-row">
       <span class="grade">{{ x.score }}</span>
-      <div class="grow"><b>{{ x.title }}</b><span>{{ t('students.score', { s: x.score, max: x.max_score }) }}<template v-if="pct(x) !== null"> · {{ pct(x) }}%</template> · {{ dmy(x.finished_at, loc) }}</span></div>
+      <div class="grow"><b>{{ x.title }}</b><span>{{ t('students.score', { s: x.score, max: x.max_score }) }}<template v-if="pct(x) !== null"> · {{ pct(x) }}%</template><template v-if="x.duration_sec"> · {{ t('nv.gt.min', { m: Math.floor(x.duration_sec / 60), s: x.duration_sec % 60 }) }}</template> · {{ dmy(x.finished_at, loc) }}</span></div>
     </div>
   </UiCard>
 </template>

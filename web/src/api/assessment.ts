@@ -1,7 +1,7 @@
 import { http, qs } from './http'
 
 /** Test builder (backend/app/modules/assessment/router.py) and the public QR placement test. */
-export type TestKind = 'placement' | 'final' | 'training'
+export type TestKind = 'placement' | 'progress' | 'final' | 'training'
 export type QuestionKind = 'single' | 'multi' | 'text'
 
 export interface ScaleRow {
@@ -134,4 +134,72 @@ export const surveyApi = {
   get: (token: string) => http.get<PublicSurvey>(`/public/lesson-survey/${encodeURIComponent(token)}`, pub),
   answer: (token: string, answers: (number | string | null)[]) =>
     http.post<{ ok: boolean }>(`/public/lesson-survey/${encodeURIComponent(token)}`, { answers }, pub),
+}
+
+/* ---------- group tests: planned for a lesson, taken online (backend/app/modules/assessment/sessions.py) ---------- */
+export interface TestSession {
+  id: number
+  test_id: number
+  title: string
+  kind: TestKind
+  group_id: number
+  group_name: string
+  lesson_id: number | null
+  lesson_at: string | null
+  status: 'planned' | 'running' | 'finished'
+  time_limit_min: number
+  started_at: string | null
+  ends_at: string | null
+  finished_at: string | null
+}
+
+export interface SessionRow {
+  student_id: number
+  full_name: string
+  has_login: boolean
+  status: 'none' | 'in_progress' | 'void' | 'done' | 'needs_review'
+  answered: number
+  score: number | null
+  duration_sec: number | null
+  voided_at: string | null
+  restores: number
+  place: number | null
+}
+
+export interface SessionBoard extends TestSession {
+  max_score: number
+  questions: number
+  now: string
+  can_run: boolean
+  rows: SessionRow[]
+}
+
+export const sessionsApi = {
+  list: (p: { group_id?: number; active?: boolean } = {}) => http.get<TestSession[]>(`/test-sessions${qs(p)}`),
+  plan: (body: { group_id: number; test_id: number; lesson_id: number }) => http.post<TestSession>('/test-sessions', body, { silent: true }),
+  remove: (id: number) => http.delete<void>(`/test-sessions/${id}`),
+  get: (id: number) => http.get<SessionBoard>(`/test-sessions/${id}`, { silent: true }),
+  start: (id: number, time_limit_min: number) => http.post<SessionBoard>(`/test-sessions/${id}/start`, { time_limit_min }),
+  finish: (id: number) => http.post<SessionBoard>(`/test-sessions/${id}/finish`),
+  restore: (id: number, student_id: number) => http.post<SessionBoard>(`/test-sessions/${id}/restore`, { student_id }),
+}
+
+/** What the student sees while taking a group test: one question at a time, never the correct answers */
+export interface MyTestState {
+  id: number
+  title: string
+  status: 'planned' | 'running' | 'finished'
+  ends_at: string | null
+  now: string
+  time_limit_min: number
+  attempt: { status: 'in_progress' | 'void' | 'done' | 'needs_review'; position: number; total: number; score: number | null; max_score: number | null; duration_sec: number | null } | null
+  question: PublicQuestion | null
+}
+
+export const myTestsApi = {
+  list: (student_id: number) => http.get<{ id: number; title: string; status: string; ends_at: string | null; my_status: string | null }[]>(`/portal/tests?student_id=${student_id}`, { silent: true }),
+  state: (id: number, student_id: number) => http.get<MyTestState>(`/portal/tests/${id}?student_id=${student_id}`, { silent: true }),
+  begin: (id: number, student_id: number) => http.post<MyTestState>(`/portal/tests/${id}/begin`, { student_id }, { silent: true }),
+  answer: (id: number, body: { student_id: number; question_id: number; answer: number[] | string }) => http.post<MyTestState>(`/portal/tests/${id}/answer`, body, { silent: true }),
+  leave: (id: number, student_id: number) => http.post<MyTestState>(`/portal/tests/${id}/leave`, { student_id }, { silent: true, keepalive: true }),
 }

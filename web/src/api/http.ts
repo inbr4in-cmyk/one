@@ -53,6 +53,8 @@ export interface RequestOptions {
   /** Do not show an error toast; the caller handles the error. */
   silent?: boolean
   signal?: AbortSignal
+  /** Let the request finish even when the page is being closed. */
+  keepalive?: boolean
   /** Extra request headers (e.g. Idempotency-Key). */
   headers?: Record<string, string>
 }
@@ -200,6 +202,7 @@ async function send(method: string, path: string, opts: RequestOptions): Promise
     credentials: 'include',
     body: opts.body === undefined ? undefined : isForm ? (opts.body as FormData) : JSON.stringify(opts.body),
     signal: opts.signal,
+    keepalive: opts.keepalive,
   })
   syncClock(res.headers.get('date'))
   return res

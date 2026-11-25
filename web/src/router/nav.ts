@@ -70,6 +70,7 @@ export const DETAIL_ROUTES: { name: string; path: string; parent?: string; perm?
   },
   { name: 'group', path: '/groups/:id(\\d+)', parent: 'groups', perm: 'schedule.view', page: () => import('@/pages/groups/GroupPage.vue') },
   { name: 'lesson-attendance', path: '/attendance/:lessonId(\\d+)', parent: 'attendance', perm: 'attendance.view', page: () => import('@/pages/attendance/AttendanceSheetPage.vue') },
+  { name: 'test-session', path: '/tests/sessions/:id(\\d+)', parent: 'tests', perm: 'tests.view', title: 'nv.gt.test', page: () => import('@/pages/tests/TestSessionPage.vue') },
   { name: 'task', path: '/tasks/:id(\\d+)', parent: 'tasks', perm: 'tasks.view', page: () => import('@/pages/tasks/TaskPage.vue') },
   { name: 'course', path: '/training/:id(\\d+)', parent: 'training', perm: 'training.view', page: () => import('@/pages/training/CoursePage.vue') },
   { name: 'payroll-person', path: '/payroll/staff/:id(\\d+)', parent: 'payroll', perm: 'payroll.view', page: () => import('@/pages/payroll/PayrollPersonPage.vue') },

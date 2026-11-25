@@ -154,7 +154,8 @@ async def tests(student_id: int, db: DB, actor: CurrentActor) -> list[dict]:
     rows = (await db.execute(select(Attempt, Test.title, Test.kind, Test.max_score).join(Test, Test.id == Attempt.test_id)
                              .where(Attempt.student_id == s.id, Attempt.finished_at.is_not(None))
                              .order_by(Attempt.finished_at.desc()))).all()
-    return [{"id": a.id, "title": t, "kind": k, "score": a.score, "max_score": m, "finished_at": a.finished_at}
+    return [{"id": a.id, "title": t, "kind": k, "score": a.score, "max_score": m, "finished_at": a.finished_at,
+             "duration_sec": a.duration_sec, "status": a.status}
             for a, t, k, m in rows]
 
 

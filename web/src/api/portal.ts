@@ -75,6 +75,8 @@ export interface PortalTest {
   score: number
   max_score: number
   finished_at: string
+  duration_sec?: number | null
+  status?: string
 }
 
 export const portalApi = {
