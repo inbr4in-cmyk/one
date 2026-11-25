@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     # and the secret 360dialog sends back in a header of every webhook call.
     wa_d360_api_key: str = ""
     wa_d360_webhook_secret: str = ""
+    # WhatsApp linked by QR like WhatsApp Web (wa/bridge.mjs on this server): where it listens and the shared secret.
+    # Managers' manual answers only; notifications, login codes and templates never go this way.
+    wa_bridge_url: str = ""
+    wa_bridge_secret: str = ""
     ig_access_token: str = ""
     # «Instagram API with Instagram login»: its webhooks are signed with the Instagram app secret, not the Meta one.
     ig_app_secret: str = ""

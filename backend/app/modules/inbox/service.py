@@ -192,6 +192,51 @@ async def _wa_echo(db: AsyncSession, m: dict) -> bool:
     return True
 
 
+async def _bridge_out(db: AsyncSession, chat: str, mid: str, kind: str, text: str | None, at: datetime | None) -> bool:
+    """An answer typed on the school's phone. Shown only in a chat the site already has: the same number also holds
+    personal chats, and what the owner writes to people the school does not know stays on the phone."""
+    contact = await db.scalar(select(ExternalContact).where(ExternalContact.channel == "whatsapp", ExternalContact.external_id == chat))
+    conv = contact and await db.scalar(select(Conversation).where(Conversation.contact_id == contact.id).order_by(Conversation.id.desc()))
+    if not conv or await db.scalar(select(ExternalMessage.id).where(ExternalMessage.external_message_id == mid)):
+        return False
+    t = at or now()
+    preview = text or {"image": "Фото", "audio": "Голосовое", "file": "Файл"}.get(kind, "Сообщение")
+    db.add(ExternalMessage(conversation_id=conv.id, at=t, direction="out", external_message_id=mid, kind=kind, text=text, status="sent"))
+    if conv.last_message_at is None or t >= conv.last_message_at:
+        conv.last_message_at, conv.last_preview = t, "С телефона: " + preview[:240]
+    conv.unread = 0  # answered from the phone
+    await db.flush()
+    for b in [conv.branch_id] if conv.branch_id else await db.scalars(select(Branch.id).where(Branch.archived_at.is_(None))):
+        await publish(f"inbox:branch:{b}", {"type": "inbox.message", "conversation_id": conv.id})
+    return True
+
+
+BRIDGE_CHAT = re.compile(r"^(lid:)?\d{5,20}$")
+
+
+async def handle_bridge_events(db: AsyncSession, events: list) -> int:
+    """Messages from the WhatsApp linked by QR (wa/bridge.mjs). The message id is prefixed: it is a short id of the
+    WhatsApp protocol, not Meta's «wamid…»."""
+    stored = 0
+    for ev in _dicts(events)[:200]:
+        chat, mid, kind = ev.get("chat"), ev.get("id"), ev.get("kind")
+        if not isinstance(chat, str) or not BRIDGE_CHAT.match(chat) or not isinstance(mid, str) or not 0 < len(mid) <= 200:
+            continue
+        kind = kind if kind in ("text", "image", "audio", "file") else "text"
+        text = str(ev["text"])[:4000] if isinstance(ev.get("text"), str) and ev["text"] else None
+        phone = ev.get("phone") if isinstance(ev.get("phone"), str) and ev["phone"].isdigit() else None
+        name = str(ev["name"])[:120] if isinstance(ev.get("name"), str) and ev["name"].strip() else None
+        if ev.get("type") == "in":
+            coro = receive(db, channel="whatsapp", external_id=chat, message_id="wab:" + mid, text=text, kind=kind, name=name,
+                           phone=phone, at=_ts(ev.get("ts")))
+        elif ev.get("type") == "out":
+            coro = _bridge_out(db, chat, "wab:" + mid, kind, text, _ts(ev.get("ts")))
+        else:
+            continue
+        stored += await _one(db, "WhatsApp link message", coro)
+    return stored
+
+
 async def _wa_status(db: AsyncSession, st: dict) -> bool:
     msg = await db.scalar(select(ExternalMessage).where(ExternalMessage.external_message_id == st.get("id")))
     if msg and st.get("status") in ("sent", "delivered", "read", "failed"):

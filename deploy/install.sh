@@ -89,6 +89,41 @@ run_app() { sudo -u oneenglish bash -c "set -a; . $ETC/env; set +a; cd $APP/back
 run_app "$APP/venv/bin/alembic upgrade head"
 run_app "$APP/venv/bin/python -m app.seed"
 
+say "WhatsApp by QR (own small service; a problem here never stops the update)"
+wa_install() {
+  if ! command -v node >/dev/null || ! command -v npm >/dev/null; then
+    apt-get update -q && DEBIAN_FRONTEND=noninteractive apt-get install -yq --no-install-recommends nodejs npm || return 1
+  fi
+  local major; major=$(node -p 'process.versions.node.split(".")[0]') || return 1
+  [ "$major" -ge 20 ] || { echo "Node.js $major is too old (20+ is needed)"; return 1; }
+  local WAENV=$ETC/wa.env WADIR=$DATA/wa-auth NEW=$APP/wa.new
+  mkdir -p "$WADIR" && chown oneenglish:oneenglish "$WADIR" && chmod 700 "$WADIR" || return 1
+  if [ ! -f "$WAENV" ]; then
+    local WAPORT=8720
+    while ss -ltn | grep -q ":$WAPORT "; do WAPORT=$((WAPORT+1)); done
+    local WASECRET; WASECRET=$(openssl rand -hex 32)
+    printf 'OE_WA_BRIDGE_PORT=%s\nOE_WA_BRIDGE_SECRET=%s\nOE_PORT=%s\nOE_WA_AUTH_DIR=%s\n' "$WAPORT" "$WASECRET" "$PORT" "$WADIR" > "$WAENV" || return 1
+    chown root:oneenglish "$WAENV"; chmod 640 "$WAENV"
+  fi
+  if ! grep -q '^OE_WA_BRIDGE_SECRET=' "$ETC/env"; then
+    ( . "$WAENV"; printf 'OE_WA_BRIDGE_URL=http://127.0.0.1:%s\nOE_WA_BRIDGE_SECRET=%s\n' "$OE_WA_BRIDGE_PORT" "$OE_WA_BRIDGE_SECRET" >> "$ETC/env" ) || return 1
+  fi
+  # Packages are put into a new folder first: the running service keeps its old one until everything is ready.
+  rm -rf "$NEW"; cp -r "$SRC/wa" "$NEW" || return 1
+  if [ -d "$APP/wa/node_modules" ] && cmp -s "$APP/wa/package-lock.json" "$NEW/package-lock.json"; then
+    cp -r "$APP/wa/node_modules" "$NEW/node_modules" || return 1
+  else
+    ( cd "$NEW" && npm ci --omit=dev --ignore-scripts --no-audit --no-fund --cache "$APP/.npm-cache" ) || { rm -rf "$NEW"; return 1; }
+  fi
+  chown -R root:root "$NEW"; chmod -R a+rX "$NEW"
+  rm -rf "$APP/wa.prev"; [ -d "$APP/wa" ] && mv "$APP/wa" "$APP/wa.prev"; mv "$NEW" "$APP/wa" || return 1
+  cp "$SRC/deploy/one-english-wa.service" /etc/systemd/system/ && systemctl daemon-reload || return 1
+  systemctl enable one-english-wa >/dev/null 2>&1; systemctl restart one-english-wa || return 1
+}
+if [ -d "$SRC/wa" ]; then
+  if wa_install; then echo "WhatsApp link service is installed"; else echo "WARNING: the WhatsApp link service was not installed; the rest of the site is not affected"; fi
+fi
+
 say "Services"
 cp "$SRC/deploy/one-english-api.service" "$SRC/deploy/one-english-jobs.service" /etc/systemd/system/
 systemctl daemon-reload

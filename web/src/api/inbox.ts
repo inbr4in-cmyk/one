@@ -12,6 +12,8 @@ export interface Conversation {
   last_message_at: string | null
   last_preview: string | null
   in_window: boolean
+  /** WhatsApp linked by QR: answers have no 24 h rule */
+  free_reply?: boolean
   contact: { id: number; name: string | null; username: string | null; phone: string | null; student_id: number | null }
   lead: { id: number; full_name: string; stage: string | null; stage_code: string | null; source: string } | null
   student: { id: number; full_name: string } | null

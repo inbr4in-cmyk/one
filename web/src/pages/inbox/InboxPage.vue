@@ -257,7 +257,7 @@ import { safeUrl } from '@/utils/url'
             <textarea v-model="text" rows="1" :placeholder="conv.channel === 'instagram' ? t('inbox.replyIg') : t('inbox.replyWa')" :aria-label="t('chats.message')" :disabled="!conv.in_window && conv.channel === 'instagram'" @keydown="onKey" />
             <button type="button" class="send" :aria-label="t('chats.send')" :disabled="!text.trim() || sending" @click="send"><UiIcon name="send" /></button>
           </div>
-          <div v-if="conv.in_window" class="window"><UiIcon name="clock" :size="16" />{{ conv.channel === 'instagram' ? t('inbox.windowOpenIg') : t('inbox.windowOpen') }}</div>
+          <div v-if="conv.in_window && !conv.free_reply" class="window"><UiIcon name="clock" :size="16" />{{ conv.channel === 'instagram' ? t('inbox.windowOpenIg') : t('inbox.windowOpen') }}</div>
         </div>
         <div v-else class="composer"><div class="window"><UiIcon name="lock" :size="16" />{{ t('inbox.readOnly') }}</div></div>
       </template>

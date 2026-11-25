@@ -101,6 +101,9 @@ export const adminApi = {
   audit: (p: { entity?: string; actor_id?: number | null; action?: string; since?: string; limit?: number; offset?: number }) =>
     http.get<Page<AuditRow>>(`/audit${qs(p)}`),
   settings: () => http.get<Record<string, unknown>>('/settings'),
+  waLink: () => http.get<WaLink>('/settings/whatsapp-link', { silent: true }),
+  waLinkConnect: () => http.post<WaLink>('/settings/whatsapp-link/connect', {}, { silent: true }),
+  waLinkDisconnect: () => http.post<WaLink>('/settings/whatsapp-link/disconnect', {}, { silent: true }),
   putSetting: (key: string, value: unknown) => http.put<null>(`/settings/${key}`, { value }, { silent: true }),
   rates: () => http.get<Rate[]>('/rates'),
   addRate: (body: Rate) => http.post<Rate>('/rates', body, { silent: true }),
@@ -117,4 +120,16 @@ export interface AssignableRole {
   code: string
   name: string
   description?: string | null
+}
+
+/** The school's WhatsApp linked by QR. `qr` comes only to the owner. */
+export interface WaLink {
+  state: 'disabled' | 'unavailable' | 'off' | 'qr' | 'connecting' | 'open' | 'logged_out' | 'banned'
+  qr: string | null
+  phone: string | null
+  name: string | null
+  linked_at: number | null
+  pending: number
+  last_close: number | null
+  can_manage: boolean
 }

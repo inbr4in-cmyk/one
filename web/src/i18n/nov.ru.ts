@@ -1,6 +1,20 @@
 /** Requests of 14.11: leave via the methodist, book out of a payment, pay breakdown, finance by dates. */
 export default {
   nv: {
+    wa: {
+      title: 'WhatsApp по QR',
+      number: 'Номер школы',
+      connect: 'Подключить по QR',
+      unlink: 'Отключить',
+      unlinked: 'WhatsApp отключён',
+      unlinkTitle: 'Отключить WhatsApp?',
+      unlinkText: 'Новые сообщения перестанут приходить во «Входящие». Переписка на сайте останется.',
+      how: 'WhatsApp на телефоне → Связанные устройства → Привязка устройства',
+      qrAlt: 'QR-код для привязки WhatsApp',
+      bannedNote: 'WhatsApp закрыл доступ этому номеру',
+      downNote: 'Служба WhatsApp на сервере не отвечает',
+      state: { disabled: 'Не установлено', unavailable: 'Нет связи', off: 'Не подключён', qr: 'Ждёт QR', connecting: 'Подключается', open: 'Подключён', logged_out: 'Отключён на телефоне', banned: 'Заблокирован' },
+    },
     branchMoved: 'Ученик переведён в филиал {branch}',
     branchMoveNote: 'Ученик выйдет из групп своего филиала и будет ждать группу в новом. Баланс и оплаты сохраняются. Группу можно выбрать сразу.',
     upd: { title: 'Доступна новая версия', text: 'Обновите страницу, чтобы работать в новой версии', update: 'Обновить', later: 'Позже' },
