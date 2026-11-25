@@ -136,11 +136,6 @@ async function exportExcel() {
               <div class="v num">{{ num(x.n, loc) }}</div>
               <span class="muted dd-more">{{ t('nv.dd.open') }}</span>
             </button>
-            <button v-if="x.key === 'new'" type="button" class="card kpi dd-tile" @click="showGone('waiting')">
-              <div class="k"><UiIcon name="groups" :size="18" />{{ t('nv.dd.g.waiting') }}</div>
-              <div class="v num">{{ num(data.students_waiting ?? 0, loc) }}</div>
-              <span class="muted dd-more">{{ t('nv.dd.open') }}</span>
-            </button>
           </template>
         </template>
         <button v-if="rep?.payers" type="button" class="card kpi dd-tile" @click="show('payers')">
@@ -158,6 +153,7 @@ async function exportExcel() {
           <div class="kpi-split">
             <button type="button" class="kpi-link" @click="showGone('left')"><b class="v num">{{ num(data.students_left ?? 0, loc) }}</b><span>{{ t('dash.k.left') }}</span></button>
             <button type="button" class="kpi-link" @click="showGone('frozen')"><b class="v num">{{ num(data.students_frozen ?? 0, loc) }}</b><span>{{ t('dash.k.paused') }}</span></button>
+            <button type="button" class="kpi-link" @click="showGone('waiting')"><b class="v num">{{ num(data.students_waiting ?? 0, loc) }}</b><span>{{ t('nv.dd.waiting') }}</span></button>
           </div>
           <span class="muted" style="font-size: 12px">{{ t('dash.k.leftMonth', { n: data.left_month ?? 0 }) }}</span>
         </div>
