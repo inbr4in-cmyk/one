@@ -202,3 +202,18 @@ async def test_form_is_filled_by_link_kept_like_an_application_and_seen_by_admin
     assert (await client.get(f"/api/public/forms/{token}")).json() == {"title": forms[0]["title"], "closed": True}
     assert (await client.post(f"/api/public/forms/{token}", json={"answers": {**base, **trial, **last}})).status_code == 403
     assert (await client.post(f"/api/my/forms/{token}", headers=th, json={"answers": {**base, **trial, **last}})).status_code == 201
+
+
+async def test_daily_report_counts_the_day_and_names_the_people(client, db, owner_h):
+    r = await client.post("/api/crm/leads", headers=owner_h, json={"full_name": "Лид Дня", "phone": "+77075550101", "source": "walk_in",
+                                                               "branch_id": await branch_id(db, "Север")})
+    assert r.status_code in (200, 201), r.text
+    lid = r.json()["id"]
+    r = await client.post(f"/api/crm/leads/{lid}/events", headers=owner_h, json={"kind": "call", "text": "Позвонили", "result": "thinking"})
+    assert r.status_code in (200, 201), r.text
+    rep = (await client.get("/api/dashboard/day", headers=owner_h)).json()
+    assert rep["leads"]["new"]["count"] == 1 and rep["leads"]["new"]["items"][0]["full_name"] == "Лид Дня"
+    assert rep["leads"]["contacted"]["count"] == 1 and rep["leads"]["trial"]["count"] == 0 and rep["leads"]["paid"]["count"] == 0
+    assert "debtors" in rep and rep["payers"] == {"count": 0, "total": 0, "items": []}
+    y = (today() - timedelta(days=1)).isoformat()
+    assert (await client.get(f"/api/dashboard/day?day={y}", headers=owner_h)).json()["leads"]["new"]["count"] == 0

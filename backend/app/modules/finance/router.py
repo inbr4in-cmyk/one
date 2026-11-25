@@ -374,6 +374,80 @@ async def dashboard(db: DB, actor: Actor = require("dashboard", "view"), branch_
     return out
 
 
+@router.get("/dashboard/day")
+async def dashboard_day(db: DB, actor: Actor = require("dashboard", "view"), branch_id: int | None = None,
+                        day: date | None = None) -> dict:
+    """The daily report (owner, 25.11.2026): what happened on the day, with the people behind every number.
+    Leads are counted by the event of that day (a note or call, a trial booking, a payment), so a past day's
+    numbers do not change later. Debtors are the picture as of now."""
+    from sqlalchemy import or_
+
+    from app.models import LeadEvent, LeadStageAccess
+
+    branches = _branches(actor, "dashboard", "view", branch_id)
+    d = day or today()
+    if d > today() or d < today() - timedelta(days=366):
+        raise bad_request("День — не позже сегодня и не раньше года назад")
+    start = at_local(d, time(0))
+    end = start + timedelta(days=1)
+    out: dict = {"day": d}
+
+    if actor.can("crm", "view"):
+        scope = [Lead.archived_at.is_(None)]
+        if branches is not None:
+            scope.append(or_(Lead.branch_id.in_(branches), Lead.branch_id.is_(None)))
+        # who is narrowed on some funnel stage sees the numbers, not other managers' leads
+        narrowed = await db.scalar(select(LeadStageAccess.id).where(LeadStageAccess.user_id == actor.id).limit(1)) is not None
+        stages = {s.id: s for s in await db.scalars(select(LeadStage))}
+        booked_ids = [i for i, s in stages.items() if s.code == "trial_booked"]
+        won_ids = [i for i, s in stages.items() if s.is_won]
+        contacted_ids = [i for i, s in stages.items() if s.code == "contacted"]
+        ev = select(LeadEvent.lead_id).where(LeadEvent.at >= start, LeadEvent.at < end)
+        to = LeadEvent.meta["to"].as_integer()
+        sets = {
+            "new": select(Lead.id).where(Lead.created_at >= start, Lead.created_at < end),
+            "contacted": ev.where(or_(
+                LeadEvent.kind.in_(("call", "meeting")),
+                (LeadEvent.kind == "note") & LeadEvent.meta.has_key("result") & LeadEvent.actor_id.is_not(None),
+                (LeadEvent.kind == "message") & (LeadEvent.meta["out"].as_boolean().is_(True)),
+                (LeadEvent.kind == "stage") & to.in_(contacted_ids or [-1]))),
+            "trial": ev.where(LeadEvent.kind == "stage", to.in_(booked_ids or [-1])),
+            "paid": ev.where(or_(LeadEvent.kind == "sale", (LeadEvent.kind == "stage") & to.in_(won_ids or [-1]))),
+        }
+        users = dict((await db.execute(select(User.id, User.full_name))).all())
+        leads: dict = {}
+        for key, ids in sets.items():
+            rows = list(await db.scalars(select(Lead).where(Lead.id.in_(ids), *scope).order_by(Lead.id.desc()).limit(500)))
+            leads[key] = {"count": len(rows), "items": [] if narrowed else [
+                {"id": x.id, "full_name": x.full_name, "phone": x.phone, "source": x.source,
+                 "stage": stages[x.stage_id].name if x.stage_id in stages else None,
+                 "manager": users.get(x.assignee_id or x.owner_id), "branch_id": x.branch_id} for x in rows]}
+        out["leads"] = leads
+
+    def br(col):
+        return col.in_(branches) if branches is not None else True
+
+    debt = list(await db.scalars(select(Student).where(br(Student.branch_id), Student.archived_at.is_(None),
+                                                       Student.status == StudentStatus.ACTIVE, Student.lessons_left <= 0)
+                                 .order_by(Student.lessons_left, Student.full_name).limit(1000)))
+    out["debtors"] = {"count": len(debt), "items": [{"id": x.id, "full_name": x.full_name, "lessons_left": x.lessons_left,
+                                                     "branch_id": x.branch_id} for x in debt]}
+    if actor.can("payments", "view") or actor.can("finance", "view"):
+        pay = (await db.execute(select(Payment, Student.full_name, Student.lessons_left).join(Student, Student.id == Payment.student_id)
+                                .where(br(Payment.branch_id), Payment.paid_at >= start, Payment.paid_at < end,
+                                       Payment.source.is_distinct_from("import")).order_by(Payment.paid_at))).all()
+        by: dict[int, dict] = {}
+        for p, name, left in pay:
+            r = by.setdefault(p.student_id, {"id": p.student_id, "full_name": name, "amount": 0, "course": 0, "book": 0, "other": 0,
+                                             "lessons_left": left, "branch_id": p.branch_id})
+            net = int(p.amount) - int(p.refunded or 0)
+            r["amount"] += net
+            r[p.category if p.category in ("course", "book") else "other"] += net
+        items = sorted(by.values(), key=lambda r: -r["amount"])
+        out["payers"] = {"count": len(items), "total": sum(r["amount"] for r in items), "items": items}
+    return out
+
+
 # ---------- export ----------
 def _xlsx(title: str, header: list[str], rows: list[list], filename: str) -> StreamingResponse:
     from openpyxl import Workbook

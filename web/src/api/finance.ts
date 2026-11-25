@@ -85,7 +85,16 @@ export interface ExpenseIn {
 
 type BranchQ = { branch_id?: number | null }
 
+export interface DayLead { id: number; full_name: string; phone: string | null; source: string; stage: string | null; manager: string | null; branch_id: number | null }
+export interface DayReport {
+  day: string
+  leads?: Record<'new' | 'contacted' | 'trial' | 'paid', { count: number; items: DayLead[] }>
+  debtors: { count: number; items: { id: number; full_name: string; lessons_left: number; branch_id: number }[] }
+  payers?: { count: number; total: number; items: { id: number; full_name: string; amount: number; course: number; book: number; other: number; lessons_left: number; branch_id: number }[] }
+}
+
 export const financeApi = {
+  day: (p: { branch_id?: number | null; day?: string }) => http.get<DayReport>(`/dashboard/day${qs(p)}`, { silent: true }),
   dashboard: (p: BranchQ & { period?: string } = {}) => http.get<Dashboard>(`/dashboard${qs(p)}`),
   ratings: (p: BranchQ & { period?: string } = {}) => http.get<Ratings>(`/payroll/ratings${qs(p)}`, { silent: true }),
   pnl: (p: BranchQ & { period: string; date_from?: string | null; date_to?: string | null }) => http.get<Pnl>(`/finance/pnl${qs(p)}`),

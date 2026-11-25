@@ -2,18 +2,18 @@
 import { nowMs } from '@/utils/clock'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { UiButton, UiCard, UiChip, UiEmptyState, UiIcon, UiPeriod, UiSkeleton } from '@/components/ui'
-import BarChart from '@/components/charts/BarChart.vue'
+import { UiButton, UiCard, UiChip, UiEmptyState, UiIcon, UiInput, UiModal, UiSkeleton } from '@/components/ui'
 import HBars from '@/components/charts/HBars.vue'
-import { financeApi, type Dashboard, type Ratings } from '@/api/finance'
+import { financeApi, type Dashboard, type DayReport, type Ratings } from '@/api/finance'
 import { academicsApi, type Lesson } from '@/api/academics'
 import { crmApi, type Lead } from '@/api/crm'
 import { useAuthStore } from '@/stores/auth'
 import { useBranchStore } from '@/stores/branch'
 import { useRefsStore } from '@/stores/refs'
 import { useSourceLabel } from '@/composables/useSourceLabel'
-import { hm, isoDate, money, waitLabel, schoolNow } from '@/utils/dates'
-import { compactMoney, num, periodLabel, periodOf } from '@/utils/period'
+import { hm, isoDate, money, todayIso, waitLabel, schoolNow } from '@/utils/dates'
+import { num, periodLabel } from '@/utils/period'
+import { formatPhone } from '@/utils/phone'
 import { tone } from '@/utils/levels'
 import type { Locale } from '@/i18n'
 
@@ -30,9 +30,19 @@ const lessons = ref<Lesson[] | null>(null)
 const stale = ref<Lead[] | null>(null)
 const failed = ref(false)
 const exporting = ref(false)
-/** Month the KPIs and ratings describe; today's lessons and waiting leads are always live */
-const period = ref(periodOf())
-const isCurrent = computed(() => period.value === periodOf())
+/** The day of the report; the month widgets (sources, ratings) follow the month of that day */
+const day = ref(todayIso())
+const period = computed(() => day.value.slice(0, 7))
+const rep = ref<DayReport | null>(null)
+type Tile = 'new' | 'contacted' | 'trial' | 'paid' | 'payers' | 'debtors'
+const shown = ref<Tile | null>(null)
+const modal = ref(false)
+function show(k: Tile) {
+  shown.value = k
+  modal.value = true
+}
+const leadTiles = computed(() => (['new', 'contacted', 'trial', 'paid'] as const).map((k) => ({ key: k, icon: { new: 'crm', contacted: 'phone', trial: 'cal', paid: 'ok' }[k], n: rep.value?.leads?.[k].count ?? 0 })))
+const leadRows = computed(() => (shown.value && shown.value !== 'payers' && shown.value !== 'debtors' ? rep.value?.leads?.[shown.value].items ?? [] : []))
 
 const SRC: Record<string, { cls: string; icon: string }> = {
   instagram: { cls: 'ig', icon: 'ig' }, whatsapp: { cls: 'wa', icon: 'wa' }, qr: { cls: 'qr', icon: 'qr' }, site: { cls: 'web', icon: 'globe' },
@@ -42,6 +52,8 @@ const SRC: Record<string, { cls: string; icon: string }> = {
 async function load() {
   failed.value = false
   const b = { branch_id: branch.filterId, period: period.value }
+  if (!day.value || day.value > todayIso()) day.value = todayIso()
+  financeApi.day({ branch_id: branch.filterId, day: day.value }).then((r) => (rep.value = r)).catch(() => (rep.value = null))
   const today = isoDate(schoolNow())
   const [d, r] = await Promise.allSettled([financeApi.dashboard(b), financeApi.ratings(b)])
   if (d.status === 'fulfilled') data.value = d.value
@@ -58,7 +70,7 @@ async function load() {
   }
 }
 onMounted(load)
-watch([() => branch.filterId, period], load)
+watch([() => branch.filterId, day], load)
 
 const hello = computed(() => {
   const h = schoolNow().getHours()
@@ -72,24 +84,6 @@ const todayLabel = computed(() => {
 const scope = computed(() => (branch.filterId === null ? t('branch.all') : branch.current.name))
 const units = computed(() => ({ m: t('time.min'), h: t('time.h'), d: t('time.d') }))
 
-const cm = (n: number) => compactMoney(n, loc.value)
-const unitLabel = (u: 'mln' | 'k' | '') => (u ? t(`dash.unit.${u}`) : '')
-const trend = computed(() => {
-  const tr = data.value?.revenue_trend
-  if (!tr) return null
-  const cur = periodOf()
-  return tr.map((x) => ({
-    key: x.period,
-    label: periodLabel(x.period, loc.value, { month: 'short' }).replace('.', ''),
-    value: x.revenue,
-    soft: x.period === cur,
-    note: x.period === cur ? t('dash.inProgress') : undefined,
-  }))
-})
-const axisTick = (v: number) => {
-  const c = cm(v)
-  return c.unit ? `${c.v} ${unitLabel(c.unit)}` : c.v
-}
 const sources = computed(() => Object.entries(data.value?.leads_by_source ?? {})
   .map(([k, v]) => ({ key: k, label: srcLabel(k), value: v, icon: SRC[k]?.icon ?? 'user', iconCls: SRC[k]?.cls ?? 'call' }))
   .sort((a, b) => b.value - a.value))
@@ -116,7 +110,7 @@ async function exportExcel() {
   <div class="ph">
     <div><h1>{{ hello }}</h1><p>{{ todayLabel }} · {{ t('dash.summary', { scope }) }}</p></div>
     <span class="sp" />
-    <UiPeriod v-model="period" />
+    <UiInput v-model="day" type="date" :max="todayIso()" :aria-label="t('nv.dd.day')" style="width: 170px" />
     <UiButton v-if="auth.can('finance.export')" icon="file" :loading="exporting" @click="exportExcel">{{ t('dash.excel') }}</UiButton>
   </div>
 
@@ -126,27 +120,23 @@ async function exportExcel() {
     <div class="kpis stagger">
       <template v-if="!data"><div v-for="i in 6" :key="i" class="card kpi"><UiSkeleton :lines="3" /></div></template>
       <template v-else>
-        <div class="card kpi">
-          <div class="k"><UiIcon name="users" :size="18" />{{ t('dash.k.students') }}</div>
-          <div class="v num">{{ num(data.students_active, loc) }}</div>
-          <span class="muted" style="font-size: 12px">{{ t('dash.k.lowBalance', { n: data.low_balance }) }}</span>
-        </div>
-        <div v-if="data.leads_month !== undefined" class="card kpi">
-          <div class="k"><UiIcon name="crm" :size="18" />{{ t('dash.k.leads') }}</div>
-          <div class="v num">{{ num(data.leads_month, loc) }}</div>
-          <span class="muted" style="font-size: 12px">{{ data.conversion === null || data.conversion === undefined ? t('dash.k.noConversion') : t('dash.k.conversion', { n: num(data.conversion, loc, 1) }) }}</span>
-        </div>
-        <div v-if="data.revenue_month !== undefined" class="card kpi">
-          <div class="k"><UiIcon name="wallet" :size="18" />{{ t('dash.k.revenue', { month: periodLabel(data.period, loc, { month: 'long' }) }) }}</div>
-          <div class="v num">{{ cm(data.revenue_month).v }}<small> {{ unitLabel(cm(data.revenue_month).unit) }} ₸</small></div>
-          <span class="muted" style="font-size: 12px"><template v-if="isCurrent">{{ t('dash.k.today', { sum: money(data.revenue_today, loc) }) }} · </template>{{ t('dash.k.sales', { n: data.sales_month ?? 0 }) }}</span>
-        </div>
-        <div class="card kpi">
-          <div class="k"><UiIcon name="check" :size="18" />{{ t('dash.k.attendance') }}</div>
-          <div class="v num">{{ data.attendance_rate === null ? '—' : num(data.attendance_rate, loc, 1) }}<small v-if="data.attendance_rate !== null">%</small></div>
-          <span v-if="isCurrent" class="muted" style="font-size: 12px">{{ t('dash.k.lessonsToday', { n: data.lessons_today }) }}</span>
-          <div v-if="data.attendance_rate !== null" class="bar-track"><i :style="{ width: `${data.attendance_rate}%` }" /></div>
-        </div>
+        <template v-if="rep?.leads">
+          <button v-for="x in leadTiles" :key="x.key" type="button" class="card kpi dd-tile" @click="show(x.key)">
+            <div class="k"><UiIcon :name="x.icon" :size="18" />{{ t(`nv.dd.${x.key}`) }}</div>
+            <div class="v num">{{ num(x.n, loc) }}</div>
+            <span class="muted dd-more">{{ t('nv.dd.open') }}</span>
+          </button>
+        </template>
+        <button v-if="rep?.payers" type="button" class="card kpi dd-tile" @click="show('payers')">
+          <div class="k"><UiIcon name="wallet" :size="18" />{{ t('nv.dd.payers') }}</div>
+          <div class="v num">{{ num(rep.payers.count, loc) }}</div>
+          <span class="muted dd-more">{{ t('nv.dd.open') }}</span>
+        </button>
+        <button v-if="rep" type="button" class="card kpi dd-tile" @click="show('debtors')">
+          <div class="k"><UiIcon name="alert" :size="18" :style="rep.debtors.count ? { color: 'var(--red)' } : undefined" />{{ t('dash.k.debtors') }}</div>
+          <div class="v num">{{ num(rep.debtors.count, loc) }}</div>
+          <span class="muted dd-more">{{ t('nv.dd.open') }}</span>
+        </button>
         <div class="card kpi">
           <div class="k"><UiIcon name="refusal" :size="18" />{{ t('dash.k.leftPaused') }}</div>
           <div class="kpi-split">
@@ -155,23 +145,10 @@ async function exportExcel() {
           </div>
           <span class="muted" style="font-size: 12px">{{ t('dash.k.leftMonth', { n: data.left_month ?? 0 }) }}</span>
         </div>
-        <div class="card kpi">
-          <div class="k"><UiIcon name="alert" :size="18" :style="data.debtors ? { color: 'var(--red)' } : undefined" />{{ t('dash.k.debtors') }}</div>
-          <div class="v num">{{ num(data.debtors, loc) }}</div>
-          <span class="delta" :class="data.debtors ? 'down' : 'muted'">{{ data.debtors ? t('dash.k.debtorsNote') : t('dash.k.noDebtors') }}</span>
-        </div>
       </template>
     </div>
 
-    <div v-if="trend || sources.length" class="grid dash-a">
-      <UiCard v-if="trend" :title="t('dash.revenueTitle')">
-        <template #actions><span class="chip">{{ scope }}</span></template>
-        <BarChart :items="trend" :format="(v) => money(v, loc)" :tick="axisTick" :caption="t('dash.revenueTitle')" />
-        <div class="mini-leg" style="margin-top: 6px">
-          <span><i style="background: var(--chart-bar)" />{{ t('dash.fact') }}</span>
-          <span><i style="background: var(--chart-bar-soft)" />{{ t('dash.currentMonth') }}</span>
-        </div>
-      </UiCard>
+    <div v-if="data?.leads_by_source" class="grid dash-a">
       <UiCard v-if="data?.leads_by_source" :title="t('dash.sourcesTitle')">
         <template #actions><span class="muted" style="font-size: 12px">{{ t('dash.sourcesNote', { n: data.leads_month ?? 0 }) }}</span></template>
         <HBars v-if="sources.length" :items="sources" />
@@ -235,9 +212,39 @@ async function exportExcel() {
       </UiCard>
     </div>
   </template>
+
+  <UiModal v-model:open="modal" :title="shown ? (shown === 'debtors' ? t('dash.k.debtors') : t(`nv.dd.${shown}`)) : ''">
+    <template v-if="rep && shown">
+      <template v-if="shown === 'payers'">
+        <p v-if="!rep.payers?.items.length" class="muted m0">{{ t('nv.dd.none') }}</p>
+        <RouterLink v-for="x in rep.payers?.items ?? []" :key="x.id" :to="`/students/${x.id}`" class="list-row">
+          <div class="grow"><b>{{ x.full_name }}</b><span>{{ [x.course ? t('nv.dd.course', { s: money(x.course, loc) }) : '', x.book ? t('nv.dd.book', { s: money(x.book, loc) }) : '', x.other ? t('nv.dd.other', { s: money(x.other, loc) }) : ''].filter(Boolean).join(' · ') }}</span></div>
+          <b class="num">{{ money(x.amount, loc) }}</b>
+        </RouterLink>
+      </template>
+      <template v-else-if="shown === 'debtors'">
+        <p v-if="!rep.debtors.items.length" class="muted m0">{{ t('nv.dd.none') }}</p>
+        <RouterLink v-for="x in rep.debtors.items" :key="x.id" :to="`/students/${x.id}`" class="list-row">
+          <div class="grow"><b>{{ x.full_name }}</b><span>{{ refs.branchName(x.branch_id) }}</span></div>
+          <UiChip small :tone="x.lessons_left < 0 ? 'red' : 'warn'">{{ t('nv.dd.lessons', { n: x.lessons_left }) }}</UiChip>
+        </RouterLink>
+      </template>
+      <template v-else>
+        <p v-if="!leadRows.length" class="muted m0">{{ rep.leads?.[shown].count ? t('nv.dd.hidden') : t('nv.dd.none') }}</p>
+        <RouterLink v-for="x in leadRows" :key="x.id" :to="{ path: '/crm', query: { lead: x.id } }" class="list-row">
+          <span class="srcico" :class="SRC[x.source]?.cls ?? 'call'"><svg><use :href="`#i-${SRC[x.source]?.icon ?? 'user'}`" /></svg></span>
+          <div class="grow"><b>{{ x.full_name }}</b><span>{{ [x.phone ? formatPhone(x.phone) : '', x.manager ?? t('crm.unassigned')].filter(Boolean).join(' · ') }}</span></div>
+          <UiChip small>{{ x.stage }}</UiChip>
+        </RouterLink>
+      </template>
+    </template>
+  </UiModal>
 </template>
 
 <style scoped>
+.dd-tile { text-align: left; font: inherit; color: inherit; cursor: pointer }
+.dd-tile:hover { border-color: var(--navy-600) }
+.dd-more { font-size: 12px }
 .kpi-split { display: flex; gap: 18px }
 .kpi-link { display: grid; color: inherit; text-decoration: none; border-radius: 8px }
 .kpi-link span { font-size: 12px; color: var(--muted) }
