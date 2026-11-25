@@ -73,7 +73,7 @@ watch(() => route.name, (n) => n === 'portal-home' && portal.me && portal.load()
     </div>
 
     <nav class="p-tabs" :aria-label="t('nav.menu')">
-      <RouterLink v-for="tb in TABS" :key="tb.name" :to="tb.path" :class="{ on: active === tb.name || (tb.name === 'portal-profile' && ['portal-feedback', 'portal-rules'].includes(active)), wide: tb.wide }" :aria-current="active === tb.name ? 'page' : undefined">
+      <RouterLink v-for="tb in TABS" :key="tb.name" :to="tb.path" :class="{ on: active === tb.name || (tb.name === 'portal-profile' && ['portal-feedback', 'portal-rules', 'portal-roadmap'].includes(active)), wide: tb.wide }" :aria-current="active === tb.name ? 'page' : undefined">
         <UiIcon :name="tb.icon" :size="24" /><span class="t">{{ t(`portal.nav.${tb.key}`) }}</span>
         <span v-if="tb.counter && counters.get(tb.counter)" class="cnt">{{ counters.get(tb.counter) }}</span>
       </RouterLink>
@@ -87,7 +87,7 @@ watch(() => route.name, (n) => n === 'portal-home' && portal.me && portal.load()
       </div>
       <template v-if="portal.loading && !portal.me"><div class="card card-pad"><UiSkeleton :lines="5" /></div></template>
       <UiEmptyState v-else-if="portal.failed && !portal.me" large icon="alert" :title="t('errors.generic')"><UiButton @click="portal.load()">{{ t('common.retry') }}</UiButton></UiEmptyState>
-      <UiEmptyState v-else-if="portal.me && !portal.child && !['portal-profile', 'portal-rules', 'portal-feedback', 'portal-chats'].includes(active)" large icon="users" :title="t('portal.noChildren')" :text="t('portal.noChildrenText')" />
+      <UiEmptyState v-else-if="portal.me && !portal.child && !['portal-profile', 'portal-rules', 'portal-roadmap', 'portal-feedback', 'portal-chats'].includes(active)" large icon="users" :title="t('portal.noChildren')" :text="t('portal.noChildrenText')" />
       <UiEmptyState v-else-if="blockedHere" large icon="lock" :title="t('portal.blockedTitle')" :text="t('portal.blockedText')">
         <UiButton variant="primary" to="/portal/payments">{{ t('portal.toPayments') }}</UiButton>
       </UiEmptyState>

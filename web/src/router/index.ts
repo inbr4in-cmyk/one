@@ -49,6 +49,7 @@ const portalRoutes: RouteRecordRaw[] = [
   { path: 'children/:id(\\d+)', redirect: (to) => ({ path: '/portal', query: { child: String(to.params.id) } }) },
   portal('chats/:id(\\d+)?', 'portal-chats', 'portal.nav.chats', () => import('@/pages/chats/ChatsPage.vue'), { flush: true }),
   portal('feedback', 'portal-feedback', 'nav.feedback', () => import('@/pages/FeedbackPage.vue')),
+  portal('roadmap', 'portal-roadmap', 'nav.roadmap', () => import('@/pages/RoadmapPage.vue')),
   portal('rules', 'portal-rules', 'nav.rules', () => import('@/pages/RulesPage.vue')),
   portal('teachers/:id(\\d+)', 'portal-teacher', 'nv.profile.title', () => import('@/pages/staff/ProfilePage.vue')),
   portal('profile', 'portal-profile', 'portal.nav.profile', () => import('@/pages/portal/PortalProfile.vue')),

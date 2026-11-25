@@ -73,6 +73,7 @@ const ru = {
     complaints: 'Жалобы',
     training: 'Обучение',
     tests: 'Тесты',
+    roadmap: 'Дорожная карта',
     roles: 'Роли и доступы',
     staff: 'Сотрудники',
     security: 'Безопасность',

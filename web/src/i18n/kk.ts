@@ -74,6 +74,7 @@ const kk: Messages = {
     complaints: 'Шағымдар',
     training: 'Оқыту',
     tests: 'Тесттер',
+    roadmap: 'Жол картасы',
     roles: 'Рөлдер мен қолжетімділік',
     staff: 'Қызметкерлер',
     security: 'Қауіпсіздік',

@@ -24,6 +24,7 @@ const links = computed(() => [
   { to: '/portal/progress', icon: 'progress', label: t('portal.nav.progress') },
   { to: '/portal/payments', icon: 'wallet', label: t('portal.nav.payments') },
   { to: '/portal/coins', icon: 'coin', label: t('portal.nav.coins') },
+  { to: '/portal/roadmap', icon: 'trend', label: t('nav.roadmap') },
   { to: '/portal/feedback', icon: 'flag', label: t('nav.feedback') },
   { to: '/portal/rules', icon: 'file', label: t('nav.rules') },
 ])
