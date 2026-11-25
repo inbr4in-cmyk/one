@@ -560,6 +560,7 @@ if __name__ == "__main__":
         print(asyncio.run(_run({"minutely": minutely, "nightly": nightly, "leave-followups": leave_followups,
                                  "close-left-members": close_left_members,
                                  "instagram-names": instagram_names, "birthdays": birthdays,
+                                 "test-bpt2": lambda db: __import__("app.services.test_data", fromlist=["seed_bpt2"]).seed_bpt2(db),
                                  "plan-seed": lambda db: __import__("app.services.plan", fromlist=["seed"]).seed(db),
                                  "lesson-duplicates-preview-old": lambda db: _dupes(db, "old", False),
                                  "lesson-duplicates-preview-new": lambda db: _dupes(db, "new", False),

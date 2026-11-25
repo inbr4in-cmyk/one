@@ -21,6 +21,9 @@ class Test(IdMixin, TimestampMixin, ArchiveMixin, Base):
     # placement: [{"min": 0, "level_id": 1}, {"min": 20, "level_id": 2}, ...]
     scale: Mapped[Json]
     is_published: Mapped[bool] = mapped_column(Boolean, default=False)
+    # A test made of timed stages (owner, 25.11.2026): [{"id", "section", "title", "hint", "minutes", "text", "audio",
+    # "words", "seconds"}]. Every stage is one page with its own time; no way back to a finished stage.
+    parts: Mapped[list | None] = mapped_column(JSONB, nullable=True, default=None)
 
 
 class Question(IdMixin, TimestampMixin, ArchiveMixin, Base):
@@ -28,7 +31,10 @@ class Question(IdMixin, TimestampMixin, ArchiveMixin, Base):
 
     test_id: Mapped[int] = fk("tests.id")
     order: Mapped[Int]
-    kind: Mapped[str] = mapped_column(String(16), default="single")  # single | multi | text (manual)
+    # single | multi | input (a typed answer checked against `accept`) | text (manual) | video (speaking, manual)
+    kind: Mapped[str] = mapped_column(String(16), default="single")
+    part: Mapped[str | None] = mapped_column(String(16), nullable=True, default=None)  # the stage of Test.parts it belongs to
+    accept: Mapped[list | None] = mapped_column(JSONB, nullable=True, default=None)  # input: the answers counted as right
     text: Mapped[str] = mapped_column(String(2000))
     options: Mapped[Json]  # ["a", "b", ...]
     correct: Mapped[Json]  # [index, ...]; never sent to test takers
@@ -62,6 +68,9 @@ class Attempt(IdMixin, TimestampMixin, Base):
     duration_sec: Mapped[IntN]
     voided_at: Mapped[DTN]  # left the test page: annulled until the teacher restores it
     restores: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    part_started_at: Mapped[DTN]  # a staged test: when the current stage began for this person
+    marks: Mapped[dict | None] = mapped_column(JSONB, nullable=True, default=None)  # manual points: {question id: points}
+    trial: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")  # staff trying the test themselves
 
 
 class TestSession(IdMixin, TimestampMixin, Base):

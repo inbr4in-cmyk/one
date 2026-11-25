@@ -37,7 +37,7 @@ const tests = {
       newTitle: 'Новый вопрос',
       editTitle: 'Вопрос',
       kindLabel: 'Тип вопроса',
-      kind: { single: 'Один ответ', multi: 'Несколько ответов', text: 'Свободный ответ' },
+      kind: { single: 'Один ответ', multi: 'Несколько ответов', text: 'Свободный ответ', input: 'Ответ по ключу', video: 'Видеоответ' },
       text: 'Текст вопроса',
       textPh: 'Choose the correct form: She ___ to school every day.',
       options: 'Варианты ответа',

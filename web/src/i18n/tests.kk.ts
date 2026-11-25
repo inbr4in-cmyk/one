@@ -39,7 +39,7 @@ const tests: typeof ru = {
       newTitle: 'Жаңа сұрақ',
       editTitle: 'Сұрақ',
       kindLabel: 'Сұрақ түрі',
-      kind: { single: 'Бір жауап', multi: 'Бірнеше жауап', text: 'Еркін жауап' },
+      kind: { single: 'Бір жауап', multi: 'Бірнеше жауап', text: 'Еркін жауап', input: 'Кілт бойынша жауап', video: 'Бейне жауап' },
       text: 'Сұрақ мәтіні',
       textPh: 'Choose the correct form: She ___ to school every day.',
       options: 'Жауап нұсқалары',

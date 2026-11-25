@@ -250,3 +250,61 @@ async def test_branch_admin_is_told_at_nine_whose_birthday_is_today(client, db, 
     assert "Айша Именинница (14)" in n.body and "Данияр Заморозка (14, заморозка)" in n.body and "Ерлан Ушёл (14, ушёл)" in n.body
     assert "Архив" not in n.body and "Завтра" not in n.body
     assert await jobs.birthdays(db) == 0  # once a day
+
+
+async def test_staged_test_is_tried_by_staff_checked_by_key_and_marked_by_hand(client, db, owner_h, tmp_path, monkeypatch):
+    from app.core.config import get_settings
+    from app.models import Question
+    from app.services.test_data import PARTS, seed_bpt2
+
+    monkeypatch.setattr(get_settings(), "storage_dir", str(tmp_path))
+    out = await seed_bpt2(db)
+    assert out["created"] and out["questions"] == 88 and out["points"] == 100, out
+    assert (await seed_bpt2(db))["created"] is False
+    tid = out["test_id"]
+    assert next(x for x in (await client.get("/api/tests", headers=owner_h)).json() if x["id"] == tid)["staged"] is True
+    st = (await client.post(f"/api/tests/{tid}/trial", headers=owner_h)).json()
+    aid = st["id"]
+    assert st["outline"]["minutes"] == 75 and st["outline"]["camera"] and st["stage"]["id"] == "g1" and len(st["stage"]["questions"]) == 14
+    assert "correct" not in st["stage"]["questions"][0] and "accept" not in st["stage"]["questions"][0]
+    qs = {q.id: q for q in await db.scalars(select(Question).where(Question.test_id == tid))}
+    for part, _ in PARTS:
+        pid, ans = part["id"], {}
+        for q in st["stage"]["questions"]:
+            src = qs[q["id"]]
+            if pid == "g1":
+                ans[str(q["id"])] = src.correct  # all right: 14
+            elif pid == "g2":
+                ans[str(q["id"])] = src.accept[0].lower().rstrip("?") + "  "  # case, spaces and «?» do not matter: 9
+            elif pid == "g3":
+                ans[str(q["id"])] = "wrong"
+            elif pid == "w1":
+                ans[str(q["id"])] = "My best friend is Dana. She is ten."
+        if pid == "g1":  # a draft is kept without closing the stage
+            r = (await client.post(f"/api/test-trials/{aid}/save", headers=owner_h, json={"part_id": pid, "answers": ans})).json()
+            assert r["stage"]["id"] == "g1" and len(r["stage"]["draft"]) == 14
+            # leaving annuls, restoring goes on at the same stage
+            assert (await client.post(f"/api/test-trials/{aid}/leave", headers=owner_h)).json()["attempt"]["status"] == "void"
+            assert (await client.post(f"/api/test-trials/{aid}/restore", headers=owner_h)).json()["stage"]["id"] == "g1"
+        if pid == "s1":
+            vq = st["stage"]["questions"][0]["id"]
+            r = await client.post(f"/api/test-trials/{aid}/video", headers=owner_h, data={"question_id": str(vq)},
+                                  files={"file": ("a.webm", b"\x1a\x45\xdf\xa3" + b"0" * 100, "video/webm;codecs=vp8")})
+            assert r.status_code == 200, r.text
+            assert (await client.post(f"/api/test-trials/{aid}/video", headers=owner_h, data={"question_id": str(vq)},
+                                      files={"file": ("a.webm", b"nope", "video/webm")})).status_code == 400
+        st = (await client.post(f"/api/test-trials/{aid}/save", headers=owner_h, json={"part_id": pid, "answers": ans, "final": True})).json()
+        # a closed stage takes nothing more
+        again = (await client.post(f"/api/test-trials/{aid}/save", headers=owner_h, json={"part_id": pid, "answers": {}, "final": True})).json()
+        assert (again["stage"] or {}).get("id") == (st["stage"] or {}).get("id")
+    assert st["stage"] is None and st["attempt"]["status"] == "needs_review"
+    d = (await client.get(f"/api/attempts/{aid}/detail", headers=owner_h)).json()
+    assert d["auto_score"] == 23 and [p["score"] for p in d["parts"]][:3] == [14, 9, 0]
+    assert d["parts"][2]["items"][0]["key"] == "like / love" and d["parts"][2]["items"][0]["right"] is False
+    r = await client.get(f"/api/attempts/{aid}/video/{vq}", headers=owner_h)
+    assert r.status_code == 200 and r.content.startswith(b"\x1a\x45\xdf\xa3")
+    manual = {str(i["id"]): i["points"] for p in d["parts"] for i in p["items"] if i["right"] is None and (i["answer"] or i["video"])}
+    assert len(manual) == 4
+    assert (await client.put(f"/api/attempts/{aid}/marks", headers=owner_h, json={"marks": {k: 99 for k in manual}})).status_code == 400
+    d = (await client.put(f"/api/attempts/{aid}/marks", headers=owner_h, json={"marks": manual})).json()
+    assert d["status"] == "done" and d["manual_score"] == 12 and d["score"] == 35

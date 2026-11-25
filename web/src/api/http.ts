@@ -263,6 +263,14 @@ export async function request<T>(method: string, path: string, opts: RequestOpti
  * Download a file the API streams (Excel exports, templates). A plain link can't send the bearer token,
  * so we fetch the bytes and hand the browser a blob URL. Errors go through the same handler as JSON calls.
  */
+/** A protected file as a Blob (e.g. a video the page plays): the bearer token cannot go into a plain src. */
+export async function blob(path: string): Promise<Blob> {
+  let res = await send('GET', path, {})
+  if (res.status === 401 && (await refreshAccess())) res = await send('GET', path, {})
+  if (!res.ok) throw new ApiError(res.status, '')
+  return res.blob()
+}
+
 export async function download(path: string, fallbackName: string): Promise<void> {
   const d = demo()
   if (d) return d.download()

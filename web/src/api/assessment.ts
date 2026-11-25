@@ -1,8 +1,8 @@
-import { http, qs } from './http'
+import { blob, http, qs } from './http'
 
 /** Test builder (backend/app/modules/assessment/router.py) and the public QR placement test. */
 export type TestKind = 'placement' | 'progress' | 'final' | 'training'
-export type QuestionKind = 'single' | 'multi' | 'text'
+export type QuestionKind = 'single' | 'multi' | 'text' | 'input' | 'video'
 
 export interface ScaleRow {
   min: number
@@ -20,9 +20,11 @@ export interface Test {
   scale: ScaleRow[] | Record<string, unknown>
   is_published: boolean
   questions: number
+  /** made of timed stages: staff can try it themselves */
+  staged?: boolean
 }
 
-export type TestIn = Omit<Test, 'id' | 'questions' | 'scale'> & { scale: ScaleRow[] }
+export type TestIn = Omit<Test, 'id' | 'questions' | 'scale' | 'staged'> & { scale: ScaleRow[] }
 
 export interface Question {
   id: number
@@ -164,6 +166,7 @@ export interface SessionRow {
   voided_at: string | null
   restores: number
   place: number | null
+  attempt_id: number | null
 }
 
 export interface SessionBoard extends TestSession {
@@ -172,6 +175,8 @@ export interface SessionBoard extends TestSession {
   now: string
   can_run: boolean
   rows: SessionRow[]
+  /** a staged test: the sum of its stages plus a few minutes */
+  suggested_min: number | null
 }
 
 export const sessionsApi = {
@@ -184,7 +189,27 @@ export const sessionsApi = {
   restore: (id: number, student_id: number) => http.post<SessionBoard>(`/test-sessions/${id}/restore`, { student_id }),
 }
 
-/** What the student sees while taking a group test: one question at a time, never the correct answers */
+/** A stage of a staged test as the taker sees it: one page with its own time */
+export interface TestStage {
+  id: string
+  section: string | null
+  title: string | null
+  hint: string | null
+  minutes: number
+  text_title: string | null
+  text: string | null
+  audio: string | null
+  words: string[] | null
+  seconds: number | null
+  index: number
+  total: number
+  ends_at: string
+  questions: (PublicQuestion & { points: number })[]
+  draft: Record<string, number[] | string | { video: string }>
+}
+export interface TestOutline { stages: { section: string | null; title: string | null; minutes: number }[]; minutes: number; camera: boolean }
+
+/** What the person sees while taking a test: one question (plain test) or one stage (staged test), never the keys */
 export interface MyTestState {
   id: number
   title: string
@@ -192,8 +217,20 @@ export interface MyTestState {
   ends_at: string | null
   now: string
   time_limit_min: number
-  attempt: { status: 'in_progress' | 'void' | 'done' | 'needs_review'; position: number; total: number; score: number | null; max_score: number | null; duration_sec: number | null } | null
+  attempt: { id: number; status: 'in_progress' | 'void' | 'done' | 'needs_review'; position: number; total: number; score: number | null; max_score: number | null; duration_sec: number | null } | null
   question: PublicQuestion | null
+  outline?: TestOutline
+  stage?: TestStage | null
+  trial?: boolean
+}
+export type StageAnswers = Record<string, number[] | string | null>
+
+const videoForm = (question_id: number, file: Blob, extra: Record<string, string> = {}) => {
+  const f = new FormData()
+  for (const [k, v] of Object.entries(extra)) f.append(k, v)
+  f.append('question_id', String(question_id))
+  f.append('file', file, file.type.includes('mp4') ? 'answer.mp4' : 'answer.webm')
+  return f
 }
 
 export const myTestsApi = {
@@ -201,5 +238,43 @@ export const myTestsApi = {
   state: (id: number, student_id: number) => http.get<MyTestState>(`/portal/tests/${id}?student_id=${student_id}`, { silent: true }),
   begin: (id: number, student_id: number) => http.post<MyTestState>(`/portal/tests/${id}/begin`, { student_id }, { silent: true }),
   answer: (id: number, body: { student_id: number; question_id: number; answer: number[] | string }) => http.post<MyTestState>(`/portal/tests/${id}/answer`, body, { silent: true }),
+  save: (id: number, body: { student_id: number; part_id: string; answers: StageAnswers; final: boolean }) => http.post<MyTestState>(`/portal/tests/${id}/save`, body, { silent: true }),
+  video: (id: number, student_id: number, question_id: number, file: Blob) => http.post<MyTestState>(`/portal/tests/${id}/video`, videoForm(question_id, file, { student_id: String(student_id) }), { silent: true }),
   leave: (id: number, student_id: number) => http.post<MyTestState>(`/portal/tests/${id}/leave`, { student_id }, { silent: true, keepalive: true }),
+}
+
+/** «Тестовый режим»: a staff member takes a staged test as a student would */
+export const trialApi = {
+  outline: (testId: number) => http.get<TestOutline & { title: string }>(`/tests/${testId}/outline`, { silent: true }),
+  begin: (testId: number) => http.post<MyTestState>(`/tests/${testId}/trial`, undefined, { silent: true }),
+  state: (id: number) => http.get<MyTestState>(`/test-trials/${id}`, { silent: true }),
+  save: (id: number, body: { part_id: string; answers: StageAnswers; final: boolean }) => http.post<MyTestState>(`/test-trials/${id}/save`, body, { silent: true }),
+  video: (id: number, question_id: number, file: Blob) => http.post<MyTestState>(`/test-trials/${id}/video`, videoForm(question_id, file), { silent: true }),
+  leave: (id: number) => http.post<MyTestState>(`/test-trials/${id}/leave`, undefined, { silent: true, keepalive: true }),
+  restore: (id: number) => http.post<MyTestState>(`/test-trials/${id}/restore`, undefined, { silent: true }),
+  list: (testId: number) => http.get<{ id: number; taker: string | null; status: string; score: number; duration_sec: number | null; finished_at: string | null }[]>(`/tests/${testId}/trials`, { silent: true }),
+}
+
+/** Checking an attempt: every answer against the key, writing and speaking marked by hand */
+export interface AttemptItem { id: number; kind: QuestionKind; text: string; points: number; answer: string | null; right: boolean | null; key: string | null; mark: number | null; video: boolean }
+export interface AttemptDetail {
+  id: number
+  test_id: number
+  title: string
+  taker: string | null
+  student_id: number | null
+  trial: boolean
+  status: string
+  auto_score: number
+  manual_score: number | null
+  score: number
+  max_score: number
+  duration_sec: number | null
+  finished_at: string | null
+  parts: { id: string | null; section: string | null; title: string | null; score: number; max: number; items: AttemptItem[] }[]
+}
+export const attemptsApi = {
+  detail: (id: number) => http.get<AttemptDetail>(`/attempts/${id}/detail`),
+  marks: (id: number, marks: Record<string, number>) => http.put<AttemptDetail>(`/attempts/${id}/marks`, { marks }),
+  video: (id: number, questionId: number) => blob(`/attempts/${id}/video/${questionId}`),
 }

@@ -36,7 +36,7 @@ async function load() {
 }
 onMounted(async () => {
   await load()
-  if (b.value?.status === 'planned') minutes.value = String(b.value.time_limit_min || 60)
+  if (b.value?.status === 'planned') minutes.value = String(b.value.suggested_min ?? (b.value.time_limit_min || 60))
   poll = setInterval(() => b.value?.status !== 'finished' && document.visibilityState === 'visible' && load(), 5000)
   clock = setInterval(() => (tick.value = nowMs()), 1000)
 })
@@ -131,7 +131,8 @@ async function copy() {
               <td class="num">{{ r.answered }} / {{ b.questions }}</td>
               <td class="num">{{ r.score == null ? '—' : `${r.score} / ${b.max_score}` }}</td>
               <td class="num">{{ dur(r) }}</td>
-              <td><UiButton v-if="r.status === 'void' && b.status === 'running' && b.can_run" size="sm" variant="primary" :disabled="busy" @click="restore(r)">{{ t('nv.gt.restore') }}</UiButton></td>
+              <td><UiButton v-if="r.attempt_id && b.can_run && (r.status === 'needs_review' || r.status === 'done')" size="sm" :variant="r.status === 'needs_review' ? 'primary' : 'ghost'" :to="`/tests/attempts/${r.attempt_id}`">{{ t('nv.gt.check') }}</UiButton>
+                <UiButton v-if="r.status === 'void' && b.status === 'running' && b.can_run" size="sm" variant="primary" :disabled="busy" @click="restore(r)">{{ t('nv.gt.restore') }}</UiButton></td>
             </tr>
           </tbody>
         </table>

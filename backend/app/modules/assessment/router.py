@@ -41,13 +41,32 @@ SUBMIT_GRACE = timedelta(minutes=2)
 
 
 # ---------- scoring ----------
+def norm(s: str) -> str:
+    """A typed answer as it is compared: case, spaces, the final «?» or «.» and the kind of apostrophe do not matter."""
+    s = s.replace("\u2019", "'").replace("\u2018", "'").replace("`", "'").lower().strip().rstrip("?.!").strip()
+    return " ".join(s.split())
+
+
+def is_right(q: Question, a) -> bool | None:
+    """True/False for a question checked by the key, None for one a person checks (writing, speaking)."""
+    if q.kind in ("text", "video"):
+        return None
+    if q.kind == "input":
+        return isinstance(a, str) and norm(a) in {norm(str(x)) for x in (q.accept or [])}
+    picked = sorted({x for x in a if isinstance(x, int)}) if isinstance(a, list) else ([a] if isinstance(a, int) else [])
+    return bool(picked) and picked == sorted(set(q.correct or []))
+
+
 def score(questions: list[Question], answers: dict) -> tuple[int, bool]:
     """Returns (auto score, needs manual review). Answers: {question_id: [option indexes] | "text"}."""
     total, manual = 0, False
     for q in questions:
         a = answers.get(str(q.id))
-        if q.kind == "text":
+        if q.kind in ("text", "video"):
             manual = manual or bool(a)
+            continue
+        if q.kind == "input":
+            total += q.points if is_right(q, a) else 0
             continue
         picked = sorted({x for x in a if isinstance(x, int)}) if isinstance(a, list) else ([a] if isinstance(a, int) else [])
         if picked and picked == sorted(set(q.correct or [])):
@@ -99,11 +118,12 @@ class TestOut(ORM):
     scale: list | dict
     is_published: bool
     questions: int = 0
+    staged: bool = False  # made of timed stages: can be tried by staff («Тестовый режим»)
 
 
 class QuestionIn(In):
     order: int = 0
-    kind: str = Field(default="single", pattern="^(single|multi|text)$")
+    kind: str = Field(default="single", pattern="^(single|multi|text|input|video)$")
     text: str = Field(min_length=1, max_length=2000)
     options: list[Annotated[str, Field(max_length=500)]] = Field(default=[], max_length=20)
     correct: list[OptionIndex] = Field(default=[], max_length=20)
@@ -129,6 +149,7 @@ async def list_tests(db: DB, actor: Actor = require("tests", "view"), kind: str 
     for t in await db.scalars(q.order_by(Test.kind, Test.id)):
         o = TestOut.model_validate(t)
         o.questions = len((await db.scalars(select(Question.id).where(Question.test_id == t.id, Question.archived_at.is_(None)))).all())
+        o.staged = bool(t.parts)
         out.append(o)
     return out
 

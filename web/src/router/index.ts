@@ -62,6 +62,7 @@ const routes: RouteRecordRaw[] = [
   { path: '/f/:token', name: 'form', component: () => import('@/pages/public/FormPage.vue'), meta: { public: true, title: 'nv.fm.fill' } },
   { path: '/t/:token', name: 'placement', component: () => import('@/pages/public/PlacementTestPage.vue'), meta: { public: true, title: 'placement.title' } },
   { path: '/2fa', name: 'setup-2fa', component: () => import('@/pages/TwoFactorSetupPage.vue'), meta: { title: 'setup2fa.title' } },
+  { path: '/tests/trial/:id(\\d+)', name: 'test-trial', component: () => import('@/pages/tests/TestTrialPage.vue'), meta: { title: 'nv.gt.trialMode' } },
   { path: '/portal/test/:id(\\d+)', name: 'portal-test', component: () => import('@/pages/portal/PortalTest.vue'), meta: { portal: true, title: 'nv.gt.test' } },
   { path: '/portal', component: () => import('@/components/portal/PortalShell.vue'), children: portalRoutes },
   {

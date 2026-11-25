@@ -3,7 +3,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { UiButton, UiCard, UiChip, UiEmptyState, UiField, UiIcon, UiModal, UiSelect, UiSkeleton } from '@/components/ui'
-import { sessionsApi, type Test, type TestKind, type TestSession } from '@/api/assessment'
+import { sessionsApi, trialApi, type Test, type TestKind, type TestSession } from '@/api/assessment'
 import { academicsApi, type Group, type Lesson } from '@/api/academics'
 import { useAuthStore } from '@/stores/auth'
 import { useRefsStore } from '@/stores/refs'
@@ -45,6 +45,15 @@ const sessions = ref<TestSession[] | null>(null)
 const loadSessions = async () => (sessions.value = await sessionsApi.list().catch(() => []))
 onMounted(loadSessions)
 const tone = (s: TestSession) => (s.status === 'running' ? 'ok' : s.status === 'planned' ? 'info' : undefined)
+
+/* ---------- «Тестовый режим»: who of the staff has tried the test ---------- */
+const trialsOpen = ref(false)
+const trials = ref<Awaited<ReturnType<typeof trialApi.list>> | null>(null)
+async function openTrials(x: Test) {
+  trials.value = null
+  trialsOpen.value = true
+  trials.value = await trialApi.list(x.id).catch(() => [])
+}
 
 /* ---------- «Запланировать тест» ---------- */
 const canPlan = computed(() => auth.can('tests.review'))
@@ -102,13 +111,18 @@ async function plan() {
     <UiField :label="t('tests.level')" style="max-width: 320px"><UiSelect v-model="levelId" :options="levelOpts" :label="t('tests.level')" block /></UiField>
     <UiSkeleton v-if="!tests" :lines="3" />
     <div v-else class="gt-bank">
-      <button v-for="(s, i) in bank" :key="s.test?.id ?? `n${i}`" type="button" class="gt-slot" :class="{ empty: !s.test, fin: s.kind === 'final' }"
-        :hidden="!s.test && !canEdit" @click="s.test ? emit('open', s.test) : emit('create', { kind: s.kind, title: s.title, level_id: levelId })">
-        <span class="ic"><UiIcon :name="s.kind === 'final' ? 'trophy' : 'tests'" :size="24" /></span>
-        <b>{{ s.title }}</b>
-        <small v-if="s.test">{{ t('tests.questionsN', { n: s.test.questions }) }}</small>
-        <small v-else>{{ t('nv.gt.create') }}</small>
-      </button>
+      <div v-for="(s, i) in bank" :key="s.test?.id ?? `n${i}`" class="gt-slot" :class="{ empty: !s.test, fin: s.kind === 'final' }" :hidden="!s.test && !canEdit">
+        <button type="button" class="gt-main" @click="s.test ? emit('open', s.test) : emit('create', { kind: s.kind, title: s.title, level_id: levelId })">
+          <span class="ic"><UiIcon :name="s.kind === 'final' ? 'trophy' : 'tests'" :size="24" /></span>
+          <b>{{ s.title }}</b>
+          <small v-if="s.test">{{ t('tests.questionsN', { n: s.test.questions }) }}</small>
+          <small v-else>{{ t('nv.gt.create') }}</small>
+        </button>
+        <div v-if="s.test?.staged && canPlan" class="gt-acts">
+          <UiButton size="sm" variant="primary" icon="play" :to="`/tests/trial/${s.test.id}`">{{ t('nv.gt.tryIt') }}</UiButton>
+          <UiButton size="sm" variant="ghost" @click="openTrials(s.test)">{{ t('nv.gt.results') }}</UiButton>
+        </div>
+      </div>
     </div>
 
     <h3 class="gt-h">{{ t('nv.gt.sessions') }}</h3>
@@ -125,6 +139,16 @@ async function plan() {
       </button>
     </div>
   </UiCard>
+
+  <UiModal v-model:open="trialsOpen" :title="t('nv.gt.trialMode')">
+    <UiSkeleton v-if="!trials" :lines="3" />
+    <p v-else-if="!trials.length" class="muted m0">{{ t('nv.gt.noResults') }}</p>
+    <RouterLink v-for="x in trials ?? []" :key="x.id" :to="`/tests/attempts/${x.id}`" class="list-row">
+      <div class="grow"><b>{{ x.taker }}</b><span v-if="x.finished_at">{{ dayLabel(x.finished_at, loc, { day: 'numeric', month: 'long' }) }}, {{ hm(x.finished_at, loc) }}</span></div>
+      <UiChip small :tone="x.status === 'done' ? 'ok' : 'warn'">{{ t(`nv.gt.rs.${x.status}`, x.status) }}</UiChip>
+      <b class="num">{{ x.score }}</b>
+    </RouterLink>
+  </UiModal>
 
   <UiModal v-model:open="planOpen" :title="t('nv.gt.plan')">
     <div class="stack">
@@ -143,8 +167,10 @@ async function plan() {
 
 <style scoped>
 .gt-bank { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; margin-top: 12px }
-.gt-slot { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); text-align: left; font: inherit; color: var(--ink); cursor: pointer }
-.gt-slot:hover:not(:disabled) { border-color: var(--navy-600) }
+.gt-slot { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface) }
+.gt-slot:hover { border-color: var(--navy-600) }
+.gt-main { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 0; border: 0; background: none; text-align: left; font: inherit; color: var(--ink); cursor: pointer }
+.gt-acts { display: flex; gap: 6px; flex-wrap: wrap }
 .gt-slot[hidden] { display: none }
 .gt-slot[hidden] { display: none }
 .gt-slot.empty { border-style: dashed; background: transparent }

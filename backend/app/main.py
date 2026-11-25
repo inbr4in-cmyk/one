@@ -102,7 +102,7 @@ def create_app() -> FastAPI:
         h.setdefault("X-Content-Type-Options", "nosniff")
         h.setdefault("X-Frame-Options", "DENY")
         h.setdefault("Referrer-Policy", "no-referrer")
-        h.setdefault("Permissions-Policy", "camera=(), microphone=(self), geolocation=()")
+        h.setdefault("Permissions-Policy", "camera=(self), microphone=(self), geolocation=()")
         if request.url.path.startswith("/api/") and "cache-control" not in h:
             h["Cache-Control"] = "no-store"
         if s.is_prod:

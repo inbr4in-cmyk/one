@@ -5,10 +5,10 @@ to the student's history; inside the test the students are ranked by score, then
 
 Everything that decides the result lives on the server: the order, the timer, the score. Correct answers are never
 sent to a test taker."""
-import random
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, File, Form, Query, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import Field
 from sqlalchemy import or_, select
 
@@ -19,8 +19,10 @@ from app.core.permissions import NETWORK, OWN
 from app.core.schemas import In
 from app.models import Attempt, Group, GroupMember, Lesson, Question, Student, Test, TestSession, User
 from app.models.learning import LessonStatus
-from app.modules.assessment.router import Answer, finalize_final, score
+from app.modules.assessment import engine
+from app.modules.assessment.router import Answer, finalize_final
 from app.modules.portal.access import portal_student
+from app.modules.students.scope import get_student_scoped
 from app.services import crm
 from app.services.clock import now, today
 
@@ -29,25 +31,8 @@ KINDS = ("progress", "final")
 
 
 # ---------- shared ----------
-async def _questions(db: DB, test_id: int) -> list[Question]:
-    return list(await db.scalars(select(Question).where(Question.test_id == test_id, Question.archived_at.is_(None))
-                                 .order_by(Question.order, Question.id)))
-
-
-async def _close(db: DB, a: Attempt, t: Test, qs: list[Question], at: datetime) -> None:
-    """The attempt ends: score what was answered, remember how long it took. An annulled attempt stays annulled."""
-    a.finished_at = at
-    a.duration_sec = max(0, int((at - a.started_at).total_seconds()))
-    a.auto_score, needs = score(qs, a.answers or {})
-    a.score = a.auto_score + (a.manual_score or 0)
-    if a.status == "void":
-        return
-    if needs and a.manual_score is None:
-        a.status = "needs_review"
-    elif t.kind == "final" and a.student_id:
-        await finalize_final(db, a, t, None)
-    else:
-        a.status = "done"
+_questions = engine.questions
+_close = engine.close
 
 
 async def _expire(db: DB, ts: TestSession) -> None:
@@ -191,14 +176,15 @@ async def session(session_id: int, db: DB, actor: Actor = require("tests", "view
     rows = []
     for s in students:
         a = attempts.get(s.id)
-        rows.append({"student_id": s.id, "full_name": s.full_name, "has_login": s.user_id is not None,
+        rows.append({"student_id": s.id, "full_name": s.full_name, "has_login": s.user_id is not None, "attempt_id": a.id if a else None,
                      "status": a.status if a else "none", "answered": len(a.answers or {}) if a else 0,
                      "score": a.score if a and a.finished_at else None, "duration_sec": a.duration_sec if a else None,
                      "voided_at": a.voided_at if a else None, "restores": a.restores if a else 0, "place": None})
     rank(rows)
     t = await db.get(Test, ts.test_id)
     return {**(await _brief(db, [ts]))[0], "max_score": sum(q.points for q in await _questions(db, t.id)), "questions": total,
-            "now": now(), "can_run": actor.can("tests", "review"), "rows": rows}
+            "now": now(), "can_run": actor.can("tests", "review"), "rows": rows,
+            "suggested_min": engine.total_minutes(t) + 5 if t.parts else None}
 
 
 class StartIn(In):
@@ -241,14 +227,14 @@ class RestoreIn(In):
 
 @router.post("/test-sessions/{session_id}/restore")
 async def restore(session_id: int, body: RestoreIn, db: DB, actor: Actor = require("tests", "review")) -> dict:
-    """«Восстановить»: an annulled attempt goes on from the question it stopped at. The timer was not paused."""
+    """«Восстановить»: an annulled attempt goes on from where it stopped. The test's own end was not moved."""
     ts = await _get(db, actor, session_id, lock=True)
     if ts.status != "running":
         raise conflict("Тест не идёт")
     a = await db.scalar(select(Attempt).where(Attempt.session_id == ts.id, Attempt.student_id == body.student_id).with_for_update())
     if a is None or a.status != "void":
         raise bad_request("Эта попытка не аннулирована")
-    a.status, a.voided_at, a.restores = "in_progress", None, a.restores + 1
+    engine.restore(a, now())
     await write_audit(db, actor_id=actor.id, action="test.restore", entity="attempt", entity_id=a.id, branch_id=ts.branch_id,
                       ip=actor.ip, after={"student_id": a.student_id, "restores": a.restores})
     await db.commit()
@@ -276,15 +262,20 @@ async def _state(db: DB, ts: TestSession, s: Student) -> dict:
     a = await db.scalar(select(Attempt).where(Attempt.session_id == ts.id, Attempt.student_id == s.id))
     out = {"id": ts.id, "title": t.title, "status": ts.status, "ends_at": ts.ends_at, "now": now(), "time_limit_min": ts.time_limit_min,
            "attempt": None, "question": None}
+    qs = await _questions(db, t.id)
+    if t.parts:
+        out["outline"] = engine.outline(t, qs)
     if a is None:
         return out
     order = a.q_order or []
-    out["attempt"] = {"status": a.status, "position": a.position, "total": len(order),
+    out["attempt"] = {"id": a.id, "status": a.status, "position": a.position, "total": len(t.parts) if t.parts else len(order),
                       "score": a.score if a.finished_at and a.status != "needs_review" else None,
                       "max_score": None, "duration_sec": a.duration_sec}
     if a.finished_at:
         out["attempt"]["max_score"] = sum(q.points for q in await _questions(db, t.id))
-    if a.status == "in_progress" and ts.status == "running" and a.position < len(order):
+    if t.parts:
+        out["stage"] = engine.stage_state(a, t, qs) if ts.status == "running" else None
+    elif a.status == "in_progress" and ts.status == "running" and a.position < len(order):
         q = await db.get(Question, order[a.position])
         out["question"] = {"id": q.id, "kind": q.kind, "text": q.text, "options": q.options or []}
     return out
@@ -309,6 +300,15 @@ async def my_tests(db: DB, actor: CurrentActor, student_id: int = Query(ge=1)) -
     return out
 
 
+async def _lapse(db: DB, ts: TestSession, s: Student) -> Attempt | None:
+    a = await db.scalar(select(Attempt).where(Attempt.session_id == ts.id, Attempt.student_id == s.id).with_for_update())
+    if a is not None and ts.status == "running":
+        t = await db.get(Test, ts.test_id)
+        if t.parts:
+            await engine.lapse(db, a, t, await _questions(db, t.id), now())
+    return a
+
+
 class WhoIn(In):
     student_id: int = Field(ge=1)
 
@@ -316,22 +316,23 @@ class WhoIn(In):
 @router.get("/portal/tests/{session_id}")
 async def my_state(session_id: int, db: DB, actor: CurrentActor, student_id: int = Query(ge=1)) -> dict:
     ts, s = await _mine(db, actor, session_id, student_id)
+    await _lapse(db, ts, s)
     await db.commit()
     return await _state(db, ts, s)
 
 
 @router.post("/portal/tests/{session_id}/begin")
 async def begin(session_id: int, body: WhoIn, db: DB, actor: CurrentActor) -> dict:
-    """The student opens the test: his own order of the questions is fixed now and never changes."""
+    """The student opens the test; the clock of the first stage starts for him now."""
     ts, s = await _mine(db, actor, session_id, body.student_id, lock=True)
     if ts.status != "running":
         raise conflict("Тест ещё не начался" if ts.status == "planned" else "Тест закончен")
     a = await db.scalar(select(Attempt).where(Attempt.session_id == ts.id, Attempt.student_id == s.id))
     if a is None:
+        # the same order for everyone (owner, 25.11.2026: no shuffling)
         ids = [q.id for q in await _questions(db, ts.test_id)]
-        random.SystemRandom().shuffle(ids)
         a = Attempt(test_id=ts.test_id, session_id=ts.id, student_id=s.id, user_id=s.user_id, branch_id=s.branch_id, answers={},
-                    q_order=ids, position=0, started_at=now(), status="in_progress", taker_name=s.full_name)
+                    q_order=ids, position=0, started_at=now(), part_started_at=now(), status="in_progress", taker_name=s.full_name)
         db.add(a)
     await db.commit()
     return await _state(db, ts, s)
@@ -348,7 +349,7 @@ async def answer(session_id: int, body: AnswerIn, db: DB, actor: CurrentActor) -
     """One question at a time, in the student's order; an answered question cannot be opened again."""
     ts, s = await _mine(db, actor, session_id, body.student_id, lock=True)
     a = await db.scalar(select(Attempt).where(Attempt.session_id == ts.id, Attempt.student_id == s.id).with_for_update())
-    if a is None or ts.status != "running" or a.status != "in_progress":
+    if a is None or ts.status != "running" or a.status != "in_progress" or (await db.get(Test, ts.test_id)).parts:
         await db.commit()
         return await _state(db, ts, s)
     order = a.q_order or []
@@ -388,3 +389,211 @@ async def leave(session_id: int, body: WhoIn, db: DB, actor: CurrentActor) -> di
                             link=f"/tests/sessions/{ts.id}")
     await db.commit()
     return await _state(db, ts, s)
+
+
+class SaveIn(In):
+    student_id: int = Field(ge=1)
+    part_id: str = Field(min_length=1, max_length=16)
+    answers: dict[str, list[int] | str | None] = Field(default={}, max_length=100)
+    final: bool = False
+
+
+@router.post("/portal/tests/{session_id}/save")
+async def save_stage(session_id: int, body: SaveIn, db: DB, actor: CurrentActor) -> dict:
+    """A staged test: the answers of the current stage. `final` closes the stage for good and opens the next."""
+    ts, s = await _mine(db, actor, session_id, body.student_id, lock=True)
+    a = await db.scalar(select(Attempt).where(Attempt.session_id == ts.id, Attempt.student_id == s.id).with_for_update())
+    t = await db.get(Test, ts.test_id)
+    if a is not None and ts.status == "running" and t.parts:
+        await engine.save(db, a, t, await _questions(db, t.id), body.part_id, body.answers, body.final, now())
+    await db.commit()
+    return await _state(db, ts, s)
+
+
+async def _read_video(file: UploadFile) -> bytes:
+    data = await file.read(engine.VIDEO_MAX + 1)
+    if len(data) > engine.VIDEO_MAX:
+        raise bad_request("Видео слишком большое")
+    return data
+
+
+@router.post("/portal/tests/{session_id}/video")
+async def save_video(session_id: int, db: DB, actor: CurrentActor, student_id: int = Form(ge=1), question_id: int = Form(ge=1),
+                     file: UploadFile = File(...)) -> dict:
+    ts, s = await _mine(db, actor, session_id, student_id, lock=True)
+    a = await db.scalar(select(Attempt).where(Attempt.session_id == ts.id, Attempt.student_id == s.id).with_for_update())
+    t = await db.get(Test, ts.test_id)
+    if a is None or ts.status != "running" or not t.parts:
+        raise conflict("Тест не идёт")
+    await engine.save_video(db, a, t, await _questions(db, t.id), question_id, file.content_type or "", await _read_video(file), now())
+    await db.commit()
+    return await _state(db, ts, s)
+
+
+# ---------- «Тестовый режим»: staff take a staged test themselves ----------
+def _trial_state(a: Attempt, t: Test, qs: list) -> dict:
+    ps = engine.stages(t)
+    out = {"id": a.id, "title": t.title, "status": "finished" if a.finished_at else "running", "ends_at": None, "now": now(),
+           "time_limit_min": engine.total_minutes(t), "question": None, "outline": engine.outline(t, qs), "trial": True,
+           "attempt": {"id": a.id, "status": a.status, "position": a.position, "total": len(ps),
+                       "score": a.score if a.finished_at and a.status != "needs_review" else None,
+                       "max_score": sum(q.points for q in qs) if a.finished_at else None, "duration_sec": a.duration_sec},
+           "stage": engine.stage_state(a, t, qs)}
+    return out
+
+
+async def _trial(db: DB, actor: Actor, attempt_id: int) -> tuple[Attempt, Test, list]:
+    a = await db.scalar(select(Attempt).where(Attempt.id == attempt_id, Attempt.trial.is_(True), Attempt.user_id == actor.id).with_for_update())
+    if a is None:
+        raise not_found("Попытка")
+    t = await db.get(Test, a.test_id)
+    return a, t, await _questions(db, t.id)
+
+
+@router.post("/tests/{test_id}/trial", status_code=201)
+async def trial_begin(test_id: int, db: DB, actor: Actor = require("tests", "review")) -> dict:
+    """A staff member takes the test as a student would. Nothing of it reaches students, ratings or pay."""
+    t = await db.get(Test, test_id)
+    if t is None or t.archived_at is not None or not t.parts:
+        raise not_found("Тест")
+    qs = await _questions(db, t.id)
+    for old in await db.scalars(select(Attempt).where(Attempt.test_id == t.id, Attempt.trial.is_(True), Attempt.user_id == actor.id,
+                                                      Attempt.finished_at.is_(None))):
+        old.status = "in_progress" if old.status == "void" else old.status
+        await engine.close(db, old, t, qs, now())
+    me = await db.get(User, actor.id)
+    a = Attempt(test_id=t.id, user_id=actor.id, trial=True, answers={}, position=0, started_at=now(), part_started_at=now(),
+                status="in_progress", taker_name=me.full_name)
+    db.add(a)
+    await db.commit()
+    return _trial_state(a, t, qs)
+
+
+@router.get("/test-trials/{attempt_id}")
+async def trial_state(attempt_id: int, db: DB, actor: Actor = require("tests", "review")) -> dict:
+    a, t, qs = await _trial(db, actor, attempt_id)
+    await engine.lapse(db, a, t, qs, now())
+    await db.commit()
+    return _trial_state(a, t, qs)
+
+
+class TrialSaveIn(In):
+    part_id: str = Field(min_length=1, max_length=16)
+    answers: dict[str, list[int] | str | None] = Field(default={}, max_length=100)
+    final: bool = False
+
+
+@router.post("/test-trials/{attempt_id}/save")
+async def trial_save(attempt_id: int, body: TrialSaveIn, db: DB, actor: Actor = require("tests", "review")) -> dict:
+    a, t, qs = await _trial(db, actor, attempt_id)
+    await engine.save(db, a, t, qs, body.part_id, body.answers, body.final, now())
+    await db.commit()
+    return _trial_state(a, t, qs)
+
+
+@router.post("/test-trials/{attempt_id}/video")
+async def trial_video(attempt_id: int, db: DB, actor: Actor = require("tests", "review"), question_id: int = Form(ge=1),
+                      file: UploadFile = File(...)) -> dict:
+    a, t, qs = await _trial(db, actor, attempt_id)
+    await engine.save_video(db, a, t, qs, question_id, file.content_type or "", await _read_video(file), now())
+    await db.commit()
+    return _trial_state(a, t, qs)
+
+
+@router.post("/test-trials/{attempt_id}/leave")
+async def trial_leave(attempt_id: int, db: DB, actor: Actor = require("tests", "review")) -> dict:
+    a, t, qs = await _trial(db, actor, attempt_id)
+    await engine.lapse(db, a, t, qs, now())
+    if a.status == "in_progress" and not a.finished_at:
+        a.status, a.voided_at = "void", now()
+    await db.commit()
+    return _trial_state(a, t, qs)
+
+
+@router.post("/test-trials/{attempt_id}/restore")
+async def trial_restore(attempt_id: int, db: DB, actor: Actor = require("tests", "review")) -> dict:
+    """In the trial the person restores himself: with students it is the teacher's button."""
+    a, t, qs = await _trial(db, actor, attempt_id)
+    if a.status == "void" and not a.finished_at:
+        engine.restore(a, now())
+    await db.commit()
+    return _trial_state(a, t, qs)
+
+
+@router.get("/tests/{test_id}/trials")
+async def trials(test_id: int, db: DB, actor: Actor = require("tests", "review")) -> list[dict]:
+    rows = await db.scalars(select(Attempt).where(Attempt.test_id == test_id, Attempt.trial.is_(True), Attempt.finished_at.is_not(None))
+                            .order_by(Attempt.id.desc()).limit(30))
+    return [{"id": a.id, "taker": a.taker_name, "status": a.status, "score": a.score, "duration_sec": a.duration_sec,
+             "finished_at": a.finished_at} for a in rows]
+
+
+# ---------- checking: every answer, writing and speaking marked by hand ----------
+async def _checked(db: DB, actor: Actor, attempt_id: int, lock: bool = False) -> tuple[Attempt, Test, list]:
+    q = select(Attempt).where(Attempt.id == attempt_id)
+    a = await db.scalar(q.with_for_update() if lock else q)
+    if a is None or not (a.trial or a.student_id):
+        raise not_found("Попытка")
+    if a.student_id:
+        await get_student_scoped(db, actor, a.student_id)
+    t = await db.get(Test, a.test_id)
+    return a, t, await _questions(db, t.id)
+
+
+@router.get("/attempts/{attempt_id}/detail")
+async def attempt_detail(attempt_id: int, db: DB, actor: Actor = require("tests", "review")) -> dict:
+    a, t, qs = await _checked(db, actor, attempt_id)
+    return engine.detail(a, t, qs)
+
+
+class MarksIn(In):
+    marks: dict[str, int] = Field(max_length=100)
+
+
+@router.put("/attempts/{attempt_id}/marks")
+async def set_marks(attempt_id: int, body: MarksIn, db: DB, actor: Actor = require("tests", "review")) -> dict:
+    """Points for the answers a person checks (writing, speaking). When all of them are marked the result is final."""
+    a, t, qs = await _checked(db, actor, attempt_id, lock=True)
+    if a.finished_at is None:
+        raise conflict("Тест ещё не закончен")
+    manual = {str(q.id): q for q in qs if q.kind in ("text", "video")}
+    marks = dict(a.marks or {})
+    for k, v in body.marks.items():
+        if k not in manual or not 0 <= v <= manual[k].points:
+            raise bad_request("Баллы больше, чем даёт вопрос")
+        marks[k] = v
+    a.marks, a.manual_score, a.reviewed_by = marks, sum(marks.values()), actor.id
+    a.score = a.auto_score + a.manual_score
+    answered = [k for k in manual if (a.answers or {}).get(k)]
+    if a.status == "needs_review" and all(k in marks for k in answered):
+        if t.kind == "final" and a.student_id:
+            await finalize_final(db, a, t, actor.id)
+        else:
+            a.status = "done"
+    await write_audit(db, actor_id=actor.id, action="test.marks", entity="attempt", entity_id=a.id, branch_id=a.branch_id, ip=actor.ip,
+                      after={"manual_score": a.manual_score})
+    await db.commit()
+    return engine.detail(a, t, qs)
+
+
+@router.get("/attempts/{attempt_id}/video/{question_id}")
+async def attempt_video(attempt_id: int, question_id: int, db: DB, actor: Actor = require("tests", "review")) -> FileResponse:
+    import os
+
+    a, _, _ = await _checked(db, actor, attempt_id)
+    v = (a.answers or {}).get(str(question_id))
+    if not isinstance(v, dict) or v.get("video") not in engine.VIDEO_TYPES.values():
+        raise not_found("Видео")
+    path = engine.video_path(a.id, question_id, v["video"])
+    if not os.path.isfile(path):
+        raise not_found("Видео")
+    return FileResponse(path, media_type="video/webm" if v["video"] == ".webm" else "video/mp4", headers={"Cache-Control": "private, no-store"})
+
+
+@router.get("/tests/{test_id}/outline")
+async def test_outline(test_id: int, db: DB, actor: Actor = require("tests", "review")) -> dict:
+    """What a staff member sees before starting a trial run: the stages and their time."""
+    t = await db.get(Test, test_id)
+    if t is None or t.archived_at is not None or not t.parts:
+        raise not_found("Тест")
+    return {"title": t.title, **engine.outline(t, await _questions(db, t.id))}
