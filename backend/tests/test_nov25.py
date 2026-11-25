@@ -336,3 +336,58 @@ async def test_unanswered_call_goes_to_no_answer_stage_and_an_answer_to_talks(cl
     assert (await client.post(f"/api/crm/leads/{lid}/events", headers=owner_h, json={**call, "result": "thinking"})).status_code == 201
     assert (await db.get(LeadStage, (await db.get(Lead, lid)).stage_id)).code == "contacted"
     assert (await client.get("/api/dashboard/day", headers=owner_h)).json()["leads"]["contacted"]["count"] == 1
+
+
+async def test_lead_always_has_a_next_task_and_a_daily_one_repeats(client, db, owner_h):
+    from sqlalchemy import select
+
+    from app.models import LeadStage, Task
+
+    r = await client.post("/api/crm/leads", headers=owner_h, json={"full_name": "Лид Задача", "phone": "+77075550401", "source": "walk_in",
+                                                               "branch_id": await branch_id(db, "Север")})
+    lid = r.json()["id"]
+    board = (await client.get("/api/crm/tasks", headers=owner_h)).json()
+    assert [x["id"] for x in board["no_task"]] == [lid] and board["tasks"] == []
+    assert (await client.get(f"/api/crm/leads/{lid}", headers=owner_h)).json()["lead"]["needs_task"] is True
+    due = at_local(today(), time(23, 0)).isoformat()
+    r = await client.post(f"/api/crm/leads/{lid}/tasks", headers=owner_h, json={"title": "Позвонить", "due_at": due})
+    assert r.status_code == 201, r.text
+    tid = r.json()["id"]
+    board = (await client.get("/api/crm/tasks", headers=owner_h)).json()
+    assert board["no_task"] == [] and board["tasks"][0]["lead"]["full_name"] == "Лид Задача"
+    # the only task cannot be closed without the next one
+    r = await client.post(f"/api/crm/tasks/{tid}/done", headers=owner_h, json={})
+    assert r.status_code == 400 and "следующую" in r.text
+    r = await client.post(f"/api/crm/tasks/{tid}/done", headers=owner_h, json={"result": "Думает", "next": {"title": "Напомнить", "due_at": due, "daily": True}})
+    assert r.status_code == 200, r.text
+    nxt = r.json()["next"]
+    assert nxt["daily"] is True
+    # a daily task comes back for tomorrow by itself
+    r = await client.post(f"/api/crm/tasks/{nxt['id']}/done", headers=owner_h, json={})
+    assert r.status_code == 200 and r.json()["next"]["title"] == "Напомнить"
+    assert r.json()["next"]["due_at"][:10] == (today() + timedelta(days=1)).isoformat()
+    board = (await client.get("/api/crm/tasks", headers=owner_h)).json()
+    assert len(board["tasks"]) == 1 and len(board["done"]) == 2
+    # a refused lead needs no task: the open one is closed with it
+    lost = await db.scalar(select(LeadStage).where(LeadStage.code == "lost", LeadStage.pipeline_id == (await client.get(f"/api/crm/leads/{lid}", headers=owner_h)).json()["lead"]["pipeline_id"]))
+    r = await client.post(f"/api/crm/leads/{lid}/stage", headers=owner_h, json={"stage_id": lost.id, "lost_reason": "Дорого"})
+    assert r.status_code == 200, r.text
+    assert r.json()["needs_task"] is False and r.json()["task"] is None
+    db.expire_all()
+    assert (await db.get(Task, r.json()["id"] and nxt["id"] + 1)).status == "cancelled"
+
+
+async def test_analytics_counts_every_stage_for_one_manager(client, db, owner_h):
+    r = await client.post("/api/crm/leads", headers=owner_h, json={"full_name": "Лид Аналитика", "phone": "+77075550501", "source": "walk_in",
+                                                               "branch_id": await branch_id(db, "Север")})
+    lid = r.json()["id"]
+    await client.post(f"/api/crm/leads/{lid}/events", headers=owner_h, json={"kind": "call", "text": "Звонок", "result": "thinking"})
+    a = (await client.get("/api/crm/analytics", headers=owner_h)).json()
+    codes = [s["code"] for s in a["stages"]]
+    assert codes[0] == "new" and "lost" in codes and "lost_reasons" in a
+    me = a["managers"][0]
+    assert me["total"] == 1 and me["counts"][codes.index("new")] == 1 and me["counts"][codes.index("contacted")] == 1
+    assert me["counts"][codes.index("paid")] == 0
+    one = (await client.get(f"/api/crm/analytics?manager_id={me['user_id']}", headers=owner_h)).json()
+    assert one["stage_counts"] == me["counts"]
+    assert (await client.get("/api/crm/analytics?manager_id=999999", headers=owner_h)).json()["stage_counts"][0] == 0

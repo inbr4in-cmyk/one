@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { stageRenamed } from '@/utils/stages'
 import { UiCard, UiChip, UiSkeleton } from '@/components/ui'
 import { crmApi, type StageAccess, type StageLevel } from '@/api/crm'
 import { useToastStore } from '@/stores/toast'
@@ -15,7 +16,7 @@ onMounted(async () => {
   data.value = await crmApi.stageAccess().catch(() => null)
 })
 
-const stageName = (s: { code: string; name: string }) => (te(`crm.stage.${s.code}`) ? t(`crm.stage.${s.code}`) : s.name)
+const stageName = (s: { code: string; name: string }) => (te(`crm.stage.${s.code}`) && !stageRenamed(s.code, s.name) ? t(`crm.stage.${s.code}`) : s.name)
 const level = (u: number, s: number): StageLevel => data.value?.cells[`${u}:${s}`] ?? 'edit'
 
 async function set(userId: number, stageId: number, value: StageLevel) {

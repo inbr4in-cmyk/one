@@ -376,7 +376,7 @@ async def dashboard(db: DB, actor: Actor = require("dashboard", "view"), branch_
 
 @router.get("/dashboard/day")
 async def dashboard_day(db: DB, actor: Actor = require("dashboard", "view"), branch_id: int | None = None,
-                        day: date | None = None) -> dict:
+                        day: date | None = None, month: str | None = Query(None, pattern=r"^\d{4}-(0[1-9]|1[0-2])$")) -> dict:
     """The daily report (owner, 25.11.2026): what happened on the day, with the people behind every number.
     Leads are counted by the event of that day (a note or call, a trial booking, a payment), so a past day's
     numbers do not change later. Debtors are the picture as of now."""
@@ -391,6 +391,13 @@ async def dashboard_day(db: DB, actor: Actor = require("dashboard", "view"), bra
     start = at_local(d, time(0))
     end = start + timedelta(days=1)
     out: dict = {"day": d}
+    if month:  # the same report for a whole month
+        y, m = int(month[:4]), int(month[5:])
+        first = date(y, m, 1)
+        if first > today() or first < today() - timedelta(days=400):
+            raise bad_request("Месяц — не позже текущего и не раньше года назад")
+        start, end = at_local(first, time(0)), at_local(date(y + (m == 12), m % 12 + 1, 1), time(0))
+        out = {"day": first, "month": month}
 
     if actor.can("crm", "view"):
         scope = [Lead.archived_at.is_(None)]

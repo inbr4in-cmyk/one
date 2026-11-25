@@ -128,6 +128,8 @@ class LeadCard(BaseModel):
     work_due_at: datetime | None = None
     last_note: str | None = None  # the newest note / call written by a manager
     last_note_at: datetime | None = None
+    task: dict | None = None  # the nearest open task on the lead; an open lead without one is shown as «Нет задачи»
+    needs_task: bool = False
 
 
 class EventOut(ORM):
@@ -175,6 +177,13 @@ async def _cards(db: DB, actor: Actor, leads: list[Lead]) -> list[LeadCard]:
     for e in await db.scalars(select(LeadEvent).where(LeadEvent.lead_id.in_([x.id for x in leads]), crm_svc.manual_event())
                               .order_by(LeadEvent.id)):
         notes[e.lead_id] = e
+    from app.models import Task
+    from app.models.work import TaskStatus
+
+    tasks: dict[int, Task] = {}
+    for tk in await db.scalars(select(Task).where(Task.link_type == "lead", Task.link_id.in_([x.id for x in leads]), Task.archived_at.is_(None),
+                                                  Task.status.not_in((TaskStatus.DONE, TaskStatus.CANCELLED))).order_by(Task.due_at.desc())):
+        tasks[tk.link_id] = tk
     warn_min = int(await setting(db, "lead_first_reply_warn_min") or 30)
     out = []
     t = now()
@@ -189,6 +198,9 @@ async def _cards(db: DB, actor: Actor, leads: list[Lead]) -> list[LeadCard]:
             c.trial_at, c.trial_teacher = tr[1], tr[2]
         conv = by_lead.get(x.id)
         c.free = x.free_since is not None
+        if tk := tasks.get(x.id):
+            c.task = {"id": tk.id, "title": tk.title, "due_at": tk.due_at, "overdue": bool(tk.due_at and tk.due_at < t)}
+        c.needs_task = c.task is None and x.archived_at is None and not (st and (st.is_won or st.is_lost))
         if n := notes.get(x.id):
             c.last_note, c.last_note_at = (n.text or "")[:200], n.at
         if conv:
@@ -772,22 +784,35 @@ async def set_stage_access(body: StageAccessIn, db: DB, actor: Actor = require("
 
 @router.get("/analytics")
 async def analytics(db: DB, actor: Actor = require("crm", "view"), date_from: date | None = None, date_to: date | None = None,
-                    branch_id: int | None = None) -> dict:
-    """ТЗ 9.4: conversion by stage, source, owner and branch; loss reasons."""
+                    branch_id: int | None = None, manager_id: int | None = None) -> dict:
+    """ТЗ 9.4: conversion by stage, source, manager and branch. A lead belongs to its responsible manager (or, with none, to
+    who brought it in); every stage of the main funnel shows how many leads of the period passed through it."""
     d1 = date_from or (today() - timedelta(days=30))
     d2 = date_to or today()
     start, end = local_range(d1, d2)
     q = select(Lead).where(lead_filter(actor), Lead.created_at >= start, Lead.created_at < end)
     if branch_id:
         q = q.where(Lead.branch_id == branch_id)
-    leads = list(await db.scalars(q))
+    every = list(await db.scalars(q))
+    who = lambda x: x.assignee_id or x.owner_id  # noqa: E731
+    leads = [x for x in every if who(x) == manager_id] if manager_id else every
     stages = {s.id: s for s in await db.scalars(select(LeadStage))}
-    events = list(await db.scalars(select(LeadEvent).where(LeadEvent.lead_id.in_([x.id for x in leads]), LeadEvent.kind == "stage")))
+    events = list(await db.scalars(select(LeadEvent).where(LeadEvent.lead_id.in_([x.id for x in every]), LeadEvent.kind == "stage")))
     reached: dict[int, set[str]] = {}
+    passed: dict[int, set[int]] = {x.id: {x.stage_id} for x in every}
     for e in events:
         st = stages.get((e.meta or {}).get("to"))
         if st:
             reached.setdefault(e.lead_id, set()).add(st.code)
+        passed[e.lead_id].update(i for i in ((e.meta or {}).get("from"), (e.meta or {}).get("to")) if i in stages)
+    main = await db.scalar(select(Pipeline).where(Pipeline.code == "main"))
+    main_stages = sorted((s for s in stages.values() if main and s.pipeline_id == main.id and s.archived_at is None), key=lambda s: s.order)
+    first = main_stages[0].id if main_stages else None
+
+    def by_stage(subset: list[Lead]) -> list[int]:
+        """Leads that were on each stage of the main funnel; every lead of the funnel began on the first one."""
+        ids = {s.id for s in main_stages}
+        return [sum(1 for x in subset if s.id in passed[x.id] or (s.id == first and passed[x.id] & ids)) for s in main_stages]
     order = ["new", "contacted", "trial_booked", "trial_done", "paid"]
 
     def funnel(subset: list[Lead]) -> dict:
@@ -809,10 +834,17 @@ async def analytics(db: DB, actor: Actor = require("crm", "view"), date_from: da
     for x in leads:
         if x.lost_reason:
             reasons[x.lost_reason] = reasons.get(x.lost_reason, 0) + 1
-    names = dict((await db.execute(select(User.id, User.full_name).where(User.id.in_({x.owner_id for x in leads if x.owner_id})))).all())
+    names = dict((await db.execute(select(User.id, User.full_name).where(User.id.in_({who(x) for x in every if who(x)})))).all())
+    mine: dict = {}
+    for x in every:
+        mine.setdefault(who(x), []).append(x)
     return {"period": [d1, d2], "total": funnel(leads), "by_source": group_by(lambda x: x.source),
+            "stages": [{"id": s.id, "code": s.code, "name": s.name, "color": s.color, "is_won": s.is_won, "is_lost": s.is_lost} for s in main_stages],
+            "stage_counts": by_stage(leads),
+            "managers": sorted(({"user_id": k, "name": names.get(k), "total": len(v), "counts": by_stage(v)} for k, v in mine.items()),
+                               key=lambda r: -r["total"]),
             "by_owner": [{"user_id": int(k) if k != "None" else None, "name": names.get(int(k)) if k != "None" else None, **v}
-                         for k, v in group_by(lambda x: x.owner_id).items()],
+                         for k, v in group_by(who).items()],
             "by_branch": group_by(lambda x: x.branch_id), "lost_reasons": dict(sorted(reasons.items(), key=lambda kv: -kv[1]))}
 
 

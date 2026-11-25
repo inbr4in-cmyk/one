@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { stageRenamed } from '@/utils/stages'
 import { useRoute, useRouter } from 'vue-router'
 import { UiAvatar, UiButton, UiChip, UiEmptyState, UiIcon, UiSegmented, UiSkeleton } from '@/components/ui'
 import TemplateModal from '@/components/chat/TemplateModal.vue'
@@ -56,7 +57,7 @@ const chanOptions = computed(() => [
 ])
 const ch = (c: Conversation) => (c.channel === 'instagram' ? 'ig' : 'wa')
 const nameOf = (c: Conversation) => c.student?.full_name ?? c.lead?.full_name ?? c.contact.name ?? (c.contact.username ? `@${c.contact.username}` : c.contact.phone ? formatPhone(c.contact.phone) : t('inbox.unknown'))
-const stageLabel = (c: Conversation) => (c.lead?.stage_code && te(`crm.stage.${c.lead.stage_code}`) ? t(`crm.stage.${c.lead.stage_code}`) : c.lead?.stage ?? '')
+const stageLabel = (c: Conversation) => (c.lead?.stage_code && te(`crm.stage.${c.lead.stage_code}`) && !stageRenamed(c.lead.stage_code, c.lead.stage) ? t(`crm.stage.${c.lead.stage_code}`) : c.lead?.stage ?? '')
 
 async function loadList() {
   try {

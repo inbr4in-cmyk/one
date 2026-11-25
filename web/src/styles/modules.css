@@ -565,3 +565,8 @@ button.pinned{width:100%;border:0;border-bottom:1px solid var(--line);text-align
 .upd .grow{display:grid;flex:1;min-width:160px}
 .upd .grow span{font-size:13px;color:var(--muted)}
 .upd-ico{display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:var(--red-100);color:var(--red-ink)}
+
+/* CRM boards: the left-right scrollbar sits above the columns (owner, 25.11) */
+.scroll-top,.scroll-top>*{transform:rotateX(180deg)}
+.scroll-top{scrollbar-width:auto;scrollbar-color:var(--navy-600) var(--navy-50)}
+.scroll-top>.kanban{padding-bottom:0;padding-top:12px}

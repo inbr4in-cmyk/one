@@ -448,7 +448,7 @@ async def spawn_recurring_tasks(db: AsyncSession) -> int:
     start = at_local(d, datetime.min.time())
     n = 0
     for tpl in await db.scalars(select(Task).where(Task.archived_at.is_(None), Task.recurrence.is_not(None),
-                                                   Task.parent_task_id.is_(None))):
+                                                   Task.parent_task_id.is_(None), Task.link_type.is_distinct_from("lead"))):
         if tpl.recurrence == "weekly" and local(tpl.created_at).weekday() != d.weekday():
             continue
         if await db.scalar(select(Task.id).where(Task.parent_task_id == tpl.id, Task.created_at >= start)):

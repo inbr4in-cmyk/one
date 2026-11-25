@@ -94,7 +94,7 @@ export interface DayReport {
 }
 
 export const financeApi = {
-  day: (p: { branch_id?: number | null; day?: string }) => http.get<DayReport>(`/dashboard/day${qs(p)}`, { silent: true }),
+  day: (p: { branch_id?: number | null; day?: string; month?: string }) => http.get<DayReport>(`/dashboard/day${qs(p)}`, { silent: true }),
   dashboard: (p: BranchQ & { period?: string } = {}) => http.get<Dashboard>(`/dashboard${qs(p)}`),
   ratings: (p: BranchQ & { period?: string } = {}) => http.get<Ratings>(`/payroll/ratings${qs(p)}`, { silent: true }),
   pnl: (p: BranchQ & { period: string; date_from?: string | null; date_to?: string | null }) => http.get<Pnl>(`/finance/pnl${qs(p)}`),

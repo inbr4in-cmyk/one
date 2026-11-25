@@ -55,6 +55,14 @@ async def move(db: AsyncSession, lead: Lead, stage: LeadStage, actor_id: int | N
     lead.work_due_at = now() + timedelta(hours=stage.work_hours) if timed else None
     if stage.is_won or stage.is_lost:
         lead.free_since = None
+        # a closed lead needs no next step: its open tasks are closed with it
+        from app.models import Task
+        from app.models.work import TaskStatus
+
+        for t in await db.scalars(select(Task).where(Task.link_type == "lead", Task.link_id == lead.id, Task.archived_at.is_(None),
+                                                     Task.status.not_in((TaskStatus.DONE, TaskStatus.CANCELLED)))):
+            t.status = TaskStatus.CANCELLED
+        lead.next_action_at = None
     db.add(LeadEvent(lead_id=lead.id, at=now(), kind="stage", text=text or stage.name, actor_id=actor_id,
                      meta={"from": old, "to": stage.id}))
 

@@ -74,6 +74,31 @@ export interface Lead {
   existing_student?: { id: number; full_name: string } | null
   can_edit?: boolean
   assignee_name?: string | null
+  /** the nearest open task on the lead */
+  task?: { id: number; title: string; due_at: string | null; overdue: boolean } | null
+  /** an open lead with no task */
+  needs_task?: boolean
+}
+
+export interface LeadTask {
+  id: number
+  title: string
+  due_at: string | null
+  daily: boolean
+  done: boolean
+  done_at: string | null
+  assignee_id: number | null
+  assignee_name: string | null
+  lead: { id: number; full_name: string; stage_name: string | null; stage_color: string | null }
+}
+export interface LeadTaskIn { title: string; due_at: string; daily?: boolean }
+export interface TaskBoard {
+  tasks: LeadTask[]
+  done: LeadTask[]
+  no_task: LeadTask['lead'][]
+  no_task_total: number
+  wide: boolean
+  people: { id: number; full_name: string }[]
 }
 
 export interface BoardColumn {
@@ -141,6 +166,10 @@ export interface Analytics {
   by_owner: (Funnel & { user_id: number | null; name: string | null })[]
   by_branch: Record<string, Funnel>
   lost_reasons: Record<string, number>
+  stages: { id: number; code: string; name: string; color: string; is_won: boolean; is_lost: boolean }[]
+  /** leads of the period that were on each stage, in the order of `stages` */
+  stage_counts: number[]
+  managers: { user_id: number | null; name: string | null; total: number; counts: number[] }[]
 }
 
 /** A free window of a teacher for an individual trial (the room is picked by the server). */
@@ -149,6 +178,15 @@ export interface TrialSlot {
   ends_at: string
   room_id: number
   room_name: string
+}
+
+export const leadTasksApi = {
+  board: (p: { box: 'mine' | 'all'; branch_id?: number | null; user_id?: number | null; q?: string }) => http.get<TaskBoard>(`/crm/tasks${qs(p)}`),
+  ofLead: (leadId: number) => http.get<LeadTask[]>(`/crm/leads/${leadId}/tasks`),
+  add: (leadId: number, body: LeadTaskIn) => http.post<LeadTask>(`/crm/leads/${leadId}/tasks`, body),
+  patch: (id: number, body: Partial<LeadTaskIn>) => http.patch<LeadTask>(`/crm/tasks/${id}`, body),
+  done: (id: number, body: { result?: string | null; next?: LeadTaskIn | null }) =>
+    http.post<{ done: LeadTask; next: LeadTask | null }>(`/crm/tasks/${id}/done`, body, { silent: true }),
 }
 
 export const crmApi = {
@@ -179,7 +217,7 @@ export const crmApi = {
   setStageAccess: (user_id: number, stage_id: number, level: StageLevel) => http.put<null>('/crm/stage-access', { user_id, stage_id, level }, { silent: true }),
   linkStudent: (id: number, student_id: number) => http.post<{ student_id: number }>(`/crm/leads/${id}/link-student`, { student_id }),
   archive: (id: number) => http.post<null>(`/crm/leads/${id}/archive`),
-  analytics: (p: { date_from?: string; date_to?: string; branch_id?: number | null }) =>
+  analytics: (p: { date_from?: string; date_to?: string; branch_id?: number | null; manager_id?: number | null }) =>
     http.get<Analytics>(`/crm/analytics${qs(p)}`),
 }
 

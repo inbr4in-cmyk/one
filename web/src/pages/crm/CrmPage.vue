@@ -4,12 +4,14 @@ import { useSourceLabel } from '@/composables/useSourceLabel'
 import { useSourcesStore } from '@/stores/sources'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { stageRenamed } from '@/utils/stages'
 import { useRoute, useRouter } from 'vue-router'
 import { UiAvatar, UiButton, UiIcon, UiInput, UiPrompt, UiSelect, UiSkeleton, UiTabs } from '@/components/ui'
 import LevelTag from '@/components/students/LevelTag.vue'
 import LeadCreateDrawer from '@/components/crm/LeadCreateDrawer.vue'
 import LeadDrawer from '@/components/crm/LeadDrawer.vue'
 import CrmAnalytics from '@/components/crm/CrmAnalytics.vue'
+import CrmTasks from '@/components/crm/CrmTasks.vue'
 import { crmApi, type Board, type Lead, type Pipeline, type Stage } from '@/api/crm'
 import { ApiError } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
@@ -41,6 +43,7 @@ const freeOnly = ref(false)
 const creating = ref(false)
 const openId = ref<number | null>(Number(route.query.lead) || null)
 const dragId = ref<number | null>(null)
+const tasksView = ref<{ load: () => void } | null>(null)
 const dropStage = ref<number | null>(null)
 const lostMove = ref<{ lead: Lead; stage: Stage } | null>(null)
 const busy = ref(false)
@@ -52,6 +55,7 @@ const tabs = computed(() => [
     label: p.code === 'main' ? t('crm.tabSales') : p.code === 'return' ? t('crm.tabReturn') : p.name,
     count: p.code === tab.value ? board.value?.columns.reduce((a, c) => a + (c.stage.is_won || c.stage.is_lost ? 0 : c.total), 0) : undefined,
   })),
+  { value: 'tasks', label: t('nv.lt.title') },
   { value: 'analytics', label: t('crm.tabAnalytics') },
 ])
 const sourcesStore = useSourcesStore()
@@ -67,10 +71,10 @@ const waitingCount = computed(() => board.value?.columns.reduce((a, c) => a + c.
 const isWaiting = (l: Lead) => l.waiting_min !== null && l.waiting_min > 30
 const freeCount = computed(() => board.value?.columns.reduce((a, c) => a + c.leads.filter((l) => l.free).length, 0) ?? 0)
 const visible = (leads: Lead[]) => leads.filter((l) => (!waitingOnly.value || isWaiting(l)) && (!freeOnly.value || l.free))
-const stageName = (s: Stage) => (te(`crm.stage.${s.code}`) ? t(`crm.stage.${s.code}`) : s.name)
+const stageName = (s: Stage) => (te(`crm.stage.${s.code}`) && !stageRenamed(s.code, s.name) ? t(`crm.stage.${s.code}`) : s.name)
 
 async function load() {
-  if (tab.value === 'analytics') return
+  if (tab.value === 'analytics' || tab.value === 'tasks') return
   const my = ++seq
   loading.value = !board.value || board.value.pipeline.code !== tab.value
   try {
@@ -172,6 +176,7 @@ async function confirmLost(reason: string) {
 }
 
 function onChanged(l: Lead) {
+  tasksView.value?.load()
   const found = findLead(l.id)
   if (found && found.lead.stage_id === l.stage_id) found.col.leads[found.i] = l
   else load()
@@ -205,6 +210,7 @@ function onCardKey(e: KeyboardEvent, l: Lead) {
   <UiTabs v-model="tab" :items="tabs" :label="t('crm.title')" />
 
   <CrmAnalytics v-if="tab === 'analytics'" />
+  <CrmTasks v-else-if="tab === 'tasks'" ref="tasksView" @open="(id) => (openId = id)" />
   <template v-else>
     <div class="toolbar">
       <UiInput v-model="q" type="search" icon="search" :placeholder="t('crm.searchPh')" class="tb-search" />
@@ -218,7 +224,7 @@ function onCardKey(e: KeyboardEvent, l: Lead) {
       </button>
     </div>
 
-    <div class="scroll-x">
+    <div class="scroll-x scroll-top">
       <div v-if="loading" class="kanban"><div v-for="i in 5" :key="i" class="col"><UiSkeleton :lines="5" /></div></div>
       <div v-else-if="board" class="kanban">
         <section
@@ -251,6 +257,8 @@ function onCardKey(e: KeyboardEvent, l: Lead) {
               </div>
               <div v-if="l.free" class="freeline"><UiIcon name="zap" :size="14" />{{ t('nv.lw.free') }}</div>
               <div v-if="l.last_note" class="lnote" :title="l.last_note">{{ l.last_note }}</div>
+              <div v-if="l.task" class="ltask" :class="{ bad: l.task.overdue }"><UiIcon name="task" :size="14" /><span>{{ l.task.title }}</span><b v-if="l.task.due_at">{{ dayLabel(l.task.due_at, locale as Locale, { day: 'numeric', month: 'short' }) }}, {{ hm(l.task.due_at, locale as Locale) }}</b></div>
+              <div v-else-if="l.needs_task" class="ltask bad"><UiIcon name="task" :size="14" /><span>{{ t('nv.lt.none') }}</span></div>
               <div class="r3">
                 <LevelTag v-if="l.level_id" :id="l.level_id" /><span v-else class="muted" style="font-size: 12px">{{ t('crm.noLevel') }}</span>
                 <span class="sp" />
@@ -272,3 +280,10 @@ function onCardKey(e: KeyboardEvent, l: Lead) {
   <LeadDrawer :lead-id="openId" :pipelines="pipelines" @close="openId = null" @changed="onChanged" @removed="onRemoved" />
   <UiPrompt :open="lostMove !== null" :title="t('crm.lostTitle')" :text="t('crm.lostText')" :label="t('crm.lostReason')" reason required :confirm-label="t('crm.markLost')" danger :busy="busy" @update:open="(v) => !v && (lostMove = null)" @confirm="confirmLost" />
 </template>
+
+<style scoped>
+.ltask { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); margin: 0 0 8px; min-width: 0 }
+.ltask span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.ltask b { font-weight: 600; white-space: nowrap }
+.ltask.bad { color: var(--red-ink); font-weight: 600 }
+</style>

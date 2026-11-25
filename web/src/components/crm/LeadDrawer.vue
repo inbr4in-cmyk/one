@@ -2,11 +2,13 @@
 import { useSourceLabel } from '@/composables/useSourceLabel'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { stageRenamed } from '@/utils/stages'
 import { useRouter } from 'vue-router'
 import { UiAvatar, UiButton, UiChip, UiDrawer, UiField, UiIcon, UiInput, UiModal, UiPrompt, UiSegmented, UiSelect, UiSkeleton, UiTextarea } from '@/components/ui'
 import LevelTag from '@/components/students/LevelTag.vue'
 import LinkStudentModal from './LinkStudentModal.vue'
 import TrialPicker from './TrialPicker.vue'
+import LeadTasks from './LeadTasks.vue'
 import { crmApi, type Lead, type LeadDetails, type Pipeline, type Stage } from '@/api/crm'
 import type { Lesson } from '@/api/academics'
 import { ApiError } from '@/api/http'
@@ -46,7 +48,7 @@ const steps = computed(() => stages.value.filter((s) => !s.is_lost))
 const curIdx = computed(() => steps.value.findIndex((s) => s.id === lead.value?.stage_id))
 const canEdit = computed(() => auth.can('crm.edit') && lead.value?.can_edit !== false)
 const stageOptions = computed(() => stages.value.filter((s) => s.code !== 'trial_done').map((s) => ({ value: s.id, label: stageName(s) })))
-const stageName = (s: Stage) => (te(`crm.stage.${s.code}`) ? t(`crm.stage.${s.code}`) : s.name)
+const stageName = (s: Stage) => (te(`crm.stage.${s.code}`) && !stageRenamed(s.code, s.name) ? t(`crm.stage.${s.code}`) : s.name)
 const channel = computed(() => (lead.value?.source === 'instagram' ? 'ig' : lead.value?.source === 'whatsapp' ? 'wa' : undefined))
 
 async function load(id: number) {
@@ -63,6 +65,13 @@ async function load(id: number) {
 function updated(l: Lead) {
   if (d.value) d.value = { ...d.value, lead: l }
   emit('changed', l)
+}
+
+async function tasksChanged() {
+  const l = lead.value
+  if (!l) return
+  d.value = await crmApi.get(l.id).catch(() => d.value)
+  if (lead.value) emit('changed', lead.value)
 }
 
 async function addEvent() {
@@ -332,6 +341,8 @@ watch(() => props.leadId, (id) => id && load(id), { immediate: true })
       <Transition name="fade">
         <TrialPicker v-if="trialOpen" :branch-id="lead.branch_id" :busy="busy" @pick="bookTrial" @individual="bookIndividual" />
       </Transition>
+
+      <LeadTasks :key="`${lead.id}-${lead.stage_id}`" :lead-id="lead.id" :can-edit="canEdit" :closed="!!(stage?.is_won || stage?.is_lost)" @changed="tasksChanged" />
 
       <h4 class="sec-h">{{ t('crm.stageLabel') }}</h4>
       <div v-if="!stage?.is_lost" class="stepper">

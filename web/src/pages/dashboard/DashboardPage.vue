@@ -1,20 +1,17 @@
 <script setup lang="ts">
-import { nowMs } from '@/utils/clock'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { UiButton, UiCard, UiChip, UiEmptyState, UiIcon, UiInput, UiModal, UiSkeleton } from '@/components/ui'
+import { UiButton, UiCard, UiChip, UiEmptyState, UiIcon, UiInput, UiModal, UiSegmented, UiSelect, UiSkeleton } from '@/components/ui'
 import HBars from '@/components/charts/HBars.vue'
 import { financeApi, type Dashboard, type DayReport, type Ratings } from '@/api/finance'
-import { academicsApi, type Lesson } from '@/api/academics'
-import { crmApi, type Lead } from '@/api/crm'
+import { crmApi, type Analytics } from '@/api/crm'
 import { useAuthStore } from '@/stores/auth'
 import { useBranchStore } from '@/stores/branch'
 import { useRefsStore } from '@/stores/refs'
 import { useSourceLabel } from '@/composables/useSourceLabel'
-import { hm, isoDate, money, todayIso, waitLabel, schoolNow } from '@/utils/dates'
+import { money, todayIso, schoolNow } from '@/utils/dates'
 import { num, periodLabel } from '@/utils/period'
 import { formatPhone } from '@/utils/phone'
-import { tone } from '@/utils/levels'
 import type { Locale } from '@/i18n'
 
 const { t, locale } = useI18n()
@@ -26,14 +23,22 @@ const loc = computed(() => locale.value as Locale)
 
 const data = ref<Dashboard | null>(null)
 const ratings = ref<Ratings | null>(null)
-const lessons = ref<Lesson[] | null>(null)
-const stale = ref<Lead[] | null>(null)
+const funnel = ref<Analytics | null>(null)
+/** The report is for one day or for a whole month */
+const mode = ref<'day' | 'month'>('day')
+const month = ref(todayIso().slice(0, 7))
 const failed = ref(false)
 const exporting = ref(false)
 /** The day of the report; the month widgets (sources, ratings) follow the month of that day */
 const day = ref(todayIso())
-const period = computed(() => day.value.slice(0, 7))
+const period = computed(() => (mode.value === 'month' ? month.value : day.value.slice(0, 7)))
 const rep = ref<DayReport | null>(null)
+const monthOptions = computed(() => Array.from({ length: 13 }, (_, i) => {
+  const n = schoolNow()
+  const d = new Date(n.getFullYear(), n.getMonth() - i, 1)
+  const v = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  return { value: v, label: periodLabel(v, loc.value) }
+}))
 type Tile = 'new' | 'contacted' | 'trial' | 'paid' | 'payers' | 'debtors'
 const shown = ref<Tile | null>(null)
 const modal = ref(false)
@@ -53,24 +58,23 @@ async function load() {
   failed.value = false
   const b = { branch_id: branch.filterId, period: period.value }
   if (!day.value || day.value > todayIso()) day.value = todayIso()
-  financeApi.day({ branch_id: branch.filterId, day: day.value }).then((r) => (rep.value = r)).catch(() => (rep.value = null))
-  const today = isoDate(schoolNow())
+  if (!month.value || month.value > todayIso().slice(0, 7)) month.value = todayIso().slice(0, 7)
+  const byMonth = mode.value === 'month'
+  financeApi.day({ branch_id: branch.filterId, ...(byMonth ? { month: month.value } : { day: day.value }) }).then((r) => (rep.value = r)).catch(() => (rep.value = null))
+  if (auth.can('crm.view')) {
+    const [y, m] = month.value.split('-').map(Number)
+    const last = `${month.value}-${String(new Date(y ?? 2026, m ?? 1, 0).getDate()).padStart(2, '0')}`
+    const from = byMonth ? `${month.value}-01` : day.value
+    const to = byMonth ? (last > todayIso() ? todayIso() : last) : day.value
+    crmApi.analytics({ date_from: from, date_to: to, branch_id: branch.filterId }).then((r) => (funnel.value = r)).catch(() => (funnel.value = null))
+  }
   const [d, r] = await Promise.allSettled([financeApi.dashboard(b), financeApi.ratings(b)])
   if (d.status === 'fulfilled') data.value = d.value
   else failed.value = true
   ratings.value = r.status === 'fulfilled' ? r.value : null
-  if (auth.can('schedule.view')) {
-    lessons.value = await academicsApi.lessons({ from: today, to: today, branch_id: branch.filterId }).catch(() => [])
-  }
-  if (auth.can('crm.view')) {
-    const board = await crmApi.board({ pipeline: 'main', branch_id: branch.filterId }).catch(() => null)
-    stale.value = (board?.columns.flatMap((c) => c.leads) ?? [])
-      .filter((l) => l.waiting_min !== null && l.waiting_min > 30)
-      .sort((a, b) => (b.waiting_min ?? 0) - (a.waiting_min ?? 0))
-  }
 }
 onMounted(load)
-watch([() => branch.filterId, day], load)
+watch([() => branch.filterId, day, month, mode], load)
 
 const hello = computed(() => {
   const h = schoolNow().getHours()
@@ -82,17 +86,17 @@ const todayLabel = computed(() => {
   return s.charAt(0).toUpperCase() + s.slice(1)
 })
 const scope = computed(() => (branch.filterId === null ? t('branch.all') : branch.current.name))
-const units = computed(() => ({ m: t('time.min'), h: t('time.h'), d: t('time.d') }))
 
 const sources = computed(() => Object.entries(data.value?.leads_by_source ?? {})
   .map(([k, v]) => ({ key: k, label: srcLabel(k), value: v, icon: SRC[k]?.icon ?? 'user', iconCls: SRC[k]?.cls ?? 'call' }))
   .sort((a, b) => b.value - a.value))
-const upcoming = computed(() => {
-  const now = nowMs()
-  return (lessons.value ?? []).filter((l) => l.status !== 'cancelled' && new Date(l.ends_at).getTime() > now).slice(0, 5)
-})
 const teacherRows = computed(() => (ratings.value?.teachers ?? []).slice(0, 6))
-const salesRows = computed(() => (ratings.value?.sales ?? []).slice(0, 6))
+/** Sales rating: every manager's leads of the period by funnel stage; who sold more stands higher */
+const salesRows = computed(() => {
+  const st = funnel.value?.stages ?? []
+  const won = st.findIndex((x) => x.is_won)
+  return [...(funnel.value?.managers ?? [])].sort((a, b) => (b.counts[won] ?? 0) - (a.counts[won] ?? 0) || b.total - a.total)
+})
 
 async function exportExcel() {
   exporting.value = true
@@ -110,7 +114,9 @@ async function exportExcel() {
   <div class="ph">
     <div><h1>{{ hello }}</h1><p>{{ todayLabel }} · {{ t('dash.summary', { scope }) }}</p></div>
     <span class="sp" />
-    <UiInput v-model="day" type="date" :max="todayIso()" :aria-label="t('nv.dd.day')" style="width: 170px" />
+    <UiSegmented v-model="mode" :options="[{ value: 'day', label: t('nv.dd.byDay') }, { value: 'month', label: t('nv.dd.byMonth') }]" :label="t('nv.dd.day')" size="sm" />
+    <UiInput v-if="mode === 'day'" v-model="day" type="date" :max="todayIso()" :aria-label="t('nv.dd.day')" style="width: 170px" />
+    <UiSelect v-else v-model="month" :options="monthOptions" :label="t('nv.dd.byMonth')" />
     <UiButton v-if="auth.can('finance.export')" icon="file" :loading="exporting" @click="exportExcel">{{ t('dash.excel') }}</UiButton>
   </div>
 
@@ -156,36 +162,7 @@ async function exportExcel() {
       </UiCard>
     </div>
 
-    <div class="grid dash-b">
-      <UiCard v-if="auth.can('schedule.view')" :title="t('dash.upcoming')">
-        <template #actions><UiButton size="sm" variant="ghost" icon-end="arrow" to="/schedule">{{ t('nav.schedule') }}</UiButton></template>
-        <UiSkeleton v-if="!lessons" :lines="4" />
-        <template v-else-if="upcoming.length">
-          <RouterLink v-for="l in upcoming" :key="l.id" :to="auth.can('attendance.view') ? `/attendance/${l.id}` : '/schedule'" class="list-row">
-            <span class="t num">{{ hm(l.starts_at, loc) }}</span>
-            <div class="grow"><b>{{ l.group_name ?? (l.kind === 'support' ? 'Support · ' + (l.topic ?? '') : t('schedule.individual')) }}<template v-if="refs.level(l.level_id)"> · {{ refs.level(l.level_id)?.name }}</template></b><span>{{ l.teacher_name }} · {{ l.room_name }}<template v-if="l.trials"> · {{ t('schedule.trials', { n: l.trials }) }}</template></span></div>
-            <span v-if="refs.level(l.level_id)" class="lv" :style="{ '--c': tone(refs.level(l.level_id)?.color) }">{{ refs.level(l.level_id)?.code }}</span>
-          </RouterLink>
-        </template>
-        <p v-else class="muted m0">{{ t('dash.noLessons') }}</p>
-      </UiCard>
-
-      <UiCard v-if="auth.can('crm.view')" :title="t('dash.stale')">
-        <template #actions>
-          <UiChip v-if="stale?.length" tone="red" small>{{ stale.length }}</UiChip>
-          <UiButton size="sm" variant="ghost" icon-end="arrow" to="/crm">{{ t('dash.toCrm') }}</UiButton>
-        </template>
-        <UiSkeleton v-if="!stale" :lines="4" />
-        <template v-else-if="stale.length">
-          <RouterLink v-for="l in stale.slice(0, 5)" :key="l.id" :to="{ path: '/crm', query: { lead: l.id } }" class="list-row">
-            <span class="srcico" :class="SRC[l.source]?.cls ?? 'call'"><svg><use :href="`#i-${SRC[l.source]?.icon ?? 'user'}`" /></svg></span>
-            <div class="grow"><b>{{ l.full_name }}</b><span>{{ l.owner_name ?? t('crm.unassigned') }}</span></div>
-            <span class="late"><UiIcon name="clock" :size="16" />{{ waitLabel(l.waiting_min ?? 0, units) }}</span>
-          </RouterLink>
-        </template>
-        <p v-else class="muted m0">{{ t('dash.noStale') }}</p>
-      </UiCard>
-
+    <div class="grid">
       <UiCard v-if="ratings" :title="t('dash.teachers')" flush>
         <template #actions><span class="muted" style="font-size: 12px">{{ periodLabel(ratings.period, loc) }}</span></template>
         <div v-if="teacherRows.length" class="scroll-x">
@@ -199,18 +176,19 @@ async function exportExcel() {
         <p v-else class="muted m0 card-pad">{{ t('dash.noRatings') }}</p>
       </UiCard>
 
-      <UiCard v-if="ratings" :title="t('dash.sales')" flush>
-        <div v-if="salesRows.length" class="scroll-x">
-          <table class="tbl">
-            <thead><tr><th>{{ t('dash.r.manager') }}</th><th class="r">{{ t('dash.r.trials') }}</th><th class="r">{{ t('dash.r.salesN') }}</th><th class="r">{{ t('dash.r.returns') }}</th></tr></thead>
-            <tbody class="num">
-              <tr v-for="(r, i) in salesRows" :key="r.user_id"><td><span class="rank-n" :class="{ g: i < 3 }">{{ i + 1 }}</span>{{ r.full_name }}</td><td class="r">{{ r.trial_visit ?? 0 }}</td><td class="r">{{ r.sale ?? 0 }}</td><td class="r">{{ r.return ?? 0 }}</td></tr>
-            </tbody>
-          </table>
-        </div>
-        <p v-else class="muted m0 card-pad">{{ t('dash.noSales') }}</p>
-      </UiCard>
     </div>
+
+    <UiCard v-if="funnel" :title="t('dash.sales')" flush style="margin-top: 16px">
+      <div v-if="salesRows.length" class="scroll-x">
+        <table class="tbl dd-sales">
+          <thead><tr><th>{{ t('dash.r.manager') }}</th><th v-for="st in funnel.stages" :key="st.id" class="r">{{ st.name }}</th></tr></thead>
+          <tbody class="num">
+            <tr v-for="(r, i) in salesRows" :key="r.user_id ?? 0"><td><span class="rank-n" :class="{ g: i < 3 && r.user_id }">{{ i + 1 }}</span>{{ r.name ?? t('crm.unassigned') }}</td><td v-for="(n, j) in r.counts" :key="j" class="r">{{ n }}</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p v-else class="muted m0 card-pad">{{ t('dash.noSales') }}</p>
+    </UiCard>
   </template>
 
   <UiModal v-model:open="modal" :title="shown ? (shown === 'debtors' ? t('dash.k.debtors') : t(`nv.dd.${shown}`)) : ''">
@@ -245,6 +223,8 @@ async function exportExcel() {
 .dd-tile { text-align: left; font: inherit; color: inherit; cursor: pointer }
 .dd-tile:hover { border-color: var(--navy-600) }
 .dd-more { font-size: 12px }
+.dd-sales { min-width: 820px }
+.dd-sales th { white-space: nowrap }
 .kpi-split { display: flex; gap: 18px }
 .kpi-link { display: grid; color: inherit; text-decoration: none; border-radius: 8px }
 .kpi-link span { font-size: 12px; color: var(--muted) }
