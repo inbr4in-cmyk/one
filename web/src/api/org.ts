@@ -20,6 +20,16 @@ export interface Room {
   teacher_rate?: number | null
 }
 
+/** One lesson of a level's plan */
+export interface PlanRow {
+  id: number
+  no: number
+  month: number
+  num: number
+  title: string
+  kind: 'lesson' | 'progress_test' | 'final_test'
+}
+
 export type BranchIn = Omit<Branch, 'id'>
 export type RoomIn = Omit<Room, 'id' | 'branch_id'>
 
@@ -35,6 +45,7 @@ export interface Level {
   next_level_id: number | null
   is_kids: boolean
   teacher_rate?: number | null
+  plan_rows?: number
 }
 
 export interface LevelIn {
@@ -87,6 +98,8 @@ export const orgApi = {
   createLevel: (body: LevelIn) => http.post<Level>('/levels', body),
   updateLevel: (id: number, body: LevelIn) => http.patch<Level>(`/levels/${id}`, body),
   archiveLevel: (id: number) => http.post<void>(`/levels/${id}/archive`),
+  levelPlan: (id: number) => http.get<PlanRow[]>(`/levels/${id}/plan`),
+  saveLevelPlan: (id: number, rows: { id: number | null; month: number; title: string; kind: PlanRow['kind'] }[]) => http.put<PlanRow[]>(`/levels/${id}/plan`, { rows }),
   directory: (p: { role?: string; branch_id?: number } = {}) => http.get<DirectoryEntry[]>(`/staff-directory${qs(p)}`, { silent: true }),
   staff: (p: { role?: string; branch_id?: number; q?: string; limit?: number } = {}) =>
     http.get<Page<StaffMember>>(`/staff${qs({ limit: 200, ...p })}`, { silent: true }),

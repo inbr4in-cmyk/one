@@ -57,6 +57,8 @@ const teachers = useTeachers()
 
 /** Course format filter: all, group, duo, individual */
 const kind = keptRef<LessonKind | ''>('schedule.kind', () => '')
+/** The level's plan on the lesson: «12 · Progress Test 1» */
+const planLine = (l: Lesson) => `${l.plan_no ? l.plan_no + ' · ' : ''}${l.plan_title ?? ''}`
 const AUTO_CANCEL = ['Расписание изменено', 'Группа закрыта', 'Дубликат урока']
 /** Status seen right on the lesson: moved away, cancelled, moved here, substitute teacher. */
 function badge(l: Lesson): { text: string; tone: string; tip?: string } | null {
@@ -304,7 +306,7 @@ const nConflicts = computed(() => shown.value.filter((l) => conflicts.value.has(
       <TransitionGroup v-else name="fade" tag="div">
         <button v-for="l in dayLessons" :key="l.id" type="button" class="agenda" :class="{ conflict: conflicts.has(l.id), 'has-trial': l.trials }" :style="{ '--c': levelColor(l) }" @click="selected = l">
           <span class="tm num">{{ hm(l.starts_at, loc) }}<small>{{ hm(l.ends_at, loc) }}</small></span>
-          <span class="grow"><b><UiIcon :name="KIND_ICON[kindOf(l)]" :size="14" class="kind-ico" :label="t(`kind.${kindOf(l)}`)" />{{ titleOf(l) }}<span v-if="membersOf(l) !== undefined" class="mem" :title="t('schedule.members', { n: membersOf(l) })"><UiIcon name="users" :size="14" />{{ membersOf(l) }}</span></b><small>{{ l.room_name }} · {{ l.teacher_name }}<template v-if="l.actual_teacher_id"> · {{ t('schedule.sub') }}</template></small></span>
+          <span class="grow"><b><UiIcon :name="KIND_ICON[kindOf(l)]" :size="14" class="kind-ico" :label="t(`kind.${kindOf(l)}`)" />{{ titleOf(l) }}<span v-if="membersOf(l) !== undefined" class="mem" :title="t('schedule.members', { n: membersOf(l) })"><UiIcon name="users" :size="14" />{{ membersOf(l) }}</span></b><small>{{ l.room_name }} · {{ l.teacher_name }}<template v-if="l.actual_teacher_id"> · {{ t('schedule.sub') }}</template></small><small v-if="l.plan_title" class="wl-plan" :class="{ test: l.plan_kind !== 'lesson', guess: l.plan_guess }">{{ planLine(l) }}</small></span>
           <span v-if="badge(l)" class="chip xs" :class="badge(l)!.tone" :title="badge(l)!.tip">{{ badge(l)!.text }}</span>
           <span v-if="conflicts.has(l.id)" class="chip red xs">{{ t('schedule.conflictShort') }}</span>
           <span v-else-if="l.trials" class="chip red xs">{{ t('schedule.trial') }}</span>
@@ -338,6 +340,7 @@ const nConflicts = computed(() => shown.value.filter((l) => conflicts.value.has(
                   <b><UiIcon :name="KIND_ICON[kindOf(l)]" :size="14" class="kind-ico" :label="t(`kind.${kindOf(l)}`)" />{{ titleOf(l) }}</b>
                   <span v-if="membersOf(l) !== undefined" class="wl-n">{{ membersOf(l) }}<template v-if="capacityOf(l)">/{{ capacityOf(l) }}</template></span>
                   <small>{{ l.teacher_name }}</small>
+                  <small v-if="l.plan_title" class="wl-plan" :class="{ test: l.plan_kind !== 'lesson', guess: l.plan_guess }" :title="l.plan_title">{{ planLine(l) }}</small>
                   <span v-if="badge(l)" class="chip xs ls-b" :class="badge(l)!.tone" :title="badge(l)!.tip">{{ badge(l)!.text }}</span>
                 </button>
                 <button v-if="auth.can('schedule.create') && columns[dayIdx]" type="button" class="wl-add" :aria-label="t('schedule.addHere')" :title="t('schedule.addHere')" @click="newAt(columns[dayIdx]!.d, sl, r.id)">+</button>
@@ -376,6 +379,7 @@ const nConflicts = computed(() => shown.value.filter((l) => conflicts.value.has(
                   <b><UiIcon :name="KIND_ICON[kindOf(l)]" :size="14" class="kind-ico" :label="t(`kind.${kindOf(l)}`)" />{{ titleOf(l) }}</b>
                   <span v-if="membersOf(l) !== undefined" class="wl-n" :title="t('schedule.members', { n: membersOf(l) })">{{ membersOf(l) }}<template v-if="capacityOf(l)">/{{ capacityOf(l) }}</template></span>
                   <small>{{ l.room_name }} · {{ l.teacher_name }}</small>
+                  <small v-if="l.plan_title" class="wl-plan" :class="{ test: l.plan_kind !== 'lesson', guess: l.plan_guess }" :title="l.plan_title">{{ planLine(l) }}</small>
                   <span v-if="badge(l)" class="chip xs ls-b" :class="badge(l)!.tone" :title="badge(l)!.tip">{{ badge(l)!.text }}</span>
                   <span v-if="conflicts.has(l.id)" class="chip red xs">{{ t('schedule.conflictShort') }}</span>
                   <span v-else-if="l.trials" class="chip red xs">{{ t('schedule.trial') }}</span>

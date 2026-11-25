@@ -94,6 +94,11 @@ export interface Lesson {
   moved_to_id?: number | null
   moved_to_at?: string | null
   frozen?: boolean
+  plan_item_id?: number | null
+  plan_no?: number | null
+  plan_title?: string | null
+  plan_kind?: string | null
+  plan_guess?: boolean
 }
 
 export type AttendanceStatus = 'present' | 'late' | 'absent' | 'excused'
@@ -117,6 +122,7 @@ export interface Roster {
   can_edit: boolean
   needs_reason: boolean
   rows: RosterRow[]
+  plan?: { id: number; no: number; month: number; num: number; title: string; kind: string }[]
 }
 
 export interface MarkIn {
@@ -200,7 +206,7 @@ export const academicsApi = {
     http.post<Lesson>(`/lessons/${id}/move`, body, { silent: true }),
   substitute: (id: number, teacher_id: number) => http.post<Lesson>(`/lessons/${id}/substitute`, { teacher_id }, { silent: true }),
   roster: (lessonId: number) => http.get<Roster>(`/lessons/${lessonId}/attendance`),
-  mark: (lessonId: number, body: { marks: MarkIn[]; reason?: string | null; topic?: string | null }) =>
+  mark: (lessonId: number, body: { marks: MarkIn[]; reason?: string | null; topic?: string | null; plan_item_id?: number | null }) =>
     http.put<Roster>(`/lessons/${lessonId}/attendance`, body),
   homework: (groupId: number) => http.get<Homework[]>(`/groups/${groupId}/homework`, { silent: true }),
   addHomework: (groupId: number, body: Partial<HomeworkIn> & { title: string }) =>

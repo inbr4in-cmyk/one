@@ -43,3 +43,16 @@ class Level(IdMixin, TimestampMixin, ArchiveMixin, Base):
     is_kids: Mapped[bool] = mapped_column(Boolean, default=False)
     # Teacher pay per held lesson of this course in any format (group, duo, individual); None = the usual rates.
     teacher_rate: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class PlanItem(IdMixin, TimestampMixin, ArchiveMixin, Base):
+    """One lesson of a level's plan («Справочники» → уровень → «План»). Removed items are archived: held lessons
+    keep pointing at what was taught."""
+    __tablename__ = "level_plan_items"
+
+    level_id: Mapped[int] = fk("levels.id", index=True)
+    position: Mapped[int] = mapped_column(Integer)
+    month: Mapped[int] = mapped_column(Integer, default=1)
+    title: Mapped[str] = mapped_column(String(500))
+    # lesson | progress_test | final_test
+    kind: Mapped[str] = mapped_column(String(16), default="lesson")

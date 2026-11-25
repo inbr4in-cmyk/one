@@ -79,6 +79,7 @@ class LevelOut(ORM):
     is_kids: bool
     teacher_rate: int | None = None
     archived_at: datetime | None
+    plan_rows: int = 0  # lessons in the level's plan
 
 
 @router.get("/branches", response_model=list[BranchOut])
@@ -180,8 +181,17 @@ async def archive_room(room_id: int, db: DB, actor: Actor = require("branches", 
 
 @router.get("/levels", response_model=list[LevelOut])
 async def levels(db: DB, actor: CurrentActor) -> list[LevelOut]:
+    from app.models import PlanItem
+
     rows = await db.scalars(select(Level).where(Level.archived_at.is_(None)).order_by(Level.order))
-    return [LevelOut.model_validate(lv) for lv in rows]
+    n = dict((await db.execute(select(PlanItem.level_id, func.count()).where(PlanItem.archived_at.is_(None))
+                               .group_by(PlanItem.level_id))).all())
+    out = []
+    for lv in rows:
+        o = LevelOut.model_validate(lv)
+        o.plan_rows = n.get(lv.id, 0)
+        out.append(o)
+    return out
 
 
 @router.post("/levels", response_model=LevelOut, status_code=201)
@@ -217,6 +227,40 @@ async def update_level(level_id: int, body: LevelIn, db: DB, actor: Actor = requ
     await db.commit()
     await db.refresh(lv)
     return LevelOut.model_validate(lv)
+
+
+class PlanRowIn(In):
+    id: int | None = None
+    month: int = Field(default=1, ge=1, le=24)
+    title: str = Field(min_length=1, max_length=500)
+    kind: str = Field(default="lesson", pattern="^(lesson|progress_test|final_test)$")
+
+
+class PlanIn(In):
+    rows: list[PlanRowIn] = Field(max_length=400)
+
+
+@router.get("/levels/{level_id}/plan")
+async def level_plan(level_id: int, db: DB, actor: CurrentActor) -> list[dict]:
+    """The level's lesson plan, in order: what is taught at each lesson."""
+    from app.services import plan
+
+    return plan.numbered(await plan.items(db, level_id))
+
+
+@router.put("/levels/{level_id}/plan")
+async def save_level_plan(level_id: int, body: PlanIn, db: DB, actor: Actor = require("settings", "edit")) -> list[dict]:
+    from app.services import plan
+
+    lv = await db.get(Level, level_id)
+    if lv is None:
+        raise not_found("Уровень")
+    before = len(await plan.items(db, lv.id))
+    await plan.replace(db, lv.id, [r.model_dump() for r in body.rows])
+    await write_audit(db, actor_id=actor.id, action="level.plan", entity="level", entity_id=lv.id, ip=actor.ip,
+                      before={"rows": before}, after={"rows": len(body.rows)})
+    await db.commit()
+    return plan.numbered(await plan.items(db, lv.id))
 
 
 @router.post("/levels/{level_id}/archive", status_code=204)

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LevelPlanModal from '@/components/settings/LevelPlanModal.vue'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { UiButton, UiCard, UiEmptyState, UiField, UiInput, UiModal, UiPrompt, UiSelect, UiSkeleton, UiTabs } from '@/components/ui'
@@ -98,6 +99,9 @@ async function saveSrc() {
 }
 
 /* ---------- levels and prices ---------- */
+const planOf = ref<Level | null>(null)
+const planOpen = ref(false)
+const planSaved = (id: number, n: number) => (refs.levels = refs.levels.map((l) => (l.id === id ? { ...l, plan_rows: n } : l)))
 const levelModal = ref(false)
 const levelId = ref<number | null>(null)
 const lf = reactive({ rate: '', name: '', lesson_price: '', track: 'adults' as Level['track'], duration_months: '3', color: '#1A6FD1', next_level_id: 0 })
@@ -382,14 +386,15 @@ watch(tab, loadTab)
   <UiCard v-else-if="tab === 'levels'" flush>
     <UiEmptyState v-if="!refs.levels.length" icon="level" :title="t('dict.empty')" />
     <div v-else class="scroll-x">
-      <table class="tbl" style="min-width: 560px">
-        <thead><tr><th>{{ t('dict.level') }}</th><th>{{ t('dict.trackLabel') }}</th><th class="r">{{ t('dict.price') }}</th><th class="r">{{ t('dict.months') }}</th><th class="r"><span class="sr">{{ t('books.actions') }}</span></th></tr></thead>
+      <table class="tbl" style="min-width: 700px">
+        <thead><tr><th>{{ t('dict.level') }}</th><th>{{ t('dict.trackLabel') }}</th><th class="r">{{ t('dict.price') }}</th><th class="r">{{ t('dict.months') }}</th><th>{{ t('nv.plan.title') }}</th><th class="r"><span class="sr">{{ t('books.actions') }}</span></th></tr></thead>
         <tbody>
           <tr v-for="l in refs.levels" :key="l.id">
             <td><span class="dot" :style="{ background: l.color }" /> <b>{{ l.name }}</b></td>
             <td>{{ t(`dict.track.${l.track}`) }}</td>
             <td class="r num">{{ money(l.lesson_price, loc) }}<span v-if="l.teacher_rate" class="chip xs" style="margin-left: 8px">{{ t('dict.roomRateChip', { n: money(l.teacher_rate, loc) }) }}</span></td>
             <td class="r num">{{ l.duration_months }}</td>
+            <td><UiButton size="sm" icon="notebook" @click="planOf = l; planOpen = true">{{ l.plan_rows ? t('nv.plan.count', { n: l.plan_rows }) : t('nv.plan.fill') }}</UiButton></td>
             <td class="r">
               <div class="row-acts nowrap">
                 <UiButton size="sm" variant="ghost" icon="edit" :aria-label="`${t('common.edit')}: ${l.name}`" @click="openLevel(l)" />
@@ -530,6 +535,7 @@ watch(tab, loadTab)
     </template>
   </UiModal>
 
+  <LevelPlanModal v-model:open="planOpen" :level="planOf" @saved="planSaved" />
   <UiModal v-model:open="levelModal" :title="levelId ? t('dict.editLevel') : t('dict.addLevel')">
     <form id="lvl-form" class="stack" @submit.prevent="saveLevel">
       <UiInput v-model="lf.name" :label="t('dict.levelName')" :placeholder="t('dict.levelPh')" :maxlength="80" autofocus />

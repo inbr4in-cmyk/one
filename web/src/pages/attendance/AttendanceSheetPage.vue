@@ -4,7 +4,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import { onBeforeRouteLeave } from 'vue-router'
-import { UiAvatar, UiButton, UiChip, UiEmptyState, UiIcon, UiInput, UiSkeleton, UiTextarea } from '@/components/ui'
+import { UiAvatar, UiButton, UiChip, UiEmptyState, UiField, UiIcon, UiInput, UiSelect, UiSkeleton, UiTextarea } from '@/components/ui'
 import { academicsApi, type AttendanceStatus, type Homework, type Roster, type RosterRow } from '@/api/academics'
 import HomeworkDrawer from '@/components/homework/HomeworkDrawer.vue'
 import HomeworkModal from '@/components/homework/HomeworkModal.vue'
@@ -38,6 +38,9 @@ const loc = computed(() => locale.value as Locale)
 const roster = ref<Roster | null>(null)
 const rows = ref<Row[]>([])
 const topic = ref('')
+/** the lesson of the level's plan that was taught: required when the level has a plan */
+const planId = ref(0)
+const planOptions = computed(() => [{ value: 0, label: t('nv.plan.pick') }, ...(roster.value?.plan ?? []).map((p) => ({ value: p.id, label: `${t('nv.plan.monthNo', { m: p.month, n: p.num })} · ${p.title}` }))])
 const reason = ref('')
 const hwTitle = ref('')
 /** Homework given at this lesson (the group's list filtered by lesson) */
@@ -72,6 +75,7 @@ function fill(r: Roster) {
   roster.value = r
   rows.value = r.rows.map((x) => ({ ...x, key: x.student_id ? `s${x.student_id}` : `l${x.lead_id}`, open: false }))
   topic.value = r.lesson.topic ?? ''
+  planId.value = r.plan?.some((p) => p.id === r.lesson.plan_item_id) ? (r.lesson.plan_item_id as number) : 0
   dirty.value = false
 }
 
@@ -125,6 +129,10 @@ async function save() {
     error.value = t('attendance.reasonNeeded')
     return
   }
+  if (roster.value?.plan?.length && !planId.value) {
+    error.value = t('nv.plan.required')
+    return
+  }
   const marks = rows.value.filter((r) => r.status).map((r) => ({
     student_id: r.student_id, lead_id: r.lead_id, status: r.status as AttendanceStatus, grade: r.grade, comment: r.comment?.trim() || null, stars: r.stars,
   }))
@@ -134,7 +142,7 @@ async function save() {
   }
   busy.value = true
   try {
-    fill(await academicsApi.mark(id.value, { marks, reason: reason.value.trim() || null, topic: topic.value.trim() || null }))
+    fill(await academicsApi.mark(id.value, { marks, reason: reason.value.trim() || null, topic: topic.value.trim() || null, plan_item_id: planId.value || null }))
     if (hwTitle.value.trim() && lesson.value?.group_id && auth.can('homework.manage')) {
       try {
         await academicsApi.addHomework(lesson.value.group_id, { title: hwTitle.value.trim(), lesson_id: id.value })
@@ -234,6 +242,7 @@ onBeforeRouteLeave(() => (dirty.value && editable.value ? window.confirm(t('atte
       </div>
 
       <div v-if="editable" class="att-extra-form">
+        <UiField v-if="roster.plan?.length" :label="t('nv.plan.taught')"><UiSelect v-model="planId" :options="planOptions" :label="t('nv.plan.taught')" block @update:model-value="dirty = true" /></UiField>
         <UiInput v-model="topic" :label="t('attendance.topic')" :placeholder="t('attendance.topicPh')" @update:model-value="dirty = true" />
         <div v-if="auth.can('homework.manage') && lesson.group_id && !lessonHw.length" class="hw-quick">
           <UiInput v-model="hwTitle" :label="t('attendance.hw')" :placeholder="t('attendance.hwPh')" />

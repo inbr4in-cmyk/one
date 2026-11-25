@@ -34,7 +34,7 @@ from app.modules.academics import schedule as sched
 from app.modules.students.router import is_frozen_on
 from app.modules.students.scope import get_student_scoped
 from app.services import balance as bal
-from app.services import absences, chats, crm, retention
+from app.services import absences, chats, crm, plan, retention
 from app.services.clock import at_local, end_of_local_day, local, now, today
 from app.services.coins import award_auto
 from app.services.messaging import notify_guardians
@@ -589,6 +589,12 @@ class LessonOut(ORM):
     moved_to_at: datetime | None = None
     # individual / duo lesson whose every student is frozen that day: shown «Заморожено», attendance closed
     frozen: bool = False
+    # level plan: what is taught; plan_guess = not picked by the teacher yet, the next row by the group's progress
+    plan_item_id: int | None = None
+    plan_no: int | None = None
+    plan_title: str | None = None
+    plan_kind: str | None = None
+    plan_guess: bool = False
 
 
 async def _frozen_lessons(db: DB, lessons: list[Lesson]) -> set[int]:
@@ -656,9 +662,13 @@ async def _lesson_outs(db: DB, lessons: list[Lesson]) -> list[LessonOut]:
     went = {old: (nid, at) for old, nid, at in (await db.execute(
         select(Lesson.moved_from_id, Lesson.id, Lesson.starts_at).where(Lesson.moved_from_id.in_(gone_ids)))).all()} if gone_ids else {}
     frozen = await _frozen_lessons(db, lessons)
+    planned = await plan.forecast(db, lessons)
     out = []
     for x in lessons:
         o = LessonOut.model_validate(x)
+        if x.id in planned:
+            row, o.plan_guess = planned[x.id]
+            o.plan_item_id, o.plan_no, o.plan_title, o.plan_kind = row["id"], row["no"] or None, row["title"], row["kind"]
         o.frozen = x.id in frozen
         o.moved_from_at = came.get(x.moved_from_id) if x.moved_from_id else None
         if x.id in went:
@@ -963,6 +973,20 @@ async def substitute(lesson_id: int, body: SubstituteIn, db: DB, actor: Actor = 
     return (await _lesson_outs(db, [lesson]))[0]
 
 
+async def _test_ahead(db: DB, lesson: Lesson, group: Group | None, row) -> None:
+    """The next lesson by the plan is a progress or final test: the methodists are told to prepare it."""
+    if group is None or row.kind in plan.TESTS:
+        return
+    nxt = await plan.next_row(db, row)
+    if nxt is None or nxt.kind not in plan.TESTS:
+        return
+    teacher = await db.get(User, lesson.actual_teacher_id or lesson.teacher_id)
+    for uid in await retention.methodists(db, lesson.branch_id):
+        await crm.alert(db, uid, "attendance", f"{group.name}: следующий урок {nxt.title}",
+                        body=f"Создайте тест и дайте доступ учителю: {teacher.full_name if teacher else ''}.",
+                        link=f"/groups/{group.id}")
+
+
 # ---------- attendance (ТЗ 7.1) ----------
 class RosterRow(In):
     student_id: int | None
@@ -983,6 +1007,8 @@ class Roster(BaseModel):
     can_edit: bool
     needs_reason: bool
     rows: list[RosterRow]
+    # the level's plan: the teacher must pick what was taught (empty = the level has no plan, nothing to pick)
+    plan: list[dict] = []
 
 
 async def _edit_rights(db: DB, actor: Actor, lesson: Lesson) -> tuple[bool, bool]:
@@ -1040,7 +1066,8 @@ async def roster(lesson_id: int, db: DB, actor: Actor = require("attendance", "v
                               status=a.status if a else None, grade=None, comment=a.comment if a else None, stars=0,
                               lessons_left=None))
     can_edit, needs_reason = await _edit_rights(db, actor, lesson)
-    return Roster(lesson=(await _lesson_outs(db, [lesson]))[0], can_edit=can_edit, needs_reason=needs_reason, rows=rows)
+    return Roster(lesson=(await _lesson_outs(db, [lesson]))[0], can_edit=can_edit, needs_reason=needs_reason, rows=rows,
+                  plan=plan.numbered(await plan.items(db, lesson.level_id)) if plan.plannable(lesson) else [])
 
 
 class MarkIn(In):
@@ -1056,6 +1083,7 @@ class MarksIn(In):
     marks: list[MarkIn]
     reason: str | None = Field(default=None, max_length=255)
     topic: str | None = Field(default=None, max_length=255)
+    plan_item_id: int | None = Field(default=None, ge=1)
 
 
 MISSED = (AttendanceStatus.ABSENT, AttendanceStatus.EXCUSED)
@@ -1126,6 +1154,16 @@ async def mark(lesson_id: int, body: MarksIn, db: DB, actor: Actor = require("at
                            "это дубликат урока, отмените его.")
     if lesson.attendance_marked_at is None and lesson.id in await _frozen_lessons(db, [lesson]):
         raise conflict("Ученик на заморозке: посещаемость этого урока закрыта.")
+    # The level has a plan: the teacher says which lesson of it was taught. Required, once picked it stays.
+    plan_row = None
+    if plan.plannable(lesson):
+        rows = await plan.items(db, lesson.level_id)
+        if rows:
+            plan_row = next((r for r in rows if r.id == body.plan_item_id), None)
+            if body.plan_item_id and plan_row is None:
+                raise bad_request("Этого урока нет в плане уровня")
+            if plan_row is None and lesson.plan_item_id is None:
+                raise bad_request("Выберите, какой урок по плану проведён")
     allowed_students = {r.student_id for r in (await roster(lesson.id, db, actor)).rows if r.student_id}
     allowed_leads = set((await db.scalars(select(Lead.id).where(Lead.trial_lesson_id == lesson.id))).all())
     changes = []
@@ -1199,6 +1237,9 @@ async def mark(lesson_id: int, body: MarksIn, db: DB, actor: Actor = require("at
     if body.topic:
         lesson.topic = body.topic
     await db.flush()
+    if plan_row is not None and lesson.plan_item_id != plan_row.id:
+        lesson.plan_item_id = plan_row.id
+        await _test_ahead(db, lesson, group, plan_row)
     # Lesson held → teacher pay.
     n = await accrue_for_lesson(db, lesson, actor.id)
     for lid in other_lessons - {lesson.id}:

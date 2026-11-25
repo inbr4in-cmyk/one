@@ -160,6 +160,8 @@ class Lesson(IdMixin, TimestampMixin, Base):
     moved_from_id: Mapped[int | None] = fk("lessons.id", nullable=True)
     attendance_marked_at: Mapped[DTN]
     topic: Mapped[StrN]
+    # what was taught by the level's plan: the teacher picks it when marking attendance
+    plan_item_id: Mapped[int | None] = fk("level_plan_items.id", nullable=True)
     # Support lesson: a one-off make-up lesson of a teacher with a few picked students (lesson_students), or none
     is_support: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     # Individual trial lesson created for a lead from the CRM (the lead is its trial visitor)

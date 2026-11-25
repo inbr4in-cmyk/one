@@ -175,6 +175,7 @@ export default {
     memberSinceEdit: 'Изменить дату «в группе с»',
     workAs: { title: 'Работать как', all: 'Все мои роли' },
     ls: { movedTo: 'Перенесён на {d}', movedFrom: 'Перенос с {d}', cancelled: 'Отменён', sub: 'Замена', movedToFull: 'Урок перенесён на {d}. Посещаемость отмечается там.', movedFromFull: 'Перенесён с {d}' },
+    plan: { title: 'План', fill: 'Заполнить', count: 'Уроков: {n}', none: 'План пока пуст', month: 'Месяц', what: 'Что проходят', type: 'Тип', add: 'Добавить урок', up: 'Выше', down: 'Ниже', empty: 'Заполните все уроки или удалите пустые', kind: { lesson: 'Урок', progress_test: 'Пробный тест', final_test: 'Финальный тест' }, pick: 'Выберите урок', taught: 'Урок по плану', required: 'Выберите, какой урок по плану проведён', monthNo: 'Месяц {m}, урок {n}', lessonNo: 'Урок {n}' },
     finishedOn: 'Дата завершения',
     frozen: 'Заморожено',
     frozenFull: 'Ученик на заморозке. Посещаемость закрыта.',

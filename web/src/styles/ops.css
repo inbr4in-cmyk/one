@@ -226,3 +226,6 @@ button.list-row:hover{background:var(--navy-50)}
 .backbtn:hover{background:var(--navy-50)}
 @media (max-width:820px){.backbtn span{display:none}.backbtn{padding:0 10px}}
 .chip.frozen-b{background:color-mix(in srgb,var(--info) 16%,var(--surface));color:var(--info)}
+.wl-plan{display:block;margin-top:2px;font-size:11px;line-height:1.25;color:var(--ink);opacity:.85;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.wl-plan.guess{opacity:.6}
+.wl-plan.test{color:var(--red-ink);font-weight:600;opacity:1}
