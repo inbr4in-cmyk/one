@@ -10,6 +10,7 @@ export interface Dashboard {
   sales_month?: number
   students_active: number
   students_left?: number
+  students_waiting?: number
   students_frozen?: number
   left_month?: number
   debtors: number
@@ -93,7 +94,10 @@ export interface DayReport {
   payers?: { count: number; total: number; items: { id: number; full_name: string; amount: number; course: number; book: number; other: number; lessons_left: number; branch_id: number }[] }
 }
 
+export interface GoneStudent { id: number; full_name: string; branch_id: number; came: string | null; left: string | null; months: number | null; teachers: string[]; reason: string | null; until: string | null }
+
 export const financeApi = {
+  students: (p: { branch_id?: number | null; status: 'left' | 'frozen' | 'waiting' }) => http.get<GoneStudent[]>(`/dashboard/students${qs(p)}`),
   day: (p: { branch_id?: number | null; day?: string; month?: string }) => http.get<DayReport>(`/dashboard/day${qs(p)}`, { silent: true }),
   dashboard: (p: BranchQ & { period?: string } = {}) => http.get<Dashboard>(`/dashboard${qs(p)}`),
   ratings: (p: BranchQ & { period?: string } = {}) => http.get<Ratings>(`/payroll/ratings${qs(p)}`, { silent: true }),

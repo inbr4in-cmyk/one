@@ -391,3 +391,21 @@ async def test_analytics_counts_every_stage_for_one_manager(client, db, owner_h)
     one = (await client.get(f"/api/crm/analytics?manager_id={me['user_id']}", headers=owner_h)).json()
     assert one["stage_counts"] == me["counts"]
     assert (await client.get("/api/crm/analytics?manager_id=999999", headers=owner_h)).json()["stage_counts"][0] == 0
+
+
+async def test_dashboard_lists_who_left_with_dates_teacher_and_reason(client, db, owner_h):
+    from app.models import Student
+    from app.services import clock
+
+    bid = await branch_id(db, YANGI)
+    s = await _student(db, client, owner_h, bid, "Ушедший Ученик", "+77057770901")
+    st = await db.get(Student, s["id"])
+    st.status, st.left_at, st.leave_reason, st.contract_date = "left", clock.now(), "Переезд", today() - timedelta(days=95)
+    w = await db.get(Student, (await _student(db, client, owner_h, bid, "Ждущий Ученик", "+77057770902"))["id"])
+    w.status = "waiting"
+    await db.commit()
+    assert (await client.get("/api/dashboard", headers=owner_h)).json()["students_waiting"] == 1
+    rows = (await client.get("/api/dashboard/students?status=left", headers=owner_h)).json()
+    r = next(x for x in rows if x["full_name"] == "Ушедший Ученик")
+    assert r["reason"] == "Переезд" and r["left"] == today().isoformat() and r["months"] in (3, 4) and r["teachers"] == []
+    assert [x["full_name"] for x in (await client.get("/api/dashboard/students?status=waiting", headers=owner_h)).json()] == ["Ждущий Ученик"]

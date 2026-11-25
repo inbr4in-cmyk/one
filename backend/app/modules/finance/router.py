@@ -349,6 +349,7 @@ async def dashboard(db: DB, actor: Actor = require("dashboard", "view"), branch_
     base = select(func.count()).select_from(Student).where(br(Student.branch_id), Student.archived_at.is_(None))
     out["students_left"] = await db.scalar(base.where(Student.status == StudentStatus.LEFT))
     out["students_frozen"] = await db.scalar(base.where(Student.status == StudentStatus.FROZEN))
+    out["students_waiting"] = await db.scalar(base.where(Student.status == StudentStatus.WAITING))
     out["left_month"] = await db.scalar(base.where(Student.status == StudentStatus.LEFT, Student.left_at >= m_start,
                                                    Student.left_at < m_end))
     out["lessons_today"] = await db.scalar(select(func.count()).select_from(Lesson).where(
@@ -371,6 +372,42 @@ async def dashboard(db: DB, actor: Actor = require("dashboard", "view"), branch_
             Lead.archived_at.is_(None)).group_by(Lead.source))).all()
         out["leads_month"], out["conversion"] = new, round(won / new * 100, 1) if new else None
         out["leads_by_source"] = {s: c for s, c in by_source}
+    return out
+
+
+@router.get("/dashboard/students")
+async def dashboard_students(db: DB, actor: Actor = require("dashboard", "view"), branch_id: int | None = None,
+                             status: str = Query("left", pattern="^(left|frozen|waiting)$")) -> list[dict]:
+    """Who stands behind the «Ушли и на паузе» tile: when the student came and left, how long and with whom he studied, why he left.
+    «Came» is the earliest real date we know (contract or first group); imported students without one show nothing."""
+    from app.models import Freeze, Group, GroupMember, User
+
+    branches = _branches(actor, "dashboard", "view", branch_id)
+    q = select(Student).where(Student.archived_at.is_(None), Student.status == status)
+    if branches is not None:
+        q = q.where(Student.branch_id.in_(branches))
+    order = Student.left_at.desc().nulls_last() if status == "left" else Student.full_name
+    rows = list(await db.scalars(q.order_by(order, Student.id).limit(1000)))
+    ids = [x.id for x in rows]
+    first: dict[int, date] = {}
+    teachers: dict[int, list[str]] = {}
+    for sid, joined, name in (await db.execute(
+            select(GroupMember.student_id, GroupMember.joined_on, User.full_name).join(Group, Group.id == GroupMember.group_id)
+            .join(User, User.id == Group.teacher_id).where(GroupMember.student_id.in_(ids)).order_by(GroupMember.joined_on))).all():
+        first.setdefault(sid, joined)
+        if name not in teachers.setdefault(sid, []):
+            teachers[sid].append(name)
+    until = dict((await db.execute(select(Freeze.student_id, func.max(Freeze.ends_on)).where(
+        Freeze.student_id.in_(ids), Freeze.ended_early_on.is_(None)).group_by(Freeze.student_id))).all()) if status == "frozen" else {}
+    out = []
+    for x in rows:
+        came = min([d for d in (x.contract_date, first.get(x.id)) if d], default=None)
+        gone = local(x.left_at).date() if x.left_at else None
+        end = gone or today()
+        months = max(0, (end.year - came.year) * 12 + end.month - came.month + (1 if end.day >= came.day else 0)) if came else None
+        out.append({"id": x.id, "full_name": x.full_name, "branch_id": x.branch_id, "came": came, "left": gone, "months": months,
+                    "teachers": teachers.get(x.id, []), "reason": x.leave_reason if status == "left" else None,
+                    "until": until.get(x.id)})
     return out
 
 

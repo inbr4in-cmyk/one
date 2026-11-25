@@ -3,13 +3,13 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { UiButton, UiCard, UiChip, UiEmptyState, UiIcon, UiInput, UiModal, UiSegmented, UiSelect, UiSkeleton } from '@/components/ui'
 import HBars from '@/components/charts/HBars.vue'
-import { financeApi, type Dashboard, type DayReport, type Ratings } from '@/api/finance'
+import { financeApi, type Dashboard, type DayReport, type GoneStudent, type Ratings } from '@/api/finance'
 import { crmApi, type Analytics } from '@/api/crm'
 import { useAuthStore } from '@/stores/auth'
 import { useBranchStore } from '@/stores/branch'
 import { useRefsStore } from '@/stores/refs'
 import { useSourceLabel } from '@/composables/useSourceLabel'
-import { money, todayIso, schoolNow } from '@/utils/dates'
+import { dmy, money, todayIso, schoolNow } from '@/utils/dates'
 import { num, periodLabel } from '@/utils/period'
 import { formatPhone } from '@/utils/phone'
 import type { Locale } from '@/i18n'
@@ -42,11 +42,19 @@ const monthOptions = computed(() => Array.from({ length: 13 }, (_, i) => {
 type Tile = 'new' | 'contacted' | 'trial' | 'paid' | 'payers' | 'debtors'
 const shown = ref<Tile | null>(null)
 const modal = ref(false)
+/** The list behind «Ушли и на паузе»: who left, who is frozen, who waits for a group */
+const gone = ref<'left' | 'frozen' | 'waiting' | null>(null)
+const goneRows = ref<GoneStudent[] | null>(null)
+async function showGone(k: 'left' | 'frozen' | 'waiting') {
+  gone.value = k
+  goneRows.value = null
+  goneRows.value = await financeApi.students({ branch_id: branch.filterId, status: k }).catch(() => [])
+}
 function show(k: Tile) {
   shown.value = k
   modal.value = true
 }
-const leadTiles = computed(() => (['new', 'contacted', 'trial', 'paid'] as const).map((k) => ({ key: k, icon: { new: 'crm', contacted: 'phone', trial: 'cal', paid: 'ok' }[k], n: rep.value?.leads?.[k].count ?? 0 })))
+const leadTiles = computed(() => (['new', 'trial', 'paid'] as const).map((k) => ({ key: k, icon: { new: 'crm', contacted: 'phone', trial: 'cal', paid: 'ok' }[k], n: rep.value?.leads?.[k].count ?? 0 })))
 const leadRows = computed(() => (shown.value && shown.value !== 'payers' && shown.value !== 'debtors' ? rep.value?.leads?.[shown.value].items ?? [] : []))
 
 const SRC: Record<string, { cls: string; icon: string }> = {
@@ -127,11 +135,18 @@ async function exportExcel() {
       <template v-if="!data"><div v-for="i in 6" :key="i" class="card kpi"><UiSkeleton :lines="3" /></div></template>
       <template v-else>
         <template v-if="rep?.leads">
-          <button v-for="x in leadTiles" :key="x.key" type="button" class="card kpi dd-tile" @click="show(x.key)">
-            <div class="k"><UiIcon :name="x.icon" :size="18" />{{ t(`nv.dd.${x.key}`) }}</div>
-            <div class="v num">{{ num(x.n, loc) }}</div>
-            <span class="muted dd-more">{{ t('nv.dd.open') }}</span>
-          </button>
+          <template v-for="x in leadTiles" :key="x.key">
+            <button type="button" class="card kpi dd-tile" @click="show(x.key)">
+              <div class="k"><UiIcon :name="x.icon" :size="18" />{{ t(`nv.dd.${x.key}`) }}</div>
+              <div class="v num">{{ num(x.n, loc) }}</div>
+              <span class="muted dd-more">{{ t('nv.dd.open') }}</span>
+            </button>
+            <button v-if="x.key === 'new'" type="button" class="card kpi dd-tile" @click="showGone('waiting')">
+              <div class="k"><UiIcon name="groups" :size="18" />{{ t('nv.dd.g.waiting') }}</div>
+              <div class="v num">{{ num(data.students_waiting ?? 0, loc) }}</div>
+              <span class="muted dd-more">{{ t('nv.dd.open') }}</span>
+            </button>
+          </template>
         </template>
         <button v-if="rep?.payers" type="button" class="card kpi dd-tile" @click="show('payers')">
           <div class="k"><UiIcon name="wallet" :size="18" />{{ t('nv.dd.payers') }}</div>
@@ -146,8 +161,8 @@ async function exportExcel() {
         <div class="card kpi">
           <div class="k"><UiIcon name="refusal" :size="18" />{{ t('dash.k.leftPaused') }}</div>
           <div class="kpi-split">
-            <RouterLink :to="{ path: '/students', query: { status: 'left' } }" class="kpi-link"><b class="v num">{{ num(data.students_left ?? 0, loc) }}</b><span>{{ t('dash.k.left') }}</span></RouterLink>
-            <RouterLink :to="{ path: '/students', query: { status: 'frozen' } }" class="kpi-link"><b class="v num">{{ num(data.students_frozen ?? 0, loc) }}</b><span>{{ t('dash.k.paused') }}</span></RouterLink>
+            <button type="button" class="kpi-link" @click="showGone('left')"><b class="v num">{{ num(data.students_left ?? 0, loc) }}</b><span>{{ t('dash.k.left') }}</span></button>
+            <button type="button" class="kpi-link" @click="showGone('frozen')"><b class="v num">{{ num(data.students_frozen ?? 0, loc) }}</b><span>{{ t('dash.k.paused') }}</span></button>
           </div>
           <span class="muted" style="font-size: 12px">{{ t('dash.k.leftMonth', { n: data.left_month ?? 0 }) }}</span>
         </div>
@@ -217,9 +232,38 @@ async function exportExcel() {
       </template>
     </template>
   </UiModal>
+
+  <UiModal :open="gone !== null" wide :title="gone ? t(`nv.dd.g.${gone}`) : ''" @update:open="(v) => !v && (gone = null)">
+    <UiSkeleton v-if="!goneRows" :lines="5" />
+    <p v-else-if="!goneRows.length" class="muted m0">{{ t('nv.dd.none') }}</p>
+    <div v-else class="scroll-x">
+      <table class="tbl dd-gone">
+        <thead><tr>
+          <th>{{ t('nv.dd.c.student') }}</th><th>{{ t('nv.dd.c.came') }}</th>
+          <th v-if="gone === 'left'">{{ t('nv.dd.c.left') }}</th><th v-if="gone === 'frozen'">{{ t('nv.dd.c.until') }}</th>
+          <th class="r">{{ t('nv.dd.c.months') }}</th><th>{{ t('nv.dd.c.teacher') }}</th><th v-if="gone === 'left'">{{ t('nv.dd.c.reason') }}</th>
+        </tr></thead>
+        <tbody>
+          <tr v-for="x in goneRows" :key="x.id">
+            <td><RouterLink :to="`/students/${x.id}`"><b>{{ x.full_name }}</b></RouterLink><small v-if="branch.filterId === null" class="muted dd-br">{{ refs.branchName(x.branch_id) }}</small></td>
+            <td class="num">{{ x.came ? dmy(x.came, loc) : '—' }}</td>
+            <td v-if="gone === 'left'" class="num">{{ x.left ? dmy(x.left, loc) : '—' }}</td>
+            <td v-if="gone === 'frozen'" class="num">{{ x.until ? dmy(x.until, loc) : '—' }}</td>
+            <td class="r num">{{ x.months ?? '—' }}</td>
+            <td>{{ x.teachers.join(', ') || '—' }}</td>
+            <td v-if="gone === 'left'">{{ x.reason || '—' }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </UiModal>
 </template>
 
 <style scoped>
+.dd-gone { min-width: 720px }
+.dd-gone th { white-space: nowrap }
+.dd-br { display: block; font-size: 12px }
+.kpi-link { border: 0; background: none; padding: 0; font: inherit; text-align: left; cursor: pointer }
 .dd-tile { text-align: left; font: inherit; color: inherit; cursor: pointer }
 .dd-tile:hover { border-color: var(--navy-600) }
 .dd-more { font-size: 12px }
