@@ -119,7 +119,7 @@ def create_app() -> FastAPI:
             return JSONResponse({"detail": "Такая запись уже есть или связанные данные изменились. Обновите страницу"},
                                 status_code=409)
         if isinstance(exc, DataError) or state.startswith("22"):
-            log.info("Bad data on %s: %s", request.url.path, state)
+            log.warning("Bad data on %s: %s", request.url.path, state)
             return _bad_input("Некорректные данные: значение слишком длинное, слишком большое или недопустимое")
         log.exception("Database error on %s", request.url.path)
         return JSONResponse({"detail": "Внутренняя ошибка сервера"}, status_code=500)
@@ -133,6 +133,16 @@ def create_app() -> FastAPI:
         log.error("Redis unavailable on %s", request.url.path)
         return JSONResponse({"detail": "Сервис временно недоступен, попробуйте через минуту"}, status_code=503,
                             headers={"Retry-After": "30"})
+
+    from fastapi.exception_handlers import request_validation_exception_handler
+    from fastapi.exceptions import RequestValidationError
+
+    @app.exception_handler(RequestValidationError)
+    async def invalid(request: Request, exc: RequestValidationError):
+        """The answer stays FastAPI's own; the log gets which field was refused and why — never the value itself."""
+        log.warning("Request refused on %s: %s", request.url.path,
+                    "; ".join(f"{'.'.join(map(str, e.get('loc', ())))[:80]} ({e.get('type')})" for e in exc.errors()[:5]))
+        return await request_validation_exception_handler(request, exc)
 
     @app.exception_handler(OverflowError)
     async def overflow(request: Request, exc: OverflowError):
