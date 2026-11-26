@@ -882,7 +882,7 @@ const ops: typeof ru = {
     inProgress: 'ай әлі жүріп жатыр',
     sourcesTitle: 'Дереккөз бойынша лидтер',
     sourcesNote: 'айда · {n}',
-    noLeads: 'Бұл айда лид жоқ',
+    noLeads: 'Бұл кезеңде лид жоқ',
     upcoming: 'Бүгінгі жақын сабақтар',
     noLessons: 'Бүгін басқа сабақ жоқ',
     stale: 'Жауапсыз лидтер',
@@ -891,7 +891,7 @@ const ops: typeof ru = {
     teachers: 'Мұғалімдер рейтингі',
     sales: 'Сату рейтингі',
     noRatings: 'Бұл айда әлі өткен сабақ жоқ',
-    noSales: 'Бұл айда әлі сынақ сабақ пен сату жоқ',
+    noSales: 'Бұл кезеңде сынақ сабақ пен сату жоқ',
     r: {
       teacher: 'Мұғалім',
       lessons: 'Сабақ',

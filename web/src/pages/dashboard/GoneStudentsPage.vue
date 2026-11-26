@@ -7,6 +7,7 @@ import { financeApi, type GoneStudent } from '@/api/finance'
 import { useBranchStore } from '@/stores/branch'
 import { useRefsStore } from '@/stores/refs'
 import { dmy } from '@/utils/dates'
+import { periodLabel } from '@/utils/period'
 import type { Locale } from '@/i18n'
 
 /** Who left, who is frozen, who waits for a group: when the student came and left, how long and with whom he studied, why he left. */
@@ -19,23 +20,29 @@ const branch = useBranchStore()
 const refs = useRefsStore()
 const kind = computed<Kind>({
   get: () => (['left', 'frozen', 'waiting'].includes(String(route.params.status)) ? (route.params.status as Kind) : 'left'),
-  set: (v) => void router.replace({ name: 'dashboard-students', params: { status: v } }),
+  set: (v) => void router.replace({ name: 'dashboard-students', params: { status: v }, query: route.query }),
 })
+/** Opened from the dashboard: the same day or month as there */
+const span = computed(() => {
+  const d = String(route.query.day ?? ''), m = String(route.query.month ?? '')
+  return /^\d{4}-\d{2}$/.test(m) ? { month: m } : /^\d{4}-\d{2}-\d{2}$/.test(d) ? { day: d } : {}
+})
+const spanLabel = computed(() => (kind.value === 'waiting' ? '' : span.value.month ? periodLabel(span.value.month, loc.value) : span.value.day ? dmy(span.value.day, loc.value) : ''))
 const rows = ref<GoneStudent[] | null>(null)
 let seq = 0
 async function load() {
   const my = ++seq
   rows.value = null
-  const r = await financeApi.students({ branch_id: branch.filterId, status: kind.value }).catch(() => [])
+  const r = await financeApi.students({ branch_id: branch.filterId, status: kind.value, ...span.value }).catch(() => [])
   if (my === seq) rows.value = r
 }
-watch([kind, () => branch.filterId], load, { immediate: true })
+watch([kind, () => branch.filterId, span], load, { immediate: true })
 const tabs = computed(() => (['left', 'frozen', 'waiting'] as Kind[]).map((k) => ({ value: k, label: t(`nv.dd.g.${k}`), count: k === kind.value ? rows.value?.length : undefined })))
 </script>
 
 <template>
   <div class="ph">
-    <div><h1>{{ t('nv.dd.goneTitle') }}</h1></div>
+    <div><h1>{{ t('nv.dd.goneTitle') }}</h1><p v-if="spanLabel">{{ spanLabel }}</p></div>
     <span class="sp" />
     <UiButton icon="dash" to="/dashboard">{{ t('nav.dashboard') }}</UiButton>
   </div>

@@ -91,13 +91,17 @@ export interface DayReport {
   day: string
   leads?: Record<'new' | 'contacted' | 'trial' | 'paid', { count: number; items: DayLead[] }>
   debtors: { count: number; items: { id: number; full_name: string; lessons_left: number; branch_id: number }[] }
+  /** Leads created in the period, by source */
+  sources?: Record<string, number>
+  /** Left / on pause in the period; waiting for a group is the picture as of now */
+  gone?: Record<'left' | 'frozen' | 'waiting', number>
   payers?: { count: number; total: number; items: { id: number; full_name: string; amount: number; course: number; book: number; other: number; lessons_left: number; branch_id: number }[] }
 }
 
 export interface GoneStudent { id: number; full_name: string; branch_id: number; came: string | null; left: string | null; months: number | null; teachers: string[]; reason: string | null; until: string | null }
 
 export const financeApi = {
-  students: (p: { branch_id?: number | null; status: 'left' | 'frozen' | 'waiting' }) => http.get<GoneStudent[]>(`/dashboard/students${qs(p)}`),
+  students: (p: { branch_id?: number | null; status: 'left' | 'frozen' | 'waiting'; day?: string; month?: string }) => http.get<GoneStudent[]>(`/dashboard/students${qs(p)}`),
   day: (p: { branch_id?: number | null; day?: string; month?: string }) => http.get<DayReport>(`/dashboard/day${qs(p)}`, { silent: true }),
   dashboard: (p: BranchQ & { period?: string } = {}) => http.get<Dashboard>(`/dashboard${qs(p)}`),
   ratings: (p: BranchQ & { period?: string } = {}) => http.get<Ratings>(`/payroll/ratings${qs(p)}`, { silent: true }),

@@ -10,7 +10,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useBranchStore } from '@/stores/branch'
 import { useRefsStore } from '@/stores/refs'
 import { useSourceLabel } from '@/composables/useSourceLabel'
-import { money, todayIso, schoolNow } from '@/utils/dates'
+import { dmy, todayIso, schoolNow } from '@/utils/dates'
 import { num, periodLabel } from '@/utils/period'
 import { formatPhone } from '@/utils/phone'
 import type { Locale } from '@/i18n'
@@ -41,16 +41,18 @@ const monthOptions = computed(() => Array.from({ length: 13 }, (_, i) => {
   const v = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
   return { value: v, label: periodLabel(v, loc.value) }
 }))
-type Tile = 'new' | 'contacted' | 'trial' | 'paid' | 'payers' | 'debtors'
+type Tile = 'new' | 'contacted' | 'trial' | 'paid' | 'debtors'
 const shown = ref<Tile | null>(null)
 const modal = ref(false)
-const showGone = (k: 'left' | 'frozen' | 'waiting') => router.push({ name: 'dashboard-students', params: { status: k } })
+const showGone = (k: 'left' | 'frozen' | 'waiting') => router.push({ name: 'dashboard-students', params: { status: k }, query: mode.value === 'month' ? { month: month.value } : { day: day.value } })
+/** What the day/month blocks are for: «26.11.2026» or «ноябрь 2026» */
+const spanLabel = computed(() => (mode.value === 'month' ? periodLabel(month.value, loc.value) : dmy(day.value, loc.value)))
 function show(k: Tile) {
   shown.value = k
   modal.value = true
 }
 const leadTiles = computed(() => (['new', 'trial', 'paid'] as const).map((k) => ({ key: k, icon: { new: 'crm', contacted: 'phone', trial: 'cal', paid: 'ok' }[k], n: rep.value?.leads?.[k].count ?? 0 })))
-const leadRows = computed(() => (shown.value && shown.value !== 'payers' && shown.value !== 'debtors' ? rep.value?.leads?.[shown.value].items ?? [] : []))
+const leadRows = computed(() => (shown.value && shown.value !== 'debtors' ? rep.value?.leads?.[shown.value].items ?? [] : []))
 
 const SRC: Record<string, { cls: string; icon: string }> = {
   instagram: { cls: 'ig', icon: 'ig' }, whatsapp: { cls: 'wa', icon: 'wa' }, qr: { cls: 'qr', icon: 'qr' }, site: { cls: 'web', icon: 'globe' },
@@ -90,9 +92,10 @@ const todayLabel = computed(() => {
 })
 const scope = computed(() => (branch.filterId === null ? t('branch.all') : branch.current.name))
 
-const sources = computed(() => Object.entries(data.value?.leads_by_source ?? {})
+const sources = computed(() => Object.entries(rep.value?.sources ?? {})
   .map(([k, v]) => ({ key: k, label: srcLabel(k), value: v, icon: SRC[k]?.icon ?? 'user', iconCls: SRC[k]?.cls ?? 'call' }))
   .sort((a, b) => b.value - a.value))
+const sourcesTotal = computed(() => sources.value.reduce((n, x) => n + x.value, 0))
 const teacherRows = computed(() => (ratings.value?.teachers ?? []).slice(0, 6))
 /** Sales rating: every manager's leads of the period by funnel stage; who sold more stands higher */
 const salesRows = computed(() => {
@@ -138,11 +141,6 @@ async function exportExcel() {
             </button>
           </template>
         </template>
-        <button v-if="rep?.payers" type="button" class="card kpi dd-tile" @click="show('payers')">
-          <div class="k"><UiIcon name="wallet" :size="18" />{{ t('nv.dd.payers') }}</div>
-          <div class="v num">{{ num(rep.payers.count, loc) }}</div>
-          <span class="muted dd-more">{{ t('nv.dd.open') }}</span>
-        </button>
         <button v-if="rep" type="button" class="card kpi dd-tile" @click="show('debtors')">
           <div class="k"><UiIcon name="alert" :size="18" :style="rep.debtors.count ? { color: 'var(--red)' } : undefined" />{{ t('dash.k.debtors') }}</div>
           <div class="v num">{{ num(rep.debtors.count, loc) }}</div>
@@ -151,18 +149,30 @@ async function exportExcel() {
         <div class="card kpi">
           <div class="k"><UiIcon name="refusal" :size="18" />{{ t('dash.k.leftPaused') }}</div>
           <div class="kpi-split">
-            <button type="button" class="kpi-link" @click="showGone('left')"><b class="v num">{{ num(data.students_left ?? 0, loc) }}</b><span>{{ t('dash.k.left') }}</span></button>
-            <button type="button" class="kpi-link" @click="showGone('frozen')"><b class="v num">{{ num(data.students_frozen ?? 0, loc) }}</b><span>{{ t('dash.k.paused') }}</span></button>
-            <button type="button" class="kpi-link" @click="showGone('waiting')"><b class="v num">{{ num(data.students_waiting ?? 0, loc) }}</b><span>{{ t('nv.dd.waiting') }}</span></button>
+            <button type="button" class="kpi-link" @click="showGone('left')"><b class="v num">{{ num(rep?.gone?.left ?? 0, loc) }}</b><span>{{ t('dash.k.left') }}</span></button>
+            <button type="button" class="kpi-link" @click="showGone('frozen')"><b class="v num">{{ num(rep?.gone?.frozen ?? 0, loc) }}</b><span>{{ t('dash.k.paused') }}</span></button>
+            <button type="button" class="kpi-link" @click="showGone('waiting')"><b class="v num">{{ num(rep?.gone?.waiting ?? 0, loc) }}</b><span>{{ t('nv.dd.waitingNow') }}</span></button>
           </div>
-          <span class="muted" style="font-size: 12px">{{ t('dash.k.leftMonth', { n: data.left_month ?? 0 }) }}</span>
+          <span class="muted" style="font-size: 12px">{{ spanLabel }}</span>
         </div>
       </template>
     </div>
 
-    <div v-if="data?.leads_by_source" class="grid dash-a">
-      <UiCard v-if="data?.leads_by_source" :title="t('dash.sourcesTitle')">
-        <template #actions><span class="muted" style="font-size: 12px">{{ t('dash.sourcesNote', { n: data.leads_month ?? 0 }) }}</span></template>
+    <UiCard v-if="funnel" :title="t('dash.sales')" flush style="margin-bottom: 16px">
+      <template #actions><span class="muted" style="font-size: 12px">{{ spanLabel }}</span></template>
+      <div v-if="salesRows.length" class="scroll-x">
+        <table class="tbl dd-sales">
+          <thead><tr><th>{{ t('dash.r.manager') }}</th><th v-for="st in funnel.stages" :key="st.id" class="r">{{ st.name }}</th></tr></thead>
+          <tbody class="num">
+            <tr v-for="(r, i) in salesRows" :key="r.user_id ?? 0"><td><span class="rank-n" :class="{ g: i < 3 && r.user_id }">{{ i + 1 }}</span>{{ r.name ?? t('crm.unassigned') }}</td><td v-for="(n, j) in r.counts" :key="j" class="r">{{ n }}</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p v-else class="muted m0 card-pad">{{ t('dash.noSales') }}</p>
+    </UiCard>
+    <div v-if="rep?.sources" class="grid dash-a">
+      <UiCard :title="t('dash.sourcesTitle')">
+        <template #actions><span class="muted" style="font-size: 12px">{{ spanLabel }} · {{ num(sourcesTotal, loc) }}</span></template>
         <HBars v-if="sources.length" :items="sources" />
         <p v-else class="muted m0">{{ t('dash.noLeads') }}</p>
       </UiCard>
@@ -184,29 +194,11 @@ async function exportExcel() {
 
     </div>
 
-    <UiCard v-if="funnel" :title="t('dash.sales')" flush style="margin-top: 16px">
-      <div v-if="salesRows.length" class="scroll-x">
-        <table class="tbl dd-sales">
-          <thead><tr><th>{{ t('dash.r.manager') }}</th><th v-for="st in funnel.stages" :key="st.id" class="r">{{ st.name }}</th></tr></thead>
-          <tbody class="num">
-            <tr v-for="(r, i) in salesRows" :key="r.user_id ?? 0"><td><span class="rank-n" :class="{ g: i < 3 && r.user_id }">{{ i + 1 }}</span>{{ r.name ?? t('crm.unassigned') }}</td><td v-for="(n, j) in r.counts" :key="j" class="r">{{ n }}</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <p v-else class="muted m0 card-pad">{{ t('dash.noSales') }}</p>
-    </UiCard>
   </template>
 
   <UiModal v-model:open="modal" :title="shown ? (shown === 'debtors' ? t('dash.k.debtors') : t(`nv.dd.${shown}`)) : ''">
     <template v-if="rep && shown">
-      <template v-if="shown === 'payers'">
-        <p v-if="!rep.payers?.items.length" class="muted m0">{{ t('nv.dd.none') }}</p>
-        <RouterLink v-for="x in rep.payers?.items ?? []" :key="x.id" :to="`/students/${x.id}`" class="list-row">
-          <div class="grow"><b>{{ x.full_name }}</b><span>{{ [x.course ? t('nv.dd.course', { s: money(x.course, loc) }) : '', x.book ? t('nv.dd.book', { s: money(x.book, loc) }) : '', x.other ? t('nv.dd.other', { s: money(x.other, loc) }) : ''].filter(Boolean).join(' · ') }}</span></div>
-          <b class="num">{{ money(x.amount, loc) }}</b>
-        </RouterLink>
-      </template>
-      <template v-else-if="shown === 'debtors'">
+      <template v-if="shown === 'debtors'">
         <p v-if="!rep.debtors.items.length" class="muted m0">{{ t('nv.dd.none') }}</p>
         <RouterLink v-for="x in rep.debtors.items" :key="x.id" :to="`/students/${x.id}`" class="list-row">
           <div class="grow"><b>{{ x.full_name }}</b><span>{{ refs.branchName(x.branch_id) }}</span></div>

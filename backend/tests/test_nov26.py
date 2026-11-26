@@ -115,3 +115,39 @@ async def test_only_the_owner_links_and_unlinks(client, db, owner_h, monkeypatch
     assert (await client.post("/api/settings/whatsapp-link/disconnect", headers=bh)).status_code == 403
     r = await client.post("/api/settings/whatsapp-link/disconnect", headers=owner_h)
     assert r.status_code == 200 and r.json()["state"] == "off" and ("POST", "/logout", None) in calls
+
+
+async def test_dashboard_day_counts_left_paused_and_sources_of_the_period(client, db, owner_h):
+    """Owner, 26.11.2026: «ушли / на паузе» and lead sources follow the chosen day or month."""
+    from datetime import date as _d
+
+    from app.models import Freeze, Lead, Student
+    from app.models.learning import StudentStatus
+    from app.services.clock import today
+    from tests.conftest import branch_id
+    from tests.test_core_learning import _student
+
+    bid = await branch_id(db, "Янги шахар")
+    a = await _student(db, client, owner_h, bid, "Ушёл Сегодня", "+77052229901")
+    b = await _student(db, client, owner_h, bid, "Ушёл Давно", "+77052229902")
+    c = await _student(db, client, owner_h, bid, "На Паузе", "+77052229903")
+    owner_id = (await client.get("/api/auth/me", headers=owner_h)).json()["id"]
+    for sid, back in ((a["id"], 0), (b["id"], 70)):
+        s = await db.get(Student, sid)
+        s.status, s.left_at = StudentStatus.LEFT, now() - timedelta(days=back)
+    db.add(Freeze(student_id=c["id"], starts_on=today() - timedelta(days=2), ends_on=today() + timedelta(days=5), created_by=owner_id))
+    await db.commit()
+    before = (await client.get(f"/api/dashboard/day?day={today()}", headers=owner_h)).json()
+    r = await client.post("/api/crm/leads", headers=owner_h, json={"full_name": "Лид Источник", "phone": "+77052229904", "branch_id": bid, "source": "instagram"})
+    assert r.status_code in (200, 201), r.text
+    rep = (await client.get(f"/api/dashboard/day?day={today()}", headers=owner_h)).json()
+    assert rep["gone"]["left"] == 1 and rep["gone"]["frozen"] == 1
+    assert rep["sources"].get("instagram", 0) == before["sources"].get("instagram", 0) + 1
+    y = today() - timedelta(days=10)
+    old = (await client.get(f"/api/dashboard/day?day={y}", headers=owner_h)).json()
+    assert old["gone"]["left"] == 0 and old["gone"]["frozen"] == 0 and old["sources"] == {}
+    rows = (await client.get(f"/api/dashboard/students?status=left&day={today()}", headers=owner_h)).json()
+    assert [x["full_name"] for x in rows] == ["Ушёл Сегодня"]
+    assert len((await client.get("/api/dashboard/students?status=left", headers=owner_h)).json()) == 2
+    rows = (await client.get(f"/api/dashboard/students?status=frozen&month={today():%Y-%m}", headers=owner_h)).json()
+    assert [x["full_name"] for x in rows] == ["На Паузе"] and _d.fromisoformat(rows[0]["until"]) == today() + timedelta(days=5)

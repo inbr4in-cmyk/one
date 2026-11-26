@@ -375,15 +375,40 @@ async def dashboard(db: DB, actor: Actor = require("dashboard", "view"), branch_
     return out
 
 
+def _gone_filter(status: str, start, end):
+    """Who left / was on pause in the period (owner, 26.11.2026). «Ждут группу» has no date of its own: it is always
+    the picture as of now."""
+    from app.models import Freeze
+
+    if status == "left":
+        return [Student.status == StudentStatus.LEFT, Student.left_at >= start, Student.left_at < end]
+    if status == "frozen":
+        first, last = local(start).date(), local(end - timedelta(seconds=1)).date()
+        return [Student.id.in_(select(Freeze.student_id).where(
+            Freeze.starts_on <= last, func.coalesce(Freeze.ended_early_on, Freeze.ends_on) >= first))]
+    return [Student.status == StudentStatus.WAITING]
+
+
+def _span(day: date | None, month: str | None):
+    if month:
+        y, m = int(month[:4]), int(month[5:])
+        return at_local(date(y, m, 1), time(0)), at_local(date(y + (m == 12), m % 12 + 1, 1), time(0))
+    start = at_local(day or today(), time(0))
+    return start, start + timedelta(days=1)
+
+
 @router.get("/dashboard/students")
 async def dashboard_students(db: DB, actor: Actor = require("dashboard", "view"), branch_id: int | None = None,
-                             status: str = Query("left", pattern="^(left|frozen|waiting)$")) -> list[dict]:
+                             status: str = Query("left", pattern="^(left|frozen|waiting)$"), day: date | None = None,
+                             month: str | None = Query(None, pattern=r"^\d{4}-(0[1-9]|1[0-2])$")) -> list[dict]:
     """Who stands behind the «Ушли и на паузе» tile: when the student came and left, how long and with whom he studied, why he left.
     «Came» is the earliest real date we know (contract or first group); imported students without one show nothing."""
     from app.models import Freeze, Group, GroupMember, User
 
     branches = _branches(actor, "dashboard", "view", branch_id)
     q = select(Student).where(Student.archived_at.is_(None), Student.status == status)
+    if day or month:  # opened from the dashboard: the same day or month as there
+        q = select(Student).where(Student.archived_at.is_(None), *_gone_filter(status, *_span(day, month)))
     if branches is not None:
         q = q.where(Student.branch_id.in_(branches))
     order = Student.left_at.desc().nulls_last() if status == "left" else Student.full_name
@@ -398,7 +423,7 @@ async def dashboard_students(db: DB, actor: Actor = require("dashboard", "view")
         if name not in teachers.setdefault(sid, []):
             teachers[sid].append(name)
     until = dict((await db.execute(select(Freeze.student_id, func.max(Freeze.ends_on)).where(
-        Freeze.student_id.in_(ids), Freeze.ended_early_on.is_(None)).group_by(Freeze.student_id))).all()) if status == "frozen" else {}
+        Freeze.student_id.in_(ids), *([] if day or month else [Freeze.ended_early_on.is_(None)])).group_by(Freeze.student_id))).all()) if status == "frozen" else {}
     out = []
     for x in rows:
         came = min([d for d in (x.contract_date, first.get(x.id)) if d], default=None)
@@ -468,9 +493,15 @@ async def dashboard_day(db: DB, actor: Actor = require("dashboard", "view"), bra
                  "stage": stages[x.stage_id].name if x.stage_id in stages else None,
                  "manager": users.get(x.assignee_id or x.owner_id), "branch_id": x.branch_id} for x in rows]}
         out["leads"] = leads
+        by_source = (await db.execute(select(Lead.source, func.count()).where(
+            Lead.created_at >= start, Lead.created_at < end, *scope).group_by(Lead.source))).all()
+        out["sources"] = {src: n for src, n in by_source}
 
     def br(col):
         return col.in_(branches) if branches is not None else True
+
+    gone = select(func.count()).select_from(Student).where(br(Student.branch_id), Student.archived_at.is_(None))
+    out["gone"] = {k: await db.scalar(gone.where(*_gone_filter(k, start, end))) for k in ("left", "frozen", "waiting")}
 
     debt = list(await db.scalars(select(Student).where(br(Student.branch_id), Student.archived_at.is_(None),
                                                        Student.status == StudentStatus.ACTIVE, Student.lessons_left <= 0)
