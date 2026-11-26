@@ -151,3 +151,29 @@ async def test_dashboard_day_counts_left_paused_and_sources_of_the_period(client
     assert len((await client.get("/api/dashboard/students?status=left", headers=owner_h)).json()) == 2
     rows = (await client.get(f"/api/dashboard/students?status=frozen&month={today():%Y-%m}", headers=owner_h)).json()
     assert [x["full_name"] for x in rows] == ["На Паузе"] and _d.fromisoformat(rows[0]["until"]) == today() + timedelta(days=5)
+
+
+async def test_form_with_many_low_scores_is_saved(client, db, owner_h):
+    """Owner, 26.11.2026: the form answered «Некорректные данные…» — the call-today notice was longer than its column."""
+    from app.models import Form
+
+    assert (await client.get("/api/forms", headers=owner_h)).status_code == 200  # creates the school's form
+    f = await db.scalar(select(Form))
+    await make_staff(db, "teacher", ["Янги шахар", "Север"], "+77052230001", "Учитель Анкеты")
+    await db.commit()
+    pub = (await client.get(f"/api/public/forms/{f.token}")).json()
+    answers = {}
+    for _ in range(4):  # the route depends on the answers: fill what is asked, lowest marks everywhere
+        r = await client.post(f"/api/public/forms/{f.token}", json={"answers": answers})
+        if r.status_code == 201:
+            break
+        for s in f.sections:
+            for q in s["questions"]:
+                k = q["kind"]
+                answers.setdefault(q["id"], "Очень Длинное Имя " * 9 if k == "short" else "+77051230099" if k == "phone" else "текст" if k == "para"
+                                   else q["min"] if k == "scale" else {"picked": [0]} if k == "multi"
+                                   else pub["branches"][0]["id"] if k == "branch" else (pub["teachers"] or [{"id": None}])[0]["id"] if k == "teacher"
+                                   else next((i for i, o in enumerate(q["options"]) if o.get("alert")), 0))
+    assert r.status_code == 201, r.text
+    row = (await client.get(f"/api/forms/{f.id}/responses", headers=owner_h)).json()
+    assert len(row["items"] if isinstance(row, dict) else row) == 1

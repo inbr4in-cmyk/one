@@ -82,7 +82,10 @@ async def send_login_code(db: AsyncSession, phone: str, code: str, *, to_user_id
 
 async def notify_user(db: AsyncSession, user_id: int, kind: str, title: str, body: str | None = None,
                       link: str | None = None, meta_: dict | None = None) -> None:
-    db.add(Notification(user_id=user_id, at=datetime.now(UTC), kind=kind, title=title, body=body, link=link, meta=meta_ or {}))
+    # The columns hold 255 characters: a longer text is cut here, it must never fail the action that caused the notice.
+    cut = lambda v: v if v is None or len(v) <= 255 else v[:254] + "…"  # noqa: E731
+    db.add(Notification(user_id=user_id, at=datetime.now(UTC), kind=kind, title=cut(title), body=cut(body),
+                        link=link if link is None or len(link) <= 255 else None, meta=meta_ or {}))
 
 
 async def get_template(db: AsyncSession, code: str, locale: str) -> MessageTemplate | None:
