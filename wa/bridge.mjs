@@ -20,11 +20,14 @@ const SPOOL = path.join(DIR, 'queue.json')
 const SEND_GAP_MS = 1500 // answers leave at a human pace, one by one
 
 if (SECRET.length < 24) {
-  console.error('OE_WA_BRIDGE_SECRET is not set: the WhatsApp link is off')
+  process.stderr.write('OE_WA_BRIDGE_SECRET is not set: the WhatsApp link is off\n')
   process.exit(0)
 }
 fs.mkdirSync(AUTH, { recursive: true, mode: 0o700 })
-const log = (...a) => console.log(new Date().toISOString(), ...a)
+// Our own lines go straight to stdout. Everything the libraries print through console is dropped: the Signal library
+// prints whole session objects, keys included («Closing session: …»), and that must never reach the system journal.
+const log = (...a) => process.stdout.write(`${new Date().toISOString()} ${a.join(' ')}\n`)
+for (const k of ['log', 'info', 'warn', 'error', 'debug', 'trace', 'dir', 'table']) console[k] = () => {}
 const quiet = pino({ level: 'silent' })
 
 /** off | qr | connecting | open | logged_out | banned */
