@@ -42,7 +42,7 @@ async def _names(db, ids) -> dict[int, str]:
 
 MANAGER_COLS = [("new", "Новые лиды"), ("worked", "Отработано лидов"), ("actions", "Звонки и заметки"),
                 ("trial_booked", "Записал на пробный"), ("trial_done", "Пришли на пробный"), ("paid", "Оплатили"),
-                ("lost", "Отказы"), ("conversion", "Конверсия, %"), ("returned", "Вернул учеников"),
+                ("lost", "Отказы"), ("conversion", "Конверсия, %"),
                 ("tasks_done", "Задач выполнено"), ("tasks_overdue", "Просрочено задач"), ("sales", "Продаж"),
                 ("sales_sum", "Сумма продаж, тг"), ("bonus", "Бонусы, тг")]
 
@@ -69,7 +69,7 @@ async def managers_data(db, actor: Actor, date_from, date_to, branch_id, manager
     for uid, leads, n in await db.execute(
             select(LeadEvent.actor_id, func.count(func.distinct(LeadEvent.lead_id)), func.count())
             .join(Lead, Lead.id == LeadEvent.lead_id)
-            .where(br(Lead.branch_id), crm.manual_event(), LeadEvent.at >= start, LeadEvent.at < end).group_by(LeadEvent.actor_id)):
+            .where(br(Lead.branch_id), crm.not_return(), crm.manual_event(), LeadEvent.at >= start, LeadEvent.at < end).group_by(LeadEvent.actor_id)):
         if uid:
             row(uid)["worked"], row(uid)["actions"] = leads, n
     # stage moves of the period go to the lead's manager; a lead moved twice to the same stage counts once
@@ -83,13 +83,14 @@ async def managers_data(db, actor: Actor, date_from, date_to, branch_id, manager
         if not uid or st is None:
             continue
         pipe = pipes.get(st.pipeline_id)
-        key = "returned" if pipe == "return" and st.is_won else None
+        key = None
         if pipe == "main":
             key = "paid" if st.is_won else "lost" if st.is_lost else st.code if st.code in ("trial_booked", "trial_done") else None
         if key and (lead_id, key) not in seen:
             seen.add((lead_id, key))
             row(uid)[key] += 1
-    lead_task = (Task.link_type == "lead", Task.archived_at.is_(None))
+    lead_task = (Task.link_type == "lead", Task.archived_at.is_(None),
+                 Task.link_id.not_in(select(Lead.id).join(Pipeline, Pipeline.id == Lead.pipeline_id).where(Pipeline.code == "return")))
     for uid, n in await db.execute(
             select(TaskAssignee.user_id, func.count()).join(Task, Task.id == TaskAssignee.task_id)
             .where(*lead_task, br(Task.branch_id), Task.status == TaskStatus.DONE, Task.done_at >= start, Task.done_at < end)

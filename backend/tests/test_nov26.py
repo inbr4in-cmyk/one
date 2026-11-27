@@ -477,7 +477,11 @@ async def test_dashboard_control_pause_reason_months_and_training_for_admins(cli
     st = await db.get(Student, s["id"])
     st.contract_date = today() - timedelta(days=100)
     db.add(Freeze(student_id=s["id"], starts_on=today() - timedelta(days=1), ends_on=today() + timedelta(days=9), reason="Уехал к бабушке", created_by=owner_id))
-    start = max(now() - timedelta(hours=3), now().replace(hour=0, minute=0, second=0, microsecond=0))  # today, already over
+    from datetime import time as _t
+
+    from app.services.clock import at_local
+
+    start = max(now() - timedelta(hours=3), at_local(today(), _t(0)))  # today by the school's clock, already over
     db.add(Lesson(branch_id=g["branch_id"], group_id=g["id"], level_id=g["level_id"], teacher_id=teacher.id, room_id=room.id,
                   starts_at=start, ends_at=start + timedelta(minutes=1)))
     t = Task(title="Позвонить родителю", creator_id=owner_id, branch_id=bid, due_at=now() - timedelta(hours=5))
@@ -551,3 +555,32 @@ async def test_no_answer_call_moves_a_return_card_to_no_answer(client, db, owner
     assert (await db.get(LeadStage, lead.stage_id)).code == "no_answer"
     await crm.got_in_touch(db, lead, None, "ответил")
     assert (await db.get(LeadStage, lead.stage_id)).code == "contacted"
+
+
+async def test_return_cards_are_not_new_leads_anywhere(client, db, owner_h):
+    """Owner, 28.11.2026: «Возврат» is another section: its cards stay out of the dashboard, the analytics and the reports."""
+    from app.models import Student
+    from app.models.learning import StudentStatus
+    from app.services import retention
+    from app.services.clock import today
+    from tests.conftest import branch_id
+    from tests.test_core_learning import _student
+
+    bid = await branch_id(db, "Янги шахар")
+    day = f"/api/dashboard/day?day={today()}"
+    span = f"date_from={today()}&date_to={today()}"
+    before = (await client.get(day, headers=owner_h)).json()
+    a_before = (await client.get(f"/api/crm/analytics?{span}", headers=owner_h)).json()
+    r_before = (await client.get(f"/api/reports/managers?{span}", headers=owner_h)).json()
+    s = await _student(db, client, owner_h, bid, "Возврат Нелид", "+77052226611")
+    st = await db.get(Student, s["id"])
+    st.status, st.left_at = StudentStatus.LEFT, now()
+    assert await retention.return_card(db, st, None) is not None
+    await db.commit()
+    after = (await client.get(day, headers=owner_h)).json()
+    assert after["leads"]["new"]["count"] == before["leads"]["new"]["count"]
+    assert after["sources"].get("return", 0) == before["sources"].get("return", 0)
+    a_after = (await client.get(f"/api/crm/analytics?{span}", headers=owner_h)).json()
+    assert a_after["managers"] == a_before["managers"]
+    r_after = (await client.get(f"/api/reports/managers?{span}", headers=owner_h)).json()
+    assert r_after["total"] == r_before["total"] and "returned" not in r_after["total"]

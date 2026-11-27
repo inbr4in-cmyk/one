@@ -790,7 +790,7 @@ async def analytics(db: DB, actor: Actor = require("crm", "view"), date_from: da
     d1 = date_from or (today() - timedelta(days=30))
     d2 = date_to or today()
     start, end = local_range(d1, d2)
-    q = select(Lead).where(lead_filter(actor), Lead.created_at >= start, Lead.created_at < end)
+    q = select(Lead).where(lead_filter(actor), crm_svc.not_return(), Lead.created_at >= start, Lead.created_at < end)
     if branch_id:
         q = q.where(Lead.branch_id == branch_id)
     every = list(await db.scalars(q))

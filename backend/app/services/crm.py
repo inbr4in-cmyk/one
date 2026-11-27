@@ -17,6 +17,12 @@ async def stage_by_code(db: AsyncSession, pipeline_code: str, stage_code: str) -
     )
 
 
+def not_return():
+    """Owner, 28.11.2026: cards of the «Возврат» funnel are former students, not new leads. They stay out of the
+    dashboard, the sales rating, the CRM analytics and the reports; the funnel will get numbers of its own later."""
+    return or_(Lead.pipeline_id.is_(None), Lead.pipeline_id.not_in(select(Pipeline.id).where(Pipeline.code == "return")))
+
+
 async def no_answer_stage(db: AsyncSession, pipeline: str = "main") -> LeadStage | None:
     """«Недозвон»: the school adds it in Справочники, so it is found by its name (or the code on a new install)."""
     return await db.scalar(

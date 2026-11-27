@@ -3,7 +3,7 @@ import { download, http, qs } from './http'
 export interface ReportFilter { date_from: string; date_to: string; branch_id?: number | null; manager_id?: number | null; teacher_id?: number | null }
 export interface ManagerRow {
   user_id: number; name: string; new: number; worked: number; actions: number; trial_booked: number; trial_done: number; paid: number
-  lost: number; conversion: number | null; returned: number; tasks_done: number; tasks_overdue: number; sales: number; sales_sum: number; bonus: number
+  lost: number; conversion: number | null; tasks_done: number; tasks_overdue: number; sales: number; sales_sum: number; bonus: number
 }
 export interface TeacherRow {
   user_id: number; name: string; planned: number; held: number; held_pct: number | null; not_marked: number; cancelled: number; subs: number

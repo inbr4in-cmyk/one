@@ -69,7 +69,7 @@ const people = computed(() => [
   { value: 0, label: t(tab.value === 'managers' ? 'nv.rep.allManagers' : 'nv.rep.allTeachers') },
   ...(data.value?.people ?? []).map((p) => ({ value: p.id, label: p.name })),
 ])
-const MG = ['new', 'worked', 'actions', 'trial_booked', 'trial_done', 'paid', 'lost', 'conversion', 'returned', 'tasks_done', 'tasks_overdue', 'sales', 'sales_sum', 'bonus'] as const
+const MG = ['new', 'worked', 'actions', 'trial_booked', 'trial_done', 'paid', 'lost', 'conversion', 'tasks_done', 'tasks_overdue', 'sales', 'sales_sum', 'bonus'] as const
 const TC = ['planned', 'held', 'held_pct', 'not_marked', 'cancelled', 'subs', 'plan_pct', 'attendance_pct', 'pay_lessons', 'pay_other', 'pay_total'] as const
 const cols = computed<readonly string[]>(() => (tab.value === 'managers' ? MG : TC))
 const MONEY = new Set(['sales_sum', 'bonus', 'pay_lessons', 'pay_other', 'pay_total'])

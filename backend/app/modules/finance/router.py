@@ -466,7 +466,9 @@ async def dashboard_day(db: DB, actor: Actor = require("dashboard", "view"), bra
         out = {"day": first, "month": month}
 
     if actor.can("crm", "view"):
-        scope = [Lead.archived_at.is_(None)]
+        from app.services import crm as crm_svc
+
+        scope = [Lead.archived_at.is_(None), crm_svc.not_return()]
         if branches is not None:
             scope.append(or_(Lead.branch_id.in_(branches), Lead.branch_id.is_(None)))
         # who is narrowed on some funnel stage sees the numbers, not other managers' leads
