@@ -424,6 +424,10 @@ async def dashboard_students(db: DB, actor: Actor = require("dashboard", "view")
             teachers[sid].append(name)
     until = dict((await db.execute(select(Freeze.student_id, func.max(Freeze.ends_on)).where(
         Freeze.student_id.in_(ids), *([] if day or month else [Freeze.ended_early_on.is_(None)])).group_by(Freeze.student_id))).all()) if status == "frozen" else {}
+    why: dict[int, dict] = {}  # the latest pause of each student: its dates and the reason typed in when it was set
+    if status == "frozen":
+        for fz in await db.scalars(select(Freeze).where(Freeze.student_id.in_(ids)).order_by(Freeze.starts_on.desc(), Freeze.id.desc())):
+            why.setdefault(fz.student_id, {"reason": fz.reason, "since": fz.starts_on})
     out = []
     for x in rows:
         came = min([d for d in (x.contract_date, first.get(x.id)) if d], default=None)
@@ -431,8 +435,8 @@ async def dashboard_students(db: DB, actor: Actor = require("dashboard", "view")
         end = gone or today()
         months = max(0, (end.year - came.year) * 12 + end.month - came.month + (1 if end.day >= came.day else 0)) if came else None
         out.append({"id": x.id, "full_name": x.full_name, "branch_id": x.branch_id, "came": came, "left": gone, "months": months,
-                    "teachers": teachers.get(x.id, []), "reason": x.leave_reason if status == "left" else None,
-                    "until": until.get(x.id)})
+                    "teachers": teachers.get(x.id, []), "reason": x.leave_reason if status == "left" else why.get(x.id, {}).get("reason"),
+                    "since": why.get(x.id, {}).get("since"), "until": until.get(x.id)})
     return out
 
 
@@ -532,7 +536,56 @@ async def dashboard_day(db: DB, actor: Actor = require("dashboard", "view"), bra
             r[p.category if p.category in ("course", "book") else "other"] += net
         items = sorted(by.values(), key=lambda r: -r["amount"])
         out["payers"] = {"count": len(items), "total": sum(r["amount"] for r in items), "items": items}
+    out["unmarked"] = await _unmarked(db, branches, start, end)
+    out["overdue"] = await _overdue(db, branches)
     return out
+
+
+async def _unmarked(db, branches, start, end) -> dict:
+    """Teachers who did not mark attendance (owner, 27.11.2026): lessons of the period that are over and still unmarked.
+    The one who led the lesson answers for it: the substitute when there was one."""
+    from sqlalchemy import or_
+
+    from app.models import Group, User
+
+    q = (select(Lesson, Group.name).outerjoin(Group, Group.id == Lesson.group_id).where(
+        Lesson.starts_at >= start, Lesson.starts_at < end, Lesson.ends_at <= now(), Lesson.status == LessonStatus.PLANNED,
+        Lesson.attendance_marked_at.is_(None), Lesson.is_trial.is_(False),
+        or_(Lesson.group_id.is_(None), Group.archived_at.is_(None))).order_by(Lesson.starts_at))
+    if branches is not None:
+        q = q.where(Lesson.branch_id.in_(branches))
+    rows = (await db.execute(q.limit(2000))).all()
+    names = dict((await db.execute(select(User.id, User.full_name).where(
+        User.id.in_({ls.actual_teacher_id or ls.teacher_id for ls, _ in rows})))).all()) if rows else {}
+    by: dict[int, dict] = {}
+    for ls, group in rows:
+        tid = ls.actual_teacher_id or ls.teacher_id
+        r = by.setdefault(tid, {"id": tid, "full_name": names.get(tid, "—"), "lessons": []})
+        r["lessons"].append({"id": ls.id, "group": group, "starts_at": ls.starts_at, "branch_id": ls.branch_id})
+    items = sorted(by.values(), key=lambda r: (-len(r["lessons"]), r["full_name"]))
+    return {"count": len(rows), "items": items}
+
+
+async def _overdue(db, branches) -> dict:
+    """Open tasks whose term has passed, by the person who has to do them (owner, 27.11.2026). Always the picture as of now."""
+    from sqlalchemy import or_
+
+    from app.models import Task, TaskAssignee, User
+    from app.models.work import TaskStatus
+
+    q = (select(Task, User.id, User.full_name).join(TaskAssignee, TaskAssignee.task_id == Task.id).join(User, User.id == TaskAssignee.user_id)
+         .where(Task.archived_at.is_(None), Task.status.not_in((TaskStatus.DONE, TaskStatus.CANCELLED)), Task.due_at < now(),
+                User.archived_at.is_(None)).order_by(Task.due_at))
+    if branches is not None:
+        q = q.where(or_(Task.branch_id.in_(branches), Task.branch_id.is_(None)))
+    by: dict[int, dict] = {}
+    seen: set[int] = set()
+    for t, uid, name in (await db.execute(q.limit(3000))).all():
+        seen.add(t.id)
+        r = by.setdefault(uid, {"id": uid, "full_name": name, "tasks": []})
+        r["tasks"].append({"id": t.id, "title": t.title, "due_at": t.due_at, "lead_id": t.link_id if t.link_type == "lead" else None})
+    items = sorted(by.values(), key=lambda r: (-len(r["tasks"]), r["full_name"]))
+    return {"count": len(seen), "items": items}
 
 
 # ---------- export ----------

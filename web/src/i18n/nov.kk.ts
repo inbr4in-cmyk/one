@@ -223,6 +223,8 @@ export default {
       note: 'Әкімші жазбасы', markDone: 'Өңделді', reopen: 'Жаңаларға қайтару', total: 'Барлығы', answersN: 'жауап: {n}', sumPeriod: '{a} – {b} · сауалнама: {n}', fill: 'Сауалнама',
     },
     dd: {
+      withUs: 'Бізде оқиды, ай',
+      rowControl: 'Бақылау', unmarked: 'Қатысуды белгілемегендер', unmarkedNone: 'Барлық сабақ белгіленген', overdue: 'Мерзімі өткен тапсырмалар', overdueNone: 'Мерзімі өткен тапсырма жоқ', lessonsN: 'сабақ: {n}', tasksN: 'тапсырма: {n}', dueWas: 'мерзімі {d}', since: 'Мұздату басы',
       rowStudents: 'Оқушылар', active: 'Белсенді оқушылар', newStudents: 'Жаңа оқушылар', waitGroup: 'Топ күтуде', now: 'қазір', waitingNow: 'қазір күтуде', goneTitle: 'Кеткендер, үзілісте, топ күтуде', waiting: 'топ күтуде', g: { left: 'Кеткендер', frozen: 'Үзілісте (мұздату)', waiting: 'Топ күтуде' }, c: { student: 'Оқушы', came: 'Келді', left: 'Кетті', until: 'Мұздату мерзімі', months: 'Оқыған айлар', teacher: 'Кім оқытты', reason: 'Себебі' }, byDay: 'Күн', byMonth: 'Ай', day: 'Есеп күні', new: 'Жаңа лидтер', contacted: 'Байланысты', trial: 'Сынақ сабаққа жазылды', paid: 'Төледі (лидтер)', payers: 'Оқушылар төледі', open: 'Тізімді көрсету', none: 'Бұл күні ешкім жоқ', hidden: 'Тізім басшыға қолжетімді', course: 'курс {s}', book: 'кітаптар {s}', other: 'басқа {s}', lessons: 'сабақ: {n}' },
     finishedOn: 'Аяқталған күні',
     frozen: 'Тоқтатылған',

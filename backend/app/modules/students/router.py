@@ -79,6 +79,26 @@ async def _group_names(db: DB, ids: list[int]) -> dict[int, list[str]]:
     return out
 
 
+async def _months(db: DB, rows: list[Student]) -> dict[int, int]:
+    """How many months each student has studied with the school (owner, 27.11.2026): from the earliest real date we
+    know (contract or first group) to today, or to the day he left. Nothing is known about a student without either."""
+    from sqlalchemy import func
+
+    ids = [s.id for s in rows]
+    if not ids:
+        return {}
+    first = dict((await db.execute(select(GroupMember.student_id, func.min(GroupMember.joined_on))
+                                   .where(GroupMember.student_id.in_(ids)).group_by(GroupMember.student_id))).all())
+    out: dict[int, int] = {}
+    for s in rows:
+        came = min([d for d in (s.contract_date, first.get(s.id)) if d], default=None)
+        if not came:
+            continue
+        end = local(s.left_at).date() if s.left_at and s.status == StudentStatus.LEFT else today()
+        out[s.id] = max(0, (end.year - came.year) * 12 + end.month - came.month + (1 if end.day >= came.day else 0))
+    return out
+
+
 def _list_out(s: Student, actor: Actor, groups: list[str]) -> StudentListOut:
     return StudentListOut(
         id=s.id, full_name=s.full_name, phone=_phone(actor, s.phone), branch_id=s.branch_id, level_id=s.level_id,
@@ -191,7 +211,9 @@ async def list_students(
     stmt = _listed(actor, q, branch_id, status, level_id, group_id, debt, archived)
     rows, total = await paginate(db, stmt.order_by(Student.full_name), limit, offset)
     names = await _group_names(db, [s.id for s in rows])
-    return Page(items=[_list_out(s, actor, names.get(s.id, [])) for s in rows], total=total, limit=limit, offset=offset)
+    months = await _months(db, rows)
+    return Page(items=[_list_out(s, actor, names.get(s.id, [])).model_copy(update={"months": months.get(s.id)}) for s in rows],
+                total=total, limit=limit, offset=offset)
 
 
 STATUS_RU = {"lead": "Лид", "trial": "Пробный", "active": "Учится", "waiting": "Ждёт группу", "frozen": "На паузе", "finished": "Закончил", "left": "Ушёл"}
@@ -225,18 +247,19 @@ async def export_students(
     show = actor.can("students", "view_contacts")
     ph = (lambda v: v or "") if show else (lambda v: mask_phone(v) or "")
     d = lambda v: v.strftime("%d.%m.%Y") if v else ""  # noqa: E731
+    months = await _months(db, rows)
     out = []
     for s in rows:
         ps = parents.get(s.id, [])
         out.append([s.full_name, ph(s.phone), d(s.birth_date), ", ".join(n for n, _ in ps), ", ".join(ph(p) for _, p in ps if p),
                     branches.get(s.branch_id, ""), levels.get(s.level_id, ""), ", ".join(groups.get(s.id, [])),
-                    STATUS_RU.get(s.status, s.status), s.lessons_left, s.money_balance, s.contract_no or "", d(s.contract_date),
+                    STATUS_RU.get(s.status, s.status), months.get(s.id, ""), s.lessons_left, s.money_balance, s.contract_no or "", d(s.contract_date),
                     d(local(s.last_payment_at)) if s.last_payment_at else ""])
     await write_audit(db, actor_id=actor.id, action="student.export", entity="student", entity_id=None, ip=actor.ip,
                       branch_id=branch_id, note=f"{len(out)} учеников", after={"count": len(out), "status": status, "archived": archived})
     await db.commit()
     return _xlsx("Ученики", ["ФИО", "Телефон", "Дата рождения", "Родитель", "Телефон родителя", "Филиал", "Уровень", "Группы",
-                             "Статус", "Осталось уроков", "Баланс, ₸", "Договор №", "Дата договора", "Последняя оплата"],
+                             "Статус", "Учится у нас, мес.", "Осталось уроков", "Баланс, ₸", "Договор №", "Дата договора", "Последняя оплата"],
                  out, f"students-{today().isoformat()}.xlsx")
 
 

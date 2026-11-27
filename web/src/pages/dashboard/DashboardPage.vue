@@ -11,7 +11,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useBranchStore } from '@/stores/branch'
 import { useRefsStore } from '@/stores/refs'
 import { useSourceLabel } from '@/composables/useSourceLabel'
-import { dmy, todayIso, schoolNow } from '@/utils/dates'
+import { dmy, hm, todayIso, schoolNow } from '@/utils/dates'
 import { num, periodLabel } from '@/utils/period'
 import { formatPhone } from '@/utils/phone'
 import type { Locale } from '@/i18n'
@@ -44,6 +44,16 @@ const monthOptions = computed(() => Array.from({ length: 13 }, (_, i) => {
 type Tile = 'new' | 'contacted' | 'trial' | 'paid' | 'debtors' | 'students'
 const shown = ref<Tile | null>(null)
 const modal = ref(false)
+/** The person whose unmarked lessons or overdue tasks are open */
+const who = ref<{ kind: 'unmarked' | 'overdue'; id: number } | null>(null)
+const whoModal = ref(false)
+function showWho(kind: 'unmarked' | 'overdue', id: number) {
+  who.value = { kind, id }
+  whoModal.value = true
+}
+const whoLessons = computed(() => (who.value?.kind === 'unmarked' ? rep.value?.unmarked?.items.find((x) => x.id === who.value!.id) : undefined))
+const whoTasks = computed(() => (who.value?.kind === 'overdue' ? rep.value?.overdue?.items.find((x) => x.id === who.value!.id) : undefined))
+const when = (iso: string) => `${dmy(iso, loc.value)} ${hm(iso, loc.value)}`
 const showGone = (k: 'left' | 'frozen' | 'waiting') => router.push({ name: 'dashboard-students', params: { status: k }, query: mode.value === 'month' ? { month: month.value } : { day: day.value } })
 /** What the day/month blocks are for: «26.11.2026» or «ноябрь 2026» */
 const spanLabel = computed(() => (mode.value === 'month' ? periodLabel(month.value, loc.value) : dmy(day.value, loc.value)))
@@ -147,6 +157,31 @@ async function exportExcel() {
         </template>
         <StatTile tone="red" icon="alert" :label="t('dash.k.debtors')" :value="rep.debtors.count" :hint="t('nv.dd.now')" @open="show('debtors')" />
       </div>
+      <template v-if="rep.unmarked || rep.overdue">
+        <h2 class="dd-h">{{ t('nv.dd.rowControl') }}</h2>
+        <div class="dd-ctl" data-testid="dash-control">
+          <UiCard v-if="rep.unmarked" :title="t('nv.dd.unmarked')" icon="attendance" flush>
+            <template #actions><UiChip :tone="rep.unmarked.count ? 'red' : 'ok'">{{ rep.unmarked.count }}</UiChip><span class="muted dd-span">{{ spanLabel }}</span></template>
+            <p v-if="!rep.unmarked.items.length" class="muted m0 card-pad">{{ t('nv.dd.unmarkedNone') }}</p>
+            <div v-else class="dd-list">
+              <button v-for="x in rep.unmarked.items" :key="x.id" type="button" class="list-row pick" @click="showWho('unmarked', x.id)">
+                <div class="grow"><b>{{ x.full_name }}</b><span>{{ x.lessons.slice(0, 4).map((l) => `${l.group ?? '—'} ${mode === 'month' ? dmy(l.starts_at, loc).slice(0, 5) + ' ' : ''}${hm(l.starts_at, loc)}`).join(' · ') }}<template v-if="x.lessons.length > 4"> …</template></span></div>
+                <UiChip small tone="red">{{ x.lessons.length }}</UiChip>
+              </button>
+            </div>
+          </UiCard>
+          <UiCard v-if="rep.overdue" :title="t('nv.dd.overdue')" icon="tasks" flush>
+            <template #actions><UiChip :tone="rep.overdue.count ? 'red' : 'ok'">{{ rep.overdue.count }}</UiChip><span class="muted dd-span">{{ t('nv.dd.now') }}</span></template>
+            <p v-if="!rep.overdue.items.length" class="muted m0 card-pad">{{ t('nv.dd.overdueNone') }}</p>
+            <div v-else class="dd-list">
+              <button v-for="x in rep.overdue.items" :key="x.id" type="button" class="list-row pick" @click="showWho('overdue', x.id)">
+                <div class="grow"><b>{{ x.full_name }}</b><span>{{ x.tasks[0]?.title }}<template v-if="x.tasks.length > 1"> …</template></span></div>
+                <UiChip small tone="red">{{ x.tasks.length }}</UiChip>
+              </button>
+            </div>
+          </UiCard>
+        </div>
+      </template>
     </template>
 
     <UiCard v-if="funnel" :title="t('dash.sales')" flush style="margin-bottom: 16px">
@@ -196,6 +231,23 @@ async function exportExcel() {
     </template>
   </UiModal>
 
+  <UiModal v-model:open="whoModal" :title="(whoLessons ?? whoTasks)?.full_name ?? ''">
+    <template v-if="whoLessons">
+      <p class="muted" style="margin: 0 0 8px">{{ t('nv.dd.unmarked') }} · {{ t('nv.dd.lessonsN', { n: whoLessons.lessons.length }) }}</p>
+      <RouterLink v-for="l in whoLessons.lessons" :key="l.id" :to="`/attendance/${l.id}`" class="list-row">
+        <div class="grow"><b>{{ l.group ?? '—' }}</b><span>{{ refs.branchName(l.branch_id) }}</span></div>
+        <UiChip small>{{ when(l.starts_at) }}</UiChip>
+      </RouterLink>
+    </template>
+    <template v-else-if="whoTasks">
+      <p class="muted" style="margin: 0 0 8px">{{ t('nv.dd.overdue') }} · {{ t('nv.dd.tasksN', { n: whoTasks.tasks.length }) }}</p>
+      <RouterLink v-for="x in whoTasks.tasks" :key="x.id" :to="x.lead_id ? { path: '/crm', query: { lead: x.lead_id } } : '/tasks'" class="list-row">
+        <div class="grow"><b>{{ x.title }}</b></div>
+        <UiChip small tone="red">{{ t('nv.dd.dueWas', { d: when(x.due_at) }) }}</UiChip>
+      </RouterLink>
+    </template>
+  </UiModal>
+
 </template>
 
 <style scoped>
@@ -203,6 +255,11 @@ async function exportExcel() {
 .dd-row { display: grid; gap: 14px; margin-bottom: 20px }
 .dd-row.five { grid-template-columns: repeat(5, minmax(0, 1fr)) }
 .dd-row.four { grid-template-columns: repeat(4, minmax(0, 1fr)) }
+.dd-ctl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-bottom: 20px; align-items: start }
+.dd-list { max-height: 320px; overflow-y: auto }
+.dd-list .list-row { width: 100%; padding-left: 16px; padding-right: 16px }
+.dd-span { font-size: 12px; margin-left: 8px }
+@media (max-width: 900px) { .dd-ctl { grid-template-columns: minmax(0, 1fr) } }
 .dd-sales { min-width: 820px }
 .dd-sales th { white-space: nowrap }
 @media (max-width: 1100px) { .dd-row.five { grid-template-columns: repeat(3, minmax(0, 1fr)) } .dd-row.four { grid-template-columns: repeat(2, minmax(0, 1fr)) } }

@@ -54,18 +54,19 @@ const tabs = computed(() => (['left', 'frozen', 'waiting'] as Kind[]).map((k) =>
       <table class="tbl gone">
         <thead><tr>
           <th>{{ t('nv.dd.c.student') }}</th><th>{{ t('nv.dd.c.came') }}</th>
-          <th v-if="kind === 'left'">{{ t('nv.dd.c.left') }}</th><th v-if="kind === 'frozen'">{{ t('nv.dd.c.until') }}</th>
-          <th class="r">{{ t('nv.dd.c.months') }}</th><th>{{ t('nv.dd.c.teacher') }}</th><th v-if="kind === 'left'">{{ t('nv.dd.c.reason') }}</th>
+          <th v-if="kind === 'left'">{{ t('nv.dd.c.left') }}</th><th v-if="kind === 'frozen'">{{ t('nv.dd.since') }}</th><th v-if="kind === 'frozen'">{{ t('nv.dd.c.until') }}</th>
+          <th class="r">{{ t('nv.dd.c.months') }}</th><th>{{ t('nv.dd.c.teacher') }}</th><th v-if="kind !== 'waiting'">{{ t('nv.dd.c.reason') }}</th>
         </tr></thead>
         <tbody>
           <tr v-for="x in rows" :key="x.id">
             <td><RouterLink :to="`/students/${x.id}`"><b>{{ x.full_name }}</b></RouterLink><small v-if="branch.filterId === null" class="muted gone-br">{{ refs.branchName(x.branch_id) }}</small></td>
             <td class="num">{{ x.came ? dmy(x.came, loc) : '—' }}</td>
             <td v-if="kind === 'left'" class="num">{{ x.left ? dmy(x.left, loc) : '—' }}</td>
+            <td v-if="kind === 'frozen'" class="num">{{ x.since ? dmy(x.since, loc) : '—' }}</td>
             <td v-if="kind === 'frozen'" class="num">{{ x.until ? dmy(x.until, loc) : '—' }}</td>
             <td class="r num">{{ x.months ?? '—' }}</td>
             <td>{{ x.teachers.join(', ') || '—' }}</td>
-            <td v-if="kind === 'left'">{{ x.reason || '—' }}</td>
+            <td v-if="kind !== 'waiting'">{{ x.reason || '—' }}</td>
           </tr>
         </tbody>
       </table>

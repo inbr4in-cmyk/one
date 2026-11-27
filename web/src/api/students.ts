@@ -17,6 +17,8 @@ export interface StudentListItem {
   last_payment_at: string | null
   last_visit_at: string | null
   age: number | null
+  /** Months with the school; null when no real start date is known */
+  months?: number | null
 }
 
 export interface Guardian {

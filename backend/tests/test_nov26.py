@@ -462,3 +462,46 @@ async def test_reports_of_managers_and_teachers_for_administrators(client, db, o
     # not for a manager or a teacher
     assert (await client.get("/api/reports/managers", headers=h)).status_code == 403
     assert (await client.get("/api/reports/teachers", headers=h)).status_code == 403
+
+
+async def test_dashboard_control_pause_reason_months_and_training_for_admins(client, db, owner_h):
+    """Owner, 27.11.2026: the pause reason in the table; teachers who did not mark attendance; overdue tasks by person;
+    months with the school in the students list; only administrators change the staff training."""
+    from app.models import Freeze, Lesson, Student, Task, TaskAssignee
+    from app.services.clock import today
+    from tests.test_core_learning import _setup, _student
+
+    bid, teacher, room, g = await _setup(db, client, owner_h)
+    owner_id = (await client.get("/api/auth/me", headers=owner_h)).json()["id"]
+    s = await _student(db, client, owner_h, bid, "Пауза Причина", "+77052228801")
+    st = await db.get(Student, s["id"])
+    st.contract_date = today() - timedelta(days=100)
+    db.add(Freeze(student_id=s["id"], starts_on=today() - timedelta(days=1), ends_on=today() + timedelta(days=9), reason="Уехал к бабушке", created_by=owner_id))
+    start = max(now() - timedelta(hours=3), now().replace(hour=0, minute=0, second=0, microsecond=0))  # today, already over
+    db.add(Lesson(branch_id=g["branch_id"], group_id=g["id"], level_id=g["level_id"], teacher_id=teacher.id, room_id=room.id,
+                  starts_at=start, ends_at=start + timedelta(minutes=1)))
+    t = Task(title="Позвонить родителю", creator_id=owner_id, branch_id=bid, due_at=now() - timedelta(hours=5))
+    db.add(t)
+    await db.flush()
+    db.add(TaskAssignee(task_id=t.id, user_id=owner_id))
+    await db.commit()
+
+    rows = (await client.get(f"/api/dashboard/students?status=frozen&day={today()}", headers=owner_h)).json()
+    assert rows[0]["reason"] == "Уехал к бабушке" and rows[0]["since"] == str(today() - timedelta(days=1))
+    rep = (await client.get(f"/api/dashboard/day?day={today()}", headers=owner_h)).json()
+    mine = next(x for x in rep["unmarked"]["items"] if x["id"] == teacher.id)
+    assert rep["unmarked"]["count"] >= 1 and mine["lessons"][0]["group"] == g["name"]
+    late = next(x for x in rep["overdue"]["items"] if x["id"] == owner_id)
+    assert any(x["title"] == "Позвонить родителю" for x in late["tasks"])
+    yesterday = (await client.get(f"/api/dashboard/day?day={today() - timedelta(days=1)}", headers=owner_h)).json()
+    assert all(x["id"] != teacher.id for x in yesterday["unmarked"]["items"])
+
+    row = next(x for x in (await client.get("/api/students?q=Пауза Причина", headers=owner_h)).json()["items"] if x["id"] == s["id"])
+    assert row["months"] == 4  # 100 days: three full months and the started fourth
+
+    await make_staff(db, "teacher", ["Янги шахар"], "+77052228802", "Учитель Курс")
+    await db.commit()
+    th = await login(client, "+77052228802")
+    assert (await client.post("/api/training/courses", headers=th, json={"title": "Чужой курс", "role_codes": []})).status_code == 403
+    assert (await client.post("/api/training/courses", headers=owner_h, json={"title": "Курс админа", "role_codes": []})).status_code == 201
+    assert any(c["title"] == "Курс админа" for c in (await client.get("/api/training/courses", headers=th)).json())

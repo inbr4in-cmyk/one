@@ -75,7 +75,7 @@ const kk: Messages = {
     books: 'Кітаптар',
     payroll: 'Жалақы',
     complaints: 'Шағымдар',
-    training: 'Оқыту',
+    training: 'Қызметкерлерді оқыту',
     tests: 'Тесттер',
     roadmap: 'Жол картасы',
     forms: 'Бағалар мен сауалнамалар',

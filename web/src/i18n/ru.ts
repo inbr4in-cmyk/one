@@ -74,7 +74,7 @@ const ru = {
     books: 'Книги',
     payroll: 'Зарплата',
     complaints: 'Жалобы',
-    training: 'Обучение',
+    training: 'Обучение сотрудников',
     tests: 'Тесты',
     roadmap: 'Дорожная карта',
     forms: 'Оценки и анкеты',

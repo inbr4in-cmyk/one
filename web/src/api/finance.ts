@@ -97,10 +97,14 @@ export interface DayReport {
   gone?: Record<'left' | 'frozen' | 'waiting', number>
   /** Studying now; cards opened in the period (not the imported ones) */
   students?: { active: number; new: { count: number; items: { id: number; full_name: string; branch_id: number; created_on: string }[] } }
+  /** Lessons of the period that are over and still without attendance, by the teacher who led them */
+  unmarked?: { count: number; items: { id: number; full_name: string; lessons: { id: number; group: string | null; starts_at: string; branch_id: number }[] }[] }
+  /** Open tasks past their term as of now, by assignee */
+  overdue?: { count: number; items: { id: number; full_name: string; tasks: { id: number; title: string; due_at: string; lead_id: number | null }[] }[] }
   payers?: { count: number; total: number; items: { id: number; full_name: string; amount: number; course: number; book: number; other: number; lessons_left: number; branch_id: number }[] }
 }
 
-export interface GoneStudent { id: number; full_name: string; branch_id: number; came: string | null; left: string | null; months: number | null; teachers: string[]; reason: string | null; until: string | null }
+export interface GoneStudent { id: number; full_name: string; branch_id: number; came: string | null; left: string | null; months: number | null; teachers: string[]; reason: string | null; since?: string | null; until: string | null }
 
 export const financeApi = {
   students: (p: { branch_id?: number | null; status: 'left' | 'frozen' | 'waiting'; day?: string; month?: string }) => http.get<GoneStudent[]>(`/dashboard/students${qs(p)}`),

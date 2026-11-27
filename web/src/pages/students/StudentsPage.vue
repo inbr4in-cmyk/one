@@ -45,6 +45,7 @@ const columns = computed<TableColumn[]>(() => [
   { key: 'money_balance', label: t('students.col.money'), align: 'right' },
   { key: 'last_visit_at', label: t('students.col.visit') },
   { key: 'status', label: t('students.col.status') },
+  { key: 'months', label: t('nv.dd.withUs'), align: 'right' },
   ...(auth.can('students.archive') ? [{ key: 'actions', label: '', align: 'right' as const }] : []),
 ])
 /** «Архив» sits in the status filter: students removed from the lists, finished long ago in the old CRM among them. */
@@ -181,6 +182,7 @@ function resetFilters() {
       <template #cell-last_visit_at="{ row }">
         <span class="num muted">{{ row.last_visit_at ? dmy(row.last_visit_at, loc) : '—' }}</span>
       </template>
+      <template #cell-months="{ row }"><span class="num">{{ row.months ?? '—' }}</span></template>
       <template #cell-status="{ row }">
         <StatusChip :status="row.status" small />
         <UiChip v-if="row.lessons_left <= 0 && row.status === 'active'" tone="red" small>{{ t('students.debt') }}</UiChip>

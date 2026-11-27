@@ -87,6 +87,7 @@ class StudentListOut(BaseModel):
     last_payment_at: datetime | None
     last_visit_at: datetime | None
     age: int | None = None
+    months: int | None = None  # how long the student has been with the school
 
 
 class BalanceOut(BaseModel):
