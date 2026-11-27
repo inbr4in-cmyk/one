@@ -217,13 +217,13 @@ async function exportFile(kind: 'payments' | 'pnl') {
           <SourceTiles v-else-if="revenueCats.length" plain :items="revenueCats" :format="(v) => money(v, loc)" />
           <p v-else class="muted m0">{{ t('fin.noRevenue') }}</p>
         </UiCard>
-        <UiCard :title="t('fin.expensesByCat')">
-          <UiSkeleton v-if="!pnl" :lines="3" />
-          <SourceTiles v-else-if="byCategory.length" :items="byCategory" :format="(v) => money(v, loc)" @open="openCat" />
-          <p v-else class="muted m0">{{ t('fin.noExpenses') }}</p>
-        </UiCard>
       </div>
     </div>
+    <UiCard :title="t('fin.expensesByCat')" style="margin-top: 16px" data-testid="fin-expenses">
+      <UiSkeleton v-if="!pnl" :lines="3" />
+      <SourceTiles v-else-if="byCategory.length" :items="byCategory" :format="(v) => money(v, loc)" @open="openCat" />
+      <p v-else class="muted m0">{{ t('fin.noExpenses') }}</p>
+    </UiCard>
   </template>
 
   <template v-else>
