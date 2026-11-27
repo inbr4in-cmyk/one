@@ -92,6 +92,11 @@ const EXP_LOOK: [RegExp, string, string][] = [
   [/аренд|жалға/i, 'home', '#1A3F8A'], [/зарплат|жалақы/i, 'salary', '#1E8E5A'], [/реклам|жарнама/i, 'zap', '#D6286E'], [/коммунал/i, 'idea', '#C98A06'],
   [/книг|кітап/i, 'books', '#7B52C7'], [/материал/i, 'notebook', '#0E8FA8'], [/магазин|товар|дүкен/i, 'shop', '#B4532A'], [/налог|салық/i, 'file', '#C8102E'],
 ]
+/** A tile of «Расходы по статьям» opens the expenses of that category */
+function openCat(key: string) {
+  catFilter.value = categories.value.find((c) => c.name === key.slice(2))?.id ?? 0
+  tab.value = 'expenses'
+}
 function catLook(name: string) {
   const hit = EXP_LOOK.find(([re]) => re.test(name))
   return hit ? { icon: hit[1], color: hit[2] } : { icon: 'wallet' }
@@ -214,7 +219,7 @@ async function exportFile(kind: 'payments' | 'pnl') {
         </UiCard>
         <UiCard :title="t('fin.expensesByCat')">
           <UiSkeleton v-if="!pnl" :lines="3" />
-          <SourceTiles v-else-if="byCategory.length" plain :items="byCategory" :format="(v) => money(v, loc)" />
+          <SourceTiles v-else-if="byCategory.length" :items="byCategory" :format="(v) => money(v, loc)" @open="openCat" />
           <p v-else class="muted m0">{{ t('fin.noExpenses') }}</p>
         </UiCard>
       </div>
