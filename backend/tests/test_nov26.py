@@ -406,12 +406,19 @@ async def test_student_who_left_is_at_once_a_card_in_the_return_funnel(client, d
     assert (await client.post(url.format(a), headers=owner_h, json={"left": True, "reason": "всё же ушёл"})).status_code == 200
     assert await card(a) == [("left", False), ("left", True)]
 
+    # the student's own lead link is not touched; a payment of a student who left moves the card to «Оплатил»
+    assert (await db.get(Student, b)).lead_id is None
+    from tests.conftest import level_id
+    r = await client.post("/api/payments", headers=owner_h, json={"student_id": b, "level_id": await level_id(db, "ELE"), "lessons": 12, "method": "cash"})
+    assert r.status_code in (200, 201), r.text
+    assert await card(b) == [("paid", True)] and (await db.get(Student, b)).lead_id is None
+
     # those who left before the funnel: preview changes nothing, the fix makes the cards once
     st = await db.get(Student, c)
     st.status, st.left_at, st.leave_reason = "left", now() - timedelta(days=10), "дорого"
     await db.commit()
     pre = await retention.left_to_funnel(db, False)
-    assert pre["left"] == 3 and pre["new"] == 1 and pre["had_card"] == 2 and pre["applied"] is False
+    assert pre["left"] == 2 and pre["new"] == 1 and pre["had_card"] == 1 and pre["applied"] is False
     assert await card(c) == []
     done = await retention.left_to_funnel(db, True)
     assert done["new"] == 1 and "дорого" in done["lines"][0] and await card(c) == [("left", True)]

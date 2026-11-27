@@ -155,8 +155,18 @@ async def return_card(db: AsyncSession, s: Student, actor_id: int | None, stage:
         cur = await db.get(LeadStage, lead.stage_id)
         if cur is not None and target.order > cur.order:
             await crm.move(db, lead, target, actor_id, why)
-    s.lead_id = lead.id  # a payment of this student moves this card to «Оплатил»
     return lead
+
+
+async def open_return_card(db: AsyncSession, student_id: int):
+    """The student's open card in «Возврат», if any. The student's own lead link (students.lead_id) stays the lead
+    of the first sale: a refund of that payment still cancels the bonuses tied to it."""
+    from app.models import Lead, LeadStage, Pipeline
+
+    return await db.scalar(
+        select(Lead).join(Pipeline, Pipeline.id == Lead.pipeline_id).join(LeadStage, LeadStage.id == Lead.stage_id)
+        .where(Lead.student_id == student_id, Pipeline.code == "return", Lead.archived_at.is_(None),
+               LeadStage.is_won.is_(False), LeadStage.is_lost.is_(False)).order_by(Lead.id.desc()).limit(1))
 
 
 async def close_return_card(db: AsyncSession, s: Student, actor_id: int | None, why: str) -> None:

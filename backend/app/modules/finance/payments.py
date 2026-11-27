@@ -262,6 +262,11 @@ async def _sale_facts(db: DB, s: Student, p: Payment, actor: Actor, was_left: bo
     """First payment of a lead → «Оплатил», office manager's sale bonus, trial teacher's retention bonus;
     a «Возврат» lead paying → return bonus for the sales person (ТЗ 9.2, 9.3, 10)."""
     lead = await db.get(Lead, s.lead_id) if s.lead_id else None
+    if was_left:
+        # a student who left has a card in «Возврат»: that card goes to «Оплатил», not the lead of the first sale
+        from app.services import retention
+
+        lead = await retention.open_return_card(db, s.id) or lead
     if lead is None:
         return
     d = local(p.paid_at).date()
