@@ -17,6 +17,8 @@ export interface NavItem {
   label?: string
   /** Folded under this heading of the menu (owner, 27.11.2026) */
   section?: 'student' | 'money'
+  /** Not in the menu: opened from inside the page of this menu item (complaints live inside «Задачи») */
+  under?: string
 }
 
 /** Menu headings that open and fold; a heading is shown when the user may open at least one of its items. */
@@ -51,8 +53,9 @@ export const NAV: NavItem[] = [
   { key: 'payroll', path: '/payroll', icon: 'salary', perm: 'payroll.view', group: 'main', section: 'money', page: () => import('@/pages/payroll/PayrollPage.vue') },
   { key: 'payments', path: '/payments', icon: 'wallet', perm: 'payments.view', group: 'main', section: 'money', page: () => import('@/pages/payments/PaymentsPage.vue') },
   { key: 'books', path: '/books', route: '/books/:tab(transfers|report)?', icon: 'book', perm: 'books.view', group: 'main', section: 'money', page: () => import('@/pages/books/BooksPage.vue') },
+  { key: 'reports', path: '/reports', icon: 'kpi', perm: 'students.archive', group: 'main', page: () => import('@/pages/reports/ReportsPage.vue') },
   { key: 'tasks', path: '/tasks', icon: 'task', perm: 'tasks.view', group: 'main', counter: 'tasks', soft: true, page: () => import('@/pages/tasks/TasksPage.vue') },
-  { key: 'complaints', path: '/complaints', icon: 'flag', perm: 'complaints.view', group: 'main', route: '/complaints/:id(\\d+)?', page: () => import('@/pages/complaints/ComplaintsPage.vue') },
+  { key: 'complaints', path: '/complaints', icon: 'flag', perm: 'complaints.view', group: 'main', under: 'tasks', route: '/complaints/:id(\\d+)?', page: () => import('@/pages/complaints/ComplaintsPage.vue') },
   { key: 'training', path: '/training', icon: 'learning-base', perm: 'training.view', group: 'main', page: () => import('@/pages/training/TrainingPage.vue') },
   { key: 'tests', path: '/tests', icon: 'tests', perm: 'tests.view', group: 'main', page: () => import('@/pages/tests/TestsPage.vue') },
   { key: 'forms', path: '/forms', icon: 'star', perm: 'students.archive', group: 'main', page: () => import('@/pages/forms/FormsPage.vue') },
@@ -98,5 +101,5 @@ export function allowed(perm: string | string[] | undefined, can: (perm: string)
 }
 
 export function visibleNav(can: (perm: string) => boolean): NavItem[] {
-  return NAV.filter((i) => allowed(i.perm, can))
+  return NAV.filter((i) => !i.under && allowed(i.perm, can))
 }

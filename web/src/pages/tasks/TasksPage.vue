@@ -8,6 +8,7 @@ import TaskDrawer from '@/components/ops/TaskDrawer.vue'
 import { STATUS_TONE } from '@/components/ops/taskMeta'
 import { tasksApi, type Task, type TaskStatus } from '@/api/tasks'
 import { useAuthStore } from '@/stores/auth'
+import TasksSwitch from '@/components/layout/TasksSwitch.vue'
 import { useBranchStore } from '@/stores/branch'
 import { useCountersStore } from '@/stores/counters'
 import { relativeTime } from '@/utils/format'
@@ -76,6 +77,7 @@ function created(x: Task) {
 </script>
 
 <template>
+  <TasksSwitch at="tasks" />
   <div class="ph">
     <div><h1>{{ t('nav.tasks') }}</h1><p>{{ t('tasks.subtitle') }}</p></div>
     <span class="sp" />

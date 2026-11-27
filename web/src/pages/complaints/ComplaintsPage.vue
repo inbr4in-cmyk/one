@@ -7,6 +7,7 @@ import { UiButton, UiCard, UiChip, UiDrawer, UiEmptyState, UiIcon, UiSegmented, 
 import { complaintsApi, type Complaint, type ComplaintStatus } from '@/api/compliance'
 import { COMPLAINT_TONE, complaintActions } from '@/components/compliance/complaintMeta'
 import { useAuthStore } from '@/stores/auth'
+import TasksSwitch from '@/components/layout/TasksSwitch.vue'
 import { useBranchStore } from '@/stores/branch'
 import { useRefsStore } from '@/stores/refs'
 import { useToastStore } from '@/stores/toast'
@@ -80,6 +81,7 @@ const dueText = (c: Complaint) => (c.overdue ? t('complaints.overdue', { when: r
 </script>
 
 <template>
+  <TasksSwitch at="complaints" />
   <div class="ph">
     <div><h1>{{ t('nav.complaints') }}</h1><p>{{ t('complaints.subtitle') }}</p></div>
     <span class="sp" />

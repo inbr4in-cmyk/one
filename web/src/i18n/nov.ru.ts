@@ -1,6 +1,7 @@
 /** Requests of 14.11: leave via the methodist, book out of a payment, pay breakdown, finance by dates. */
 export default {
   nv: {
+    rep: { managers: "По менеджерам", teachers: "По учителям", manager: "Менеджер", teacher: "Учитель", allManagers: "Все менеджеры", allTeachers: "Все учителя", empty: "За эти дни данных нет", total: "Итого", c: { new: "Новые лиды", worked: "Отработано лидов", actions: "Звонки и заметки", trial_booked: "Записал на пробный", trial_done: "Пришли на пробный", paid: "Оплатили", lost: "Отказы", conversion: "Конверсия", returned: "Вернул учеников", tasks_done: "Задач выполнено", tasks_overdue: "Просрочено задач", sales: "Продаж", sales_sum: "Сумма продаж", bonus: "Бонусы", planned: "Уроков по расписанию", held: "Проведено", held_pct: "Проведено, %", not_marked: "Не отмечено", cancelled: "Отменено", subs: "Замены за других", plan_pct: "По плану уровня", attendance_pct: "Посещаемость", pay_lessons: "За уроки", pay_other: "Бонусы", pay_total: "Заработал всего" } },
     exportXlsx: 'Экспорт',
     tasks: { sort: 'Порядок', sortNew: 'Сначала новые', sortDue: 'По сроку' },
     att: { who: 'Сотрудник', everyone: 'Все сотрудники' },

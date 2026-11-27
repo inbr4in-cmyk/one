@@ -9,7 +9,7 @@ import UiIcon from '@/components/ui/UiIcon.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useCountersStore } from '@/stores/counters'
 import { useUiStore } from '@/stores/ui'
-import { SECTIONS, visibleNav, type NavItem } from '@/router/nav'
+import { NAV, SECTIONS, visibleNav, type NavItem } from '@/router/nav'
 
 const auth = useAuthStore()
 const counters = useCountersStore()
@@ -31,7 +31,10 @@ const main = computed(() => {
   return out
 })
 const settings = computed(() => items.value.filter((i) => i.group === 'settings'))
-const activeKey = computed(() => (route.meta.parent as string | undefined) ?? (route.name as string | undefined))
+const activeKey = computed(() => {
+  const key = (route.meta.parent as string | undefined) ?? (route.name as string | undefined)
+  return NAV.find((i) => i.key === key)?.under ?? key  // a page opened from inside another one lights that one
+})
 
 // Which headings are open: remembered on this device; the one that holds the open page opens by itself.
 const OPEN_KEY = 'oe.nav.open'

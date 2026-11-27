@@ -416,3 +416,42 @@ async def test_student_who_left_is_at_once_a_card_in_the_return_funnel(client, d
     done = await retention.left_to_funnel(db, True)
     assert done["new"] == 1 and "дорого" in done["lines"][0] and await card(c) == [("left", True)]
     assert (await retention.left_to_funnel(db, False))["new"] == 0
+
+
+async def test_reports_of_managers_and_teachers_for_administrators(client, db, owner_h):
+    from app.models import Accrual
+    from app.services.clock import today
+    from tests.conftest import branch_id
+    from tests.test_core_learning import _lesson_now, _setup, _student
+
+    bid, teacher, room, g = await _setup(db, client, owner_h)
+    s = await _student(db, client, owner_h, bid, "Отчёт Ученик", "+77052229101")
+    await client.post(f"/api/groups/{g['id']}/members", headers=owner_h, json={"student_id": s["id"]})
+    lesson = await _lesson_now(db, g, teacher, room)
+    r = await client.put(f"/api/lessons/{lesson.id}/attendance", headers=owner_h,
+                         json={"marks": [{"student_id": s["id"], "status": "present"}], "reason": "позже"})
+    assert r.status_code == 200, r.text
+    rep = (await client.get("/api/reports/teachers", headers=owner_h)).json()
+    row = next(x for x in rep["rows"] if x["user_id"] == teacher.id)
+    paid = await db.scalar(select(Accrual.amount).where(Accrual.kind == "lesson", Accrual.ref_id == lesson.id))
+    assert row["planned"] == 1 and row["held"] == 1 and row["held_pct"] == 100 and row["attendance_pct"] == 100
+    assert row["pay_lessons"] == paid == row["pay_total"] and rep["total"]["held"] == 1
+    one = (await client.get(f"/api/reports/teachers?teacher_id={teacher.id}", headers=owner_h)).json()
+    assert len(one["rows"]) == 1 and len(one["people"]) >= 1
+    old = (await client.get("/api/reports/teachers?date_from=2026-01-01&date_to=2026-01-31", headers=owner_h)).json()
+    assert old["rows"] == []
+
+    sales = await make_staff(db, "sales", ["Янги шахар"], "+77052229102", "Отчёт Менеджер")
+    h = await login(client, "+77052229102")
+    lead = (await client.post("/api/crm/leads", headers=h, json={"full_name": "Лид Отчёта", "branch_id": bid, "phone": "+77052229103"})).json()
+    r = await client.post(f"/api/crm/leads/{lead['id']}/events", headers=h, json={"kind": "call", "text": "позвонил", "result": "thinking"})
+    assert r.status_code in (200, 201), r.text
+    rep = (await client.get(f"/api/reports/managers?date_from={today()}&date_to={today()}", headers=owner_h)).json()
+    row = next(x for x in rep["rows"] if x["user_id"] == sales.id)
+    assert row["new"] == 1 and row["worked"] == 1 and row["actions"] == 1 and row["paid"] == 0 and row["conversion"] == 0
+    assert (await client.get(f"/api/reports/managers?manager_id={sales.id}", headers=owner_h)).json()["total"]["new"] == 1
+    x = await client.get("/api/reports/managers.xlsx", headers=owner_h)
+    assert x.status_code == 200 and x.content[:2] == b"PK"
+    # not for a manager or a teacher
+    assert (await client.get("/api/reports/managers", headers=h)).status_code == 403
+    assert (await client.get("/api/reports/teachers", headers=h)).status_code == 403

@@ -24,6 +24,8 @@ from app.modules.work.profile import router as profile_router
 from app.modules.store.router import router as store_router
 from app.modules.compliance.router import router as compliance_router
 
-ROUTERS = [auth_router, admin_router, org_router, students_router, academics_router, payments_router, crm_tasks_router, crm_router, inbox_router, tests_router, survey_router, forms_router, test_sessions_router, chats_router,
+from app.modules.finance.reports import router as reports_router
+
+ROUTERS = [reports_router, auth_router, admin_router, org_router, students_router, academics_router, payments_router, crm_tasks_router, crm_router, inbox_router, tests_router, survey_router, forms_router, test_sessions_router, chats_router,
            finance_router, payroll_router, tasks_router, staff_router, profile_router, store_router, compliance_router,
            portal_router, search_router, import_router, old_crm_import_router]
