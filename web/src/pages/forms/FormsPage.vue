@@ -2,8 +2,10 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
+import { toDataURL } from 'qrcode'
+import PosterSheet from '@/components/forms/PosterSheet.vue'
 import LessonSurveyCard from '@/components/tests/LessonSurveyCard.vue'
-import { UiButton, UiCard, UiChip, UiEmptyState, UiIcon, UiModal, UiSegmented, UiSkeleton, UiSwitch, UiTextarea } from '@/components/ui'
+import { UiButton, UiCard, UiChip, UiEmptyState, UiField, UiIcon, UiInput, UiModal, UiSegmented, UiSkeleton, UiSwitch, UiTextarea } from '@/components/ui'
 import { formsApi, type FormInfo, type FormRow, type FormSummary } from '@/api/forms'
 import { useAuthStore } from '@/stores/auth'
 import { useRefsStore } from '@/stores/refs'
@@ -74,6 +76,21 @@ async function copy(f: FormInfo) {
     toast.error(t('errors.generic'))
   }
 }
+
+/* ---------- QR sheet for a table stand ---------- */
+const poster = reactive({ open: false, url: '', qr: '', kk: '', ru: '' })
+async function openPoster(f: FormInfo) {
+  Object.assign(poster, { open: true, url: link(f), qr: '', kk: poster.kk || t('nv.fm.posterKk'), ru: poster.ru || t('nv.fm.posterRu') })
+  poster.qr = await toDataURL(poster.url, { margin: 0, width: 1600, errorCorrectionLevel: 'H', color: { dark: '#01225F', light: '#FFFFFF' } }).catch(() => '')
+}
+/** Prints only the sheet: A5, no margins; everything else on the page is hidden while the print dialog is open */
+function printPoster() {
+  const st = document.createElement('style')
+  st.textContent = '@page{size:A5 portrait;margin:0}@media print{body>*:not(.poster-print){display:none!important}.poster-print{display:block!important;font-size:1mm}html,body{background:#fff!important;margin:0!important}}'
+  document.head.appendChild(st)
+  window.addEventListener('afterprint', () => st.remove(), { once: true })
+  window.print()
+}
 async function patch(f: FormInfo, body: { is_open?: boolean; is_active?: boolean }) {
   const r = await formsApi.patch(f.id, body).catch(() => null)
   if (r && forms.value) forms.value = forms.value.map((x) => (x.id === f.id ? { ...x, is_open: r.is_open, is_active: r.is_active } : x))
@@ -130,6 +147,7 @@ const branchKeys = (s: FormSummary) => [...new Set(s.questions.flatMap((q) => (q
           <span class="qr-link grow">{{ link(f) }}</span>
           <UiButton size="sm" icon="clip" @click="copy(f)">{{ t('tests.qr.copy') }}</UiButton>
           <UiButton size="sm" variant="ghost" icon="globe" :href="link(f)" target="_blank" rel="noopener">{{ t('tests.qr.open') }}</UiButton>
+          <UiButton size="sm" variant="primary" icon="qr" data-testid="fm-poster" @click="openPoster(f)">{{ t('nv.fm.posterBtn') }}</UiButton>
         </div>
 
         <div class="fm-tabs"><UiSegmented :model-value="view[f.id] ?? 'new'" :options="views" :label="t('nv.fm.answers')" size="sm" @update:model-value="setView(f.id, $event)" /></div>
@@ -186,9 +204,27 @@ const branchKeys = (s: FormSummary) => [...new Set(s.questions.flatMap((q) => (q
       <UiButton v-if="cur" variant="primary" icon="ok" :loading="busy" @click="setDone(true)">{{ cur.status === 'done' ? t('common.save') : t('nv.fm.markDone') }}</UiButton>
     </template>
   </UiModal>
+
+  <UiModal v-model:open="poster.open" :title="t('nv.fm.posterBtn')" wide>
+    <div class="pp">
+      <div class="pp-view"><PosterSheet :qr="poster.qr" :kk="poster.kk" :ru="poster.ru" :url="poster.url" /></div>
+      <div class="stack pp-side">
+        <UiField :label="t('nv.fm.posterL1')"><UiInput v-model="poster.kk" :maxlength="60" /></UiField>
+        <UiField :label="t('nv.fm.posterL2')"><UiInput v-model="poster.ru" :maxlength="60" /></UiField>
+        <UiButton variant="primary" icon="file" :disabled="!poster.qr" @click="printPoster">{{ t('nv.fm.posterPrint') }}</UiButton>
+        <UiButton icon="dl" :disabled="!poster.qr" :href="poster.qr" download="one-english-qr.png">{{ t('nv.fm.posterQr') }}</UiButton>
+      </div>
+    </div>
+  </UiModal>
+  <Teleport to="body">
+    <div v-if="poster.open" class="poster-print"><PosterSheet :qr="poster.qr" :kk="poster.kk" :ru="poster.ru" :url="poster.url" /></div>
+  </Teleport>
 </template>
 
 <style scoped>
+.pp { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start }
+.pp-view { font-size: 2.3px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; box-shadow: var(--shadow-pop); flex: none }
+.pp-side { flex: 1; min-width: 220px }
 .fm-set { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; font-size: 13.5px }
 .fm-sw { display: inline-flex; align-items: center; gap: 8px }
 .fm-link { margin-top: 12px }
@@ -203,4 +239,8 @@ const branchKeys = (s: FormSummary) => [...new Set(s.questions.flatMap((q) => (q
 .fm-sum { display: grid; gap: 14px }
 .fm-sq { display: grid; gap: 6px }
 .fm-st { width: 100%; font-size: 13.5px }
+</style>
+
+<style>
+.poster-print { display: none }
 </style>
