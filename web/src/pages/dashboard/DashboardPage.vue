@@ -3,7 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { UiButton, UiCard, UiChip, UiEmptyState, UiInput, UiModal, UiSegmented, UiSelect, UiSkeleton } from '@/components/ui'
-import HBars from '@/components/charts/HBars.vue'
+import SourceTiles from '@/components/dashboard/SourceTiles.vue'
 import { financeApi, type Dashboard, type DayReport } from '@/api/finance'
 import StatTile from '@/components/dashboard/StatTile.vue'
 import { crmApi, type Analytics } from '@/api/crm'
@@ -95,7 +95,7 @@ const todayLabel = computed(() => {
 const scope = computed(() => (branch.filterId === null ? t('branch.all') : branch.current.name))
 
 const sources = computed(() => Object.entries(rep.value?.sources ?? {})
-  .map(([k, v]) => ({ key: k, label: srcLabel(k), value: v, icon: SRC[k]?.icon ?? 'user', iconCls: SRC[k]?.cls ?? 'call' }))
+  .map(([k, v]) => ({ key: k, label: srcLabel(k), value: v }))
   .sort((a, b) => b.value - a.value))
 const sourcesTotal = computed(() => sources.value.reduce((n, x) => n + x.value, 0))
 /** Sales rating: every manager's leads of the period by funnel stage; who sold more stands higher */
@@ -161,13 +161,11 @@ async function exportExcel() {
       </div>
       <p v-else class="muted m0 card-pad">{{ t('dash.noSales') }}</p>
     </UiCard>
-    <div v-if="rep?.sources" class="grid dash-a">
-      <UiCard :title="t('dash.sourcesTitle')">
-        <template #actions><span class="muted" style="font-size: 12px">{{ spanLabel }} · {{ num(sourcesTotal, loc) }}</span></template>
-        <HBars v-if="sources.length" :items="sources" />
-        <p v-else class="muted m0">{{ t('dash.noLeads') }}</p>
-      </UiCard>
-    </div>
+    <UiCard v-if="rep?.sources" :title="t('dash.sourcesTitle')" style="margin-bottom: 16px" data-testid="dash-sources">
+      <template #actions><span class="muted" style="font-size: 12px">{{ spanLabel }} · <b class="num" style="font-size: 15px; color: var(--ink)">{{ num(sourcesTotal, loc) }}</b></span></template>
+      <SourceTiles v-if="sources.length" :items="sources" @open="(k) => router.push({ path: '/crm', query: { source: k } })" />
+      <p v-else class="muted m0">{{ t('dash.noLeads') }}</p>
+    </UiCard>
 
   </template>
 

@@ -37,6 +37,11 @@ const board = ref<Board | null>(null)
 const loading = ref(true)
 const q = keptRef('crm.q', () => '')
 const source = keptRef('crm.source', () => '')
+// opened from a source tile of the dashboard: the board of that source
+if (typeof route.query.source === 'string') {
+  source.value = route.query.source
+  tab.value = route.query.source === 'return' ? 'return' : 'main'
+}
 const owner = keptRef('crm.owner', () => 0)
 const waitingOnly = ref(false)
 const freeOnly = ref(false)
