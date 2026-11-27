@@ -1,0 +1,89 @@
+# Builds the iOS app on GitHub's Mac and sends it to App Store Connect (TestFlight). Started by hand:
+# GitHub → Actions → «iOS → TestFlight» → Run workflow. No Mac is needed on our side.
+# Secrets (Settings → Secrets and variables → Actions): APPLE_TEAM_ID, ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8.
+# Signing is Apple's automatic «cloud» signing with the App Store Connect API key: no certificate files are kept anywhere.
+name: iOS → TestFlight
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Версия приложения, например 1.0.0'
+        required: true
+        default: '1.0.0'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-testflight
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: mobile
+    env:
+      TEAM: ${{ secrets.APPLE_TEAM_ID }}
+      KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ISSUER: ${{ secrets.ASC_ISSUER_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the secrets
+        env:
+          P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          for v in TEAM KEY_ID ISSUER P8; do
+            [ -n "${!v}" ] || { echo "::error::Секрет для $v не задан (Settings → Secrets and variables → Actions)"; exit 1; }
+          done
+          case "${{ inputs.version }}" in
+            [0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "::error::Версия должна быть вида 1.0.0"; exit 1 ;;
+          esac
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - run: flutter --version && xcodebuild -version
+
+      - run: flutter pub get
+
+      - name: Build the archive (not signed yet)
+        run: >
+          flutter build ipa --release --no-codesign
+          --build-name=${{ inputs.version }} --build-number=${{ github.run_number }}
+          --dart-define=OE_API_BASE=https://english.inbrain.kz
+
+      - name: Sign with Apple's cloud signing and upload to App Store Connect
+        env:
+          P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          KEY="$RUNNER_TEMP/AuthKey_$KEY_ID.p8"
+          trap 'rm -f "$KEY"' EXIT
+          ( umask 077; printf '%s\n' "$P8" > "$KEY" )
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>$TEAM</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+            <key>uploadSymbols</key><true/>
+          </dict>
+          </plist>
+          PLIST
+          xcodebuild -exportArchive \
+            -archivePath build/ios/archive/Runner.xcarchive \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -exportPath build/ios/export \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$KEY" -authenticationKeyID "$KEY_ID" -authenticationKeyIssuerID "$ISSUER"
