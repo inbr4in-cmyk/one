@@ -2,9 +2,10 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import { UiButton, UiCard, UiChip, UiEmptyState, UiIcon, UiInput, UiModal, UiSegmented, UiSelect, UiSkeleton } from '@/components/ui'
+import { UiButton, UiCard, UiChip, UiEmptyState, UiInput, UiModal, UiSegmented, UiSelect, UiSkeleton } from '@/components/ui'
 import HBars from '@/components/charts/HBars.vue'
-import { financeApi, type Dashboard, type DayReport, type Ratings } from '@/api/finance'
+import { financeApi, type Dashboard, type DayReport } from '@/api/finance'
+import StatTile from '@/components/dashboard/StatTile.vue'
 import { crmApi, type Analytics } from '@/api/crm'
 import { useAuthStore } from '@/stores/auth'
 import { useBranchStore } from '@/stores/branch'
@@ -24,7 +25,6 @@ const srcLabel = useSourceLabel()
 const loc = computed(() => locale.value as Locale)
 
 const data = ref<Dashboard | null>(null)
-const ratings = ref<Ratings | null>(null)
 const funnel = ref<Analytics | null>(null)
 /** The report is for one day or for a whole month */
 const mode = ref<'day' | 'month'>('day')
@@ -41,7 +41,7 @@ const monthOptions = computed(() => Array.from({ length: 13 }, (_, i) => {
   const v = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
   return { value: v, label: periodLabel(v, loc.value) }
 }))
-type Tile = 'new' | 'contacted' | 'trial' | 'paid' | 'debtors'
+type Tile = 'new' | 'contacted' | 'trial' | 'paid' | 'debtors' | 'students'
 const shown = ref<Tile | null>(null)
 const modal = ref(false)
 const showGone = (k: 'left' | 'frozen' | 'waiting') => router.push({ name: 'dashboard-students', params: { status: k }, query: mode.value === 'month' ? { month: month.value } : { day: day.value } })
@@ -52,7 +52,8 @@ function show(k: Tile) {
   modal.value = true
 }
 const leadTiles = computed(() => (['new', 'trial', 'paid'] as const).map((k) => ({ key: k, icon: { new: 'crm', contacted: 'phone', trial: 'cal', paid: 'ok' }[k], n: rep.value?.leads?.[k].count ?? 0 })))
-const leadRows = computed(() => (shown.value && shown.value !== 'debtors' ? rep.value?.leads?.[shown.value].items ?? [] : []))
+const leadKey = computed(() => (shown.value && shown.value !== 'debtors' && shown.value !== 'students' ? shown.value : null))
+const leadRows = computed(() => (leadKey.value ? rep.value?.leads?.[leadKey.value].items ?? [] : []))
 
 const SRC: Record<string, { cls: string; icon: string }> = {
   instagram: { cls: 'ig', icon: 'ig' }, whatsapp: { cls: 'wa', icon: 'wa' }, qr: { cls: 'qr', icon: 'qr' }, site: { cls: 'web', icon: 'globe' },
@@ -73,10 +74,11 @@ async function load() {
     const to = byMonth ? (last > todayIso() ? todayIso() : last) : day.value
     crmApi.analytics({ date_from: from, date_to: to, branch_id: branch.filterId }).then((r) => (funnel.value = r)).catch(() => (funnel.value = null))
   }
-  const [d, r] = await Promise.allSettled([financeApi.dashboard(b), financeApi.ratings(b)])
-  if (d.status === 'fulfilled') data.value = d.value
-  else failed.value = true
-  ratings.value = r.status === 'fulfilled' ? r.value : null
+  try {
+    data.value = await financeApi.dashboard(b)
+  } catch {
+    failed.value = true
+  }
 }
 onMounted(load)
 watch([() => branch.filterId, day, month, mode], load)
@@ -96,7 +98,6 @@ const sources = computed(() => Object.entries(rep.value?.sources ?? {})
   .map(([k, v]) => ({ key: k, label: srcLabel(k), value: v, icon: SRC[k]?.icon ?? 'user', iconCls: SRC[k]?.cls ?? 'call' }))
   .sort((a, b) => b.value - a.value))
 const sourcesTotal = computed(() => sources.value.reduce((n, x) => n + x.value, 0))
-const teacherRows = computed(() => (ratings.value?.teachers ?? []).slice(0, 6))
 /** Sales rating: every manager's leads of the period by funnel stage; who sold more stands higher */
 const salesRows = computed(() => {
   const st = funnel.value?.stages ?? []
@@ -129,34 +130,24 @@ async function exportExcel() {
   <UiEmptyState v-if="failed && !data" icon="dash" :title="t('errors.generic')"><UiButton icon="history" @click="load">{{ t('common.retry') }}</UiButton></UiEmptyState>
 
   <template v-else>
-    <div class="kpis stagger">
-      <template v-if="!data"><div v-for="i in 6" :key="i" class="card kpi"><UiSkeleton :lines="3" /></div></template>
-      <template v-else>
-        <template v-if="rep?.leads">
-          <template v-for="x in leadTiles" :key="x.key">
-            <button type="button" class="card kpi dd-tile" @click="show(x.key)">
-              <div class="k"><UiIcon :name="x.icon" :size="18" />{{ t(`nv.dd.${x.key}`) }}</div>
-              <div class="v num">{{ num(x.n, loc) }}</div>
-              <span class="muted dd-more">{{ t('nv.dd.open') }}</span>
-            </button>
-          </template>
+    <template v-if="!data || !rep"><div class="dd-row five"><div v-for="i in 5" :key="i" class="card kpi"><UiSkeleton :lines="3" /></div></div></template>
+    <template v-else>
+      <h2 class="dd-h">{{ t('nv.dd.rowStudents') }}</h2>
+      <div class="dd-row five stagger" data-testid="dash-students">
+        <StatTile lead icon="graduation" :label="t('nv.dd.active')" :value="rep.students?.active ?? data.students_active ?? 0" :hint="t('nv.dd.now')" @open="router.push({ path: '/students', query: { status: 'active' } })" />
+        <StatTile tone="ok" icon="add" :label="t('nv.dd.newStudents')" :value="rep.students?.new.count ?? 0" :hint="spanLabel" @open="show('students')" />
+        <StatTile tone="red" icon="refusal" :label="t('dash.k.left')" :value="rep.gone?.left ?? 0" :hint="spanLabel" @open="showGone('left')" />
+        <StatTile tone="info" icon="clock" :label="t('dash.k.paused')" :value="rep.gone?.frozen ?? 0" :hint="spanLabel" @open="showGone('frozen')" />
+        <StatTile tone="warn" icon="groups" :label="t('nv.dd.waitGroup')" :value="rep.gone?.waiting ?? 0" :hint="t('nv.dd.now')" @open="showGone('waiting')" />
+      </div>
+      <h2 class="dd-h">CRM</h2>
+      <div class="dd-row four stagger" data-testid="dash-crm">
+        <template v-if="rep.leads">
+          <StatTile v-for="x in leadTiles" :key="x.key" :tone="x.key === 'paid' ? 'ok' : 'navy'" :icon="x.icon" :label="t(`nv.dd.${x.key}`)" :value="x.n" :hint="spanLabel" @open="show(x.key)" />
         </template>
-        <button v-if="rep" type="button" class="card kpi dd-tile" @click="show('debtors')">
-          <div class="k"><UiIcon name="alert" :size="18" :style="rep.debtors.count ? { color: 'var(--red)' } : undefined" />{{ t('dash.k.debtors') }}</div>
-          <div class="v num">{{ num(rep.debtors.count, loc) }}</div>
-          <span class="muted dd-more">{{ t('nv.dd.open') }}</span>
-        </button>
-        <div class="card kpi">
-          <div class="k"><UiIcon name="refusal" :size="18" />{{ t('dash.k.leftPaused') }}</div>
-          <div class="kpi-split">
-            <button type="button" class="kpi-link" @click="showGone('left')"><b class="v num">{{ num(rep?.gone?.left ?? 0, loc) }}</b><span>{{ t('dash.k.left') }}</span></button>
-            <button type="button" class="kpi-link" @click="showGone('frozen')"><b class="v num">{{ num(rep?.gone?.frozen ?? 0, loc) }}</b><span>{{ t('dash.k.paused') }}</span></button>
-            <button type="button" class="kpi-link" @click="showGone('waiting')"><b class="v num">{{ num(rep?.gone?.waiting ?? 0, loc) }}</b><span>{{ t('nv.dd.waitingNow') }}</span></button>
-          </div>
-          <span class="muted" style="font-size: 12px">{{ spanLabel }}</span>
-        </div>
-      </template>
-    </div>
+        <StatTile tone="red" icon="alert" :label="t('dash.k.debtors')" :value="rep.debtors.count" :hint="t('nv.dd.now')" @open="show('debtors')" />
+      </div>
+    </template>
 
     <UiCard v-if="funnel" :title="t('dash.sales')" flush style="margin-bottom: 16px">
       <template #actions><span class="muted" style="font-size: 12px">{{ spanLabel }}</span></template>
@@ -178,25 +169,9 @@ async function exportExcel() {
       </UiCard>
     </div>
 
-    <div class="grid">
-      <UiCard v-if="ratings" :title="t('dash.teachers')" flush>
-        <template #actions><span class="muted" style="font-size: 12px">{{ periodLabel(ratings.period, loc) }}</span></template>
-        <div v-if="teacherRows.length" class="scroll-x">
-          <table class="tbl">
-            <thead><tr><th>{{ t('dash.r.teacher') }}</th><th class="r">{{ t('dash.r.lessons') }}</th><th class="r">{{ t('dash.r.avg') }}</th><th class="r">{{ t('dash.r.attendance') }}</th></tr></thead>
-            <tbody class="num">
-              <tr v-for="(r, i) in teacherRows" :key="r.user_id"><td><span class="rank-n" :class="{ g: i < 3 }">{{ i + 1 }}</span>{{ r.full_name }}</td><td class="r">{{ r.lessons }}</td><td class="r">{{ num(r.avg_students, loc, 1) }}</td><td class="r">{{ r.attendance_rate === null ? '—' : `${num(r.attendance_rate, loc, 1)}%` }}</td></tr>
-            </tbody>
-          </table>
-        </div>
-        <p v-else class="muted m0 card-pad">{{ t('dash.noRatings') }}</p>
-      </UiCard>
-
-    </div>
-
   </template>
 
-  <UiModal v-model:open="modal" :title="shown ? (shown === 'debtors' ? t('dash.k.debtors') : t(`nv.dd.${shown}`)) : ''">
+  <UiModal v-model:open="modal" :title="shown ? (shown === 'debtors' ? t('dash.k.debtors') : shown === 'students' ? t('nv.dd.newStudents') : t(`nv.dd.${shown}`)) : ''">
     <template v-if="rep && shown">
       <template v-if="shown === 'debtors'">
         <p v-if="!rep.debtors.items.length" class="muted m0">{{ t('nv.dd.none') }}</p>
@@ -205,8 +180,15 @@ async function exportExcel() {
           <UiChip small :tone="x.lessons_left < 0 ? 'red' : 'warn'">{{ t('nv.dd.lessons', { n: x.lessons_left }) }}</UiChip>
         </RouterLink>
       </template>
-      <template v-else>
-        <p v-if="!leadRows.length" class="muted m0">{{ rep.leads?.[shown].count ? t('nv.dd.hidden') : t('nv.dd.none') }}</p>
+      <template v-else-if="shown === 'students'">
+        <p v-if="!rep.students?.new.items.length" class="muted m0">{{ t('nv.dd.none') }}</p>
+        <RouterLink v-for="x in rep.students?.new.items ?? []" :key="x.id" :to="`/students/${x.id}`" class="list-row">
+          <div class="grow"><b>{{ x.full_name }}</b><span>{{ refs.branchName(x.branch_id) }}</span></div>
+          <UiChip small>{{ dmy(x.created_on, loc) }}</UiChip>
+        </RouterLink>
+      </template>
+      <template v-else-if="leadKey">
+        <p v-if="!leadRows.length" class="muted m0">{{ rep.leads?.[leadKey].count ? t('nv.dd.hidden') : t('nv.dd.none') }}</p>
         <RouterLink v-for="x in leadRows" :key="x.id" :to="{ path: '/crm', query: { lead: x.id } }" class="list-row">
           <span class="srcico" :class="SRC[x.source]?.cls ?? 'call'"><svg><use :href="`#i-${SRC[x.source]?.icon ?? 'user'}`" /></svg></span>
           <div class="grow"><b>{{ x.full_name }}</b><span>{{ [x.phone ? formatPhone(x.phone) : '', x.manager ?? t('crm.unassigned')].filter(Boolean).join(' · ') }}</span></div>
@@ -219,14 +201,12 @@ async function exportExcel() {
 </template>
 
 <style scoped>
-.kpi-link { border: 0; background: none; padding: 0; font: inherit; text-align: left; cursor: pointer }
-.dd-tile { text-align: left; font: inherit; color: inherit; cursor: pointer }
-.dd-tile:hover { border-color: var(--navy-600) }
-.dd-more { font-size: 12px }
+.dd-h { font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 4px 0 10px }
+.dd-row { display: grid; gap: 14px; margin-bottom: 20px }
+.dd-row.five { grid-template-columns: repeat(5, minmax(0, 1fr)) }
+.dd-row.four { grid-template-columns: repeat(4, minmax(0, 1fr)) }
 .dd-sales { min-width: 820px }
 .dd-sales th { white-space: nowrap }
-.kpi-split { display: flex; gap: 18px }
-.kpi-link { display: grid; color: inherit; text-decoration: none; border-radius: 8px }
-.kpi-link span { font-size: 12px; color: var(--muted) }
-.kpi-link:hover b { color: var(--red-ink); text-decoration: underline }
+@media (max-width: 1100px) { .dd-row.five { grid-template-columns: repeat(3, minmax(0, 1fr)) } .dd-row.four { grid-template-columns: repeat(2, minmax(0, 1fr)) } }
+@media (max-width: 640px) { .dd-row.five, .dd-row.four { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px } .dd-row.five > :first-child { grid-column: 1 / -1 } }
 </style>

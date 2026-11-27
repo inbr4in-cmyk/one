@@ -128,7 +128,7 @@ const kpis = computed(() => (tab.value === 'managers' ? ['new', 'worked', 'paid'
 .rep { min-width: 1280px }
 .rep td { white-space: nowrap }
 .rep th { white-space: normal; vertical-align: bottom; font-size: 12px; line-height: 1.25; max-width: 110px }
-.rep th:first-child, .rep td:first-child { position: sticky; left: 0; background: var(--card); z-index: 1; white-space: nowrap }
+.rep th:first-child, .rep td:first-child { position: sticky; left: 0; background: var(--surface); z-index: 1; white-space: nowrap }
 .rep tr.on td { background: var(--navy-50) }
 .rep td.bad { color: var(--red); font-weight: 600 }
 .rep tfoot td { border-top: 2px solid var(--line) }

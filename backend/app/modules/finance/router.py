@@ -503,6 +503,17 @@ async def dashboard_day(db: DB, actor: Actor = require("dashboard", "view"), bra
     gone = select(func.count()).select_from(Student).where(br(Student.branch_id), Student.archived_at.is_(None))
     out["gone"] = {k: await db.scalar(gone.where(*_gone_filter(k, start, end))) for k in ("left", "frozen", "waiting")}
 
+    # The students row (owner, 27.11.2026): who studies now, and whose card was opened in the period. Cards brought
+    # from the old CRM or a table are not «new»: those students studied before the site.
+    fresh = list(await db.scalars(select(Student).where(
+        br(Student.branch_id), Student.archived_at.is_(None), Student.created_at >= start, Student.created_at < end,
+        Student.source.is_distinct_from("import"), Student.status.not_in((StudentStatus.LEAD, StudentStatus.TRIAL)))
+        .order_by(Student.created_at.desc()).limit(1000)))
+    out["students"] = {
+        "active": await db.scalar(gone.where(Student.status == StudentStatus.ACTIVE)),
+        "new": {"count": len(fresh), "items": [{"id": x.id, "full_name": x.full_name, "branch_id": x.branch_id,
+                                                 "created_on": local(x.created_at).date()} for x in fresh]}}
+
     debt = list(await db.scalars(select(Student).where(br(Student.branch_id), Student.archived_at.is_(None),
                                                        Student.status == StudentStatus.ACTIVE, Student.lessons_left <= 0)
                                  .order_by(Student.lessons_left, Student.full_name).limit(1000)))

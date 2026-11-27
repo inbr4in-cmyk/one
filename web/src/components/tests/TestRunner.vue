@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import BrandLogo from '@/components/layout/BrandLogo.vue'
 import { UiButton, UiIcon, UiInput, UiSkeleton, UiTextarea } from '@/components/ui'
 import type { MyTestState, StageAnswers, TestOutline } from '@/api/assessment'
 import { nowMs } from '@/utils/clock'
@@ -77,6 +76,7 @@ function take(s: MyTestState | null) {
     Object.keys(ans).forEach((k) => delete ans[k])
     for (const [k, v] of Object.entries(sg.draft)) if (typeof v === 'string' || Array.isArray(v)) ans[k] = v
     dirty = false
+    qi.value = 0
     window.scrollTo({ top: 0 })
   }
   stageId = sg?.id ?? ''
@@ -128,6 +128,26 @@ function type(id: number, v: string) {
   ans[id] = v
   dirty = true
 }
+/* one question on the screen (owner picked this design, 27.11.2026); inside a stage the dots lead back to any question */
+const qi = ref(0)
+const cur = computed(() => stage.value?.questions[qi.value] ?? null)
+const lastQ = computed(() => !stage.value || qi.value >= stage.value.questions.length - 1)
+const answered = (id: number) => (Array.isArray(ans[id]) ? (ans[id] as number[]).length > 0 : typeof ans[id] === 'string' && (ans[id] as string).trim().length > 0)
+const letter = (i: number) => String.fromCharCode(65 + i)
+function go(i: number) {
+  qi.value = i
+  error.value = null
+  saveStage(false)
+}
+async function nextQ() {
+  if (!lastQ.value) return go(qi.value + 1)
+  await saveStage(true)
+}
+const headLabel = computed(() => (view.value === 'stage' && stage.value ? `${stage.value.section} · ${t('nv.gt.stageShort', { n: stage.value.index + 1, total: stage.value.total })}` : ''))
+const barPct = computed(() => {
+  if (view.value === 'stage' && stage.value) return Math.round(((stage.value.index + (qi.value + 1) / Math.max(1, stage.value.questions.length)) / stage.value.total) * 100)
+  return view.value === 'test' ? pct.value : view.value === 'done' ? 100 : 0
+})
 const payload = (): StageAnswers => Object.fromEntries((stage.value?.questions ?? []).filter((x) => x.kind !== 'video').map((x) => [String(x.id), ans[x.id] ?? null]))
 async function saveStage(final: boolean) {
   const sg = stage.value
@@ -249,10 +269,12 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="pt tr-nocopy" @copy="block" @cut="block" @paste="block" @contextmenu="block" @dragstart="block">
-    <header class="pt-top">
-      <BrandLogo :size="34" :tagline="false" /><span class="sp" />
-      <span v-if="view === 'stage' && leftLabel" class="tr-clock num" :class="{ low: (leftS ?? 0) < 60 }" role="timer"><UiIcon name="clock" :size="18" />{{ leftLabel }}</span>
+    <header class="tx-top">
+      <span class="tx-logo" aria-hidden="true">1E</span><span class="tx-brand">ONE ENGLISH</span><span class="sp" />
+      <span v-if="headLabel" class="tx-stage">{{ headLabel }}</span>
+      <span v-if="(view === 'stage' || view === 'test') && leftLabel" class="tx-clock num" :class="{ low: (leftS ?? 0) < 60 }" role="timer"><UiIcon name="clock" :size="18" />{{ leftLabel }}</span>
     </header>
+    <div class="tx-bar" role="progressbar" :aria-valuenow="barPct" aria-valuemin="0" aria-valuemax="100"><i :style="{ width: `${barPct}%` }" /></div>
     <main class="pt-main" :class="{ wide: view === 'stage' }">
       <section v-if="view === 'loading'" class="card pt-card"><UiSkeleton :lines="6" /></section>
 
@@ -286,33 +308,31 @@ onBeforeUnmount(() => {
       </section>
 
       <!-- a plain test: one question at a time -->
-      <section v-else-if="view === 'test' && q && a" class="card pt-card" :aria-busy="busy">
-        <div class="pt-prog">
-          <span>{{ t('nv.gt.qOf', { n: a.position + 1, total: a.total }) }}</span>
-          <span class="sp" />
-          <span v-if="leftLabel" class="chip" :class="{ red: (leftS ?? 0) < 60 }" role="timer"><UiIcon name="clock" :size="16" />{{ t('nv.gt.left', { t: leftLabel }) }}</span>
-        </div>
-        <div class="bar-track" role="progressbar" :aria-valuenow="pct" aria-valuemin="0" aria-valuemax="100"><i :style="{ width: `${pct}%` }" /></div>
-        <fieldset :key="q.id" class="pt-q">
-          <legend>{{ q.text }}</legend>
-          <UiTextarea v-if="q.kind === 'text'" v-model="text" :placeholder="t('placement.answerPh')" :aria-label="q.text" :rows="4" :maxlength="2000" />
-          <div v-else class="pt-opts">
-            <label v-for="(o, i) in q.options" :key="i" class="pt-opt" :class="{ on: picked.includes(i) }">
-              <input :type="q.kind === 'multi' ? 'checkbox' : 'radio'" :name="`q${q.id}`" :checked="picked.includes(i)" @change="pick(i)" />
-              <span class="pt-mark" :class="q.kind" aria-hidden="true" />
-              <span class="pt-otext">{{ o }}</span>
-            </label>
-          </div>
-        </fieldset>
+      <section v-else-if="view === 'test' && q && a" class="card pt-card tx-card" :aria-busy="busy">
+        <Transition name="tx-q" mode="out-in">
+          <fieldset :key="q.id" class="tx-q">
+            <p class="tx-no">{{ t('nv.gt.qOf', { n: a.position + 1, total: a.total }) }}</p>
+            <legend>{{ q.text }}</legend>
+            <UiTextarea v-if="q.kind === 'text'" v-model="text" :placeholder="t('placement.answerPh')" :aria-label="q.text" :rows="4" :maxlength="2000" />
+            <div v-else class="tx-opts">
+              <label v-for="(o, i) in q.options" :key="i" class="tx-opt" :class="{ on: picked.includes(i) }">
+                <input :type="q.kind === 'multi' ? 'checkbox' : 'radio'" :name="`q${q.id}`" :checked="picked.includes(i)" @change="pick(i)" />
+                <span class="tx-let" aria-hidden="true">{{ letter(i) }}</span>
+                <span class="tx-otext">{{ o }}</span>
+              </label>
+            </div>
+          </fieldset>
+        </Transition>
         <p v-if="error" class="form-err" role="alert">{{ error }}</p>
-        <div class="pt-nav"><span class="sp" /><UiButton variant="primary" size="lg" icon-end="arrow" :loading="busy" @click="next">{{ t('nv.gt.next') }}</UiButton></div>
+        <div class="tx-nav">
+          <div v-if="a.total <= 24" class="tx-dots" aria-hidden="true"><i v-for="n in a.total" :key="n" :class="{ done: n - 1 < a.position, cur: n - 1 === a.position }" /></div>
+          <span class="sp" /><button type="button" class="tx-next" :disabled="busy" @click="next">{{ t('nv.gt.next') }} <span aria-hidden="true">→</span></button>
+        </div>
       </section>
 
       <!-- a staged test: one stage on a page -->
-      <section v-else-if="view === 'stage' && stage" :key="stage.id" class="card pt-card" :aria-busy="busy">
-        <div class="pt-prog"><span>{{ t('nv.gt.stageOf', { n: stage.index + 1, total: stage.total }) }}</span><span class="sp" /><span class="chip">{{ stage.section }}</span></div>
-        <div class="bar-track" role="progressbar" :aria-valuenow="pct" aria-valuemin="0" aria-valuemax="100"><i :style="{ width: `${pct}%` }" /></div>
-        <h1>{{ stage.title }}</h1>
+      <section v-else-if="view === 'stage' && stage" :key="stage.id" class="card pt-card tx-card" :aria-busy="busy">
+        <h1 class="tx-stitle">{{ stage.title }}</h1>
         <p v-if="stage.hint" class="muted pt-intro">{{ stage.hint }}</p>
         <div v-if="stage.words" class="tr-words"><span v-for="w in stage.words" :key="w">{{ w }}</span></div>
         <article v-if="stage.text" class="tr-text"><h2 v-if="stage.text_title">{{ stage.text_title }}</h2><p>{{ stage.text }}</p></article>
@@ -333,25 +353,31 @@ onBeforeUnmount(() => {
             <p v-else class="tr-wait" role="status"><UiIcon name="clock" :size="18" />{{ t('nv.gt.recSaving') }}</p>
           </div>
         </template>
-        <template v-else>
-          <fieldset v-for="(x, n) in stage.questions" :key="x.id" class="pt-q tr-q">
-            <legend><span class="tr-n num">{{ n + 1 }}.</span> {{ x.text }}</legend>
-            <UiTextarea v-if="x.kind === 'text'" :model-value="typed(x.id)" :aria-label="x.text" :rows="4" :maxlength="2000" autocomplete="off" spellcheck="false" @update:model-value="type(x.id, String($event))" />
-            <UiInput v-else-if="x.kind === 'input'" :model-value="typed(x.id)" :aria-label="x.text" :maxlength="200" autocomplete="off" autocapitalize="off" spellcheck="false" @update:model-value="type(x.id, String($event))" />
-            <div v-else class="pt-opts" :class="{ row: x.options.length <= 3 && x.options.every((o) => o.length < 22) }">
-              <label v-for="(o, i) in x.options" :key="i" class="pt-opt" :class="{ on: isPicked(x.id, i) }">
-                <input :type="x.kind === 'multi' ? 'checkbox' : 'radio'" :name="`q${x.id}`" :checked="isPicked(x.id, i)" @change="choose(x.id, x.kind, i)" />
-                <span class="pt-mark" :class="x.kind" aria-hidden="true" />
-                <span class="pt-otext">{{ o }}</span>
-              </label>
-            </div>
-          </fieldset>
+        <template v-else-if="cur">
+          <Transition name="tx-q" mode="out-in">
+            <fieldset :key="cur.id" class="tx-q">
+              <p class="tx-no">{{ t('nv.gt.qOf', { n: qi + 1, total: stage.questions.length }) }}</p>
+              <legend>{{ cur.text }}</legend>
+              <UiTextarea v-if="cur.kind === 'text'" :model-value="typed(cur.id)" :aria-label="cur.text" :rows="5" :maxlength="2000" autocomplete="off" spellcheck="false" @update:model-value="type(cur.id, String($event))" />
+              <UiInput v-else-if="cur.kind === 'input'" :model-value="typed(cur.id)" :aria-label="cur.text" :maxlength="200" autocomplete="off" autocapitalize="off" spellcheck="false" @update:model-value="type(cur.id, String($event))" @keydown.enter.prevent="nextQ" />
+              <div v-else class="tx-opts">
+                <label v-for="(o, i) in cur.options" :key="i" class="tx-opt" :class="{ on: isPicked(cur.id, i) }">
+                  <input :type="cur.kind === 'multi' ? 'checkbox' : 'radio'" :name="`q${cur.id}`" :checked="isPicked(cur.id, i)" @change="choose(cur.id, cur.kind, i)" />
+                  <span class="tx-let" aria-hidden="true">{{ letter(i) }}</span>
+                  <span class="tx-otext">{{ o }}</span>
+                </label>
+              </div>
+            </fieldset>
+          </Transition>
         </template>
 
         <p v-if="error" class="form-err" role="alert">{{ error }}</p>
-        <div v-if="!isSpeaking" class="pt-nav">
-          <span class="muted tr-noback">{{ t('nv.gt.noBack') }}</span><span class="sp" />
-          <UiButton variant="primary" size="lg" icon-end="arrow" :loading="busy" @click="saveStage(true)">{{ stage.index + 1 < stage.total ? t('nv.gt.nextStage') : t('nv.gt.finishTest') }}</UiButton>
+        <div v-if="!isSpeaking" class="tx-nav">
+          <div class="tx-dots">
+            <button v-for="(x, n) in stage.questions" :key="x.id" type="button" :class="{ done: answered(x.id), cur: n === qi }" :aria-label="t('nv.gt.qOf', { n: n + 1, total: stage.questions.length })" :aria-current="n === qi ? 'step' : undefined" @click="go(n)" />
+          </div>
+          <span class="sp" />
+          <button type="button" class="tx-next" :disabled="busy" data-testid="test-next" @click="nextQ">{{ !lastQ ? t('nv.gt.next') : stage.index + 1 < stage.total ? t('nv.gt.nextStage') : t('nv.gt.finishTest') }} <span aria-hidden="true">→</span></button>
         </div>
       </section>
 
@@ -378,6 +404,55 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+/* «Вариант 1»: light, one question on the screen */
+.tx-top { display: flex; align-items: center; gap: 12px; padding: 14px 28px; background: var(--surface) }
+.tx-logo { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 10px; background: var(--navy); color: #fff; font-family: 'Unbounded'; font-weight: 700; font-size: 15px; letter-spacing: -.04em }
+.tx-brand { font-family: 'Playfair Display', serif; font-weight: 800; letter-spacing: .08em; font-size: 14px; color: var(--navy) }
+.tx-stage { color: var(--muted); font-size: 14.5px }
+.tx-clock { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 999px; background: var(--navy-50); color: var(--navy); font-family: 'Unbounded'; font-weight: 600; font-size: 17px; transition: background .3s ease, color .3s ease }
+.tx-clock.low { background: var(--red); color: #fff; animation: tx-pulse 1s ease-in-out infinite }
+@keyframes tx-pulse { 50% { transform: scale(1.05) } }
+.tx-bar { height: 5px; background: var(--line) }
+.tx-bar i { display: block; height: 100%; background: var(--red); border-radius: 0 3px 3px 0; transition: width .5s cubic-bezier(.2,.8,.2,1) }
+.tx-card { border-radius: 24px; padding: 40px 44px 36px; display: grid; gap: 18px }
+.tx-stitle { font-size: 15px; font-family: inherit; font-weight: 600; color: var(--muted); margin: 0 }
+.tx-q { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; gap: 0 }
+.tx-no { margin: 0 0 10px; font-size: 13px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--red-ink) }
+.tx-q legend { float: left; width: 100%; padding: 0; margin: 0 0 22px; font-family: 'Unbounded'; font-weight: 600; font-size: 26px; line-height: 1.3; letter-spacing: -.01em; color: var(--navy); white-space: pre-wrap }
+.tx-q legend + * { clear: both }
+.tx-opts { display: grid; gap: 12px }
+.tx-opt { position: relative; display: flex; align-items: center; gap: 14px; padding: 14px 18px; border: 1.5px solid var(--line); border-radius: 14px; background: var(--surface); cursor: pointer; font-size: 17px;
+  transition: border-color .18s ease, background .18s ease, transform .18s cubic-bezier(.2,.8,.2,1), box-shadow .18s ease }
+.tx-opt input { position: absolute; opacity: 0; pointer-events: none }
+.tx-opt:hover { border-color: var(--navy-600); transform: translateY(-1px) }
+.tx-opt:active { transform: scale(.995) }
+.tx-opt:has(input:focus-visible) { outline: 2px solid var(--navy-600); outline-offset: 2px }
+.tx-let { flex: none; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; background: var(--navy-50); color: var(--muted); font-weight: 700; font-size: 13px; transition: background .18s ease, color .18s ease, transform .25s cubic-bezier(.3,1.6,.5,1) }
+.tx-opt.on { border-color: var(--navy); background: var(--navy-50); box-shadow: 0 6px 18px -14px var(--navy) }
+.tx-opt.on .tx-let { background: var(--navy); color: #fff; transform: scale(1.08) }
+.tx-otext { min-width: 0; overflow-wrap: anywhere }
+.tx-nav { display: flex; align-items: center; gap: 16px; margin-top: 10px }
+.tx-dots { display: flex; flex-wrap: wrap; align-items: center; gap: 8px }
+.tx-dots :is(i, button) { width: 10px; height: 10px; padding: 0; border: 0; border-radius: 999px; background: var(--line); transition: width .3s cubic-bezier(.2,.8,.2,1), background .2s ease }
+.tx-dots button { cursor: pointer }
+.tx-dots .done { background: var(--navy) }
+.tx-dots .cur { width: 28px; background: var(--red) }
+.tx-next { border: 0; border-radius: 14px; background: var(--red); color: #fff; font: inherit; font-weight: 700; font-size: 17px; padding: 15px 34px; cursor: pointer; white-space: nowrap;
+  transition: transform .18s cubic-bezier(.2,.8,.2,1), box-shadow .18s ease, background .18s ease }
+.tx-next span { display: inline-block; transition: transform .2s ease }
+.tx-next:hover { background: var(--red-600); box-shadow: 0 10px 22px -12px var(--red); transform: translateY(-1px) }
+.tx-next:hover span { transform: translateX(4px) }
+.tx-next:disabled { opacity: .6; cursor: default; transform: none }
+.tx-q-enter-active { transition: opacity .24s ease, transform .24s cubic-bezier(.2,.8,.2,1) }
+.tx-q-leave-active { transition: opacity .12s ease }
+.tx-q-enter-from { opacity: 0; transform: translateX(18px) }
+.tx-q-leave-to { opacity: 0 }
+@media (max-width: 640px) {
+  .tx-top { padding: 10px 14px; gap: 8px } .tx-brand { display: none } .tx-stage { font-size: 12.5px } .tx-clock { font-size: 14px; padding: 6px 12px }
+  .tx-card { padding: 22px 18px 20px; border-radius: 20px } .tx-q legend { font-size: 20px; margin-bottom: 16px } .tx-opt { padding: 12px 14px; font-size: 16px }
+  .tx-nav { flex-direction: column; align-items: stretch } .tx-dots { justify-content: center } .tx-nav .sp { display: none } .tx-next { width: 100% }
+}
+@media (prefers-reduced-motion: reduce) { .tx-opt, .tx-let, .tx-next, .tx-bar i, .tx-dots :is(i, button), .tx-q-enter-active { transition: none } .tx-clock.low { animation: none } }
 .tr-nocopy { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none }
 .tr-nocopy :is(input, textarea) { -webkit-user-select: text; user-select: text }
 .pt-main.wide { max-width: 820px }

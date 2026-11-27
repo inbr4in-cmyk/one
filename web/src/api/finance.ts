@@ -95,6 +95,8 @@ export interface DayReport {
   sources?: Record<string, number>
   /** Left / on pause in the period; waiting for a group is the picture as of now */
   gone?: Record<'left' | 'frozen' | 'waiting', number>
+  /** Studying now; cards opened in the period (not the imported ones) */
+  students?: { active: number; new: { count: number; items: { id: number; full_name: string; branch_id: number; created_on: string }[] } }
   payers?: { count: number; total: number; items: { id: number; full_name: string; amount: number; course: number; book: number; other: number; lessons_left: number; branch_id: number }[] }
 }
 
