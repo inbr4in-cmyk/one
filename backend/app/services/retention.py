@@ -1,5 +1,6 @@
 """Keeping students: follow-up tasks for the methodist (two absences in a row, a student who wants to leave)."""
 
+import re
 from datetime import date, timedelta
 
 from sqlalchemy import func, select
@@ -191,7 +192,8 @@ async def left_to_funnel(db: AsyncSession, commit: bool) -> dict:
                                    .order_by(Student.branch_id, Student.full_name))):
         out["left"] += 1
         before = await db.scalar(select(func.max(Lead.id))) or 0
-        stage = "left" if not s.return_note else "contacted"
+        # «можно вернуть»: a return day is written as «с ДД.ММ.ГГГГ» → «Договорились», any other note → «Связались»
+        stage = "left" if not s.return_note else "agreed" if re.match(r"с \d{2}\.\d{2}\.\d{4}", s.return_note) else "contacted"
         why = "Ушёл" + (f" {local(s.left_at):%d.%m.%Y}" if s.left_at else "") + (f". Причина: {s.leave_reason}" if s.leave_reason else "") \
             + (f". Возврат: {s.return_note}" if s.return_note else "")
         lead = await return_card(db, s, None, stage, why)

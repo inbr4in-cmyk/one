@@ -505,3 +505,49 @@ async def test_dashboard_control_pause_reason_months_and_training_for_admins(cli
     assert (await client.post("/api/training/courses", headers=th, json={"title": "Чужой курс", "role_codes": []})).status_code == 403
     assert (await client.post("/api/training/courses", headers=owner_h, json={"title": "Курс админа", "role_codes": []})).status_code == 201
     assert any(c["title"] == "Курс админа" for c in (await client.get("/api/training/courses", headers=th)).json())
+
+
+async def test_return_funnel_has_no_answer_after_left_and_old_leavers_land_by_their_note(client, db, owner_h):
+    """Owner, 27.11.2026: «Недозвон» right after «Ушёл»; every student who left is a card there: «Ушёл» by default,
+    «Связались» when the school noted he may come back, «Договорились» when a return day is known."""
+    from app.models import Lead, LeadStage, Pipeline, Student
+    from app.models.learning import StudentStatus
+    from app.services import retention
+    from tests.conftest import branch_id
+    from tests.test_core_learning import _student
+
+    pid = await db.scalar(select(Pipeline.id).where(Pipeline.code == "return"))
+    codes = list(await db.scalars(select(LeadStage.code).where(LeadStage.pipeline_id == pid).order_by(LeadStage.order)))
+    assert codes[:4] == ["left", "no_answer", "contacted", "agreed"]
+    bid = await branch_id(db, "Янги шахар")
+    want = {}
+    for i, (note, stage) in enumerate(((None, "left"), ("подумает после каникул", "contacted"), ("с 10.12.2026, вернётся", "agreed"))):
+        s = await _student(db, client, owner_h, bid, f"Давно Ушёл {i}", f"+7705222770{i}")
+        st = await db.get(Student, s["id"])
+        st.status, st.left_at, st.return_note = StudentStatus.LEFT, now() - timedelta(days=30), note
+        want[s["id"]] = stage
+    await db.commit()
+    out = await retention.left_to_funnel(db, commit=True)
+    assert out["new"] >= 3
+    for sid, stage in want.items():
+        code = await db.scalar(select(LeadStage.code).join(Lead, Lead.stage_id == LeadStage.id).where(Lead.student_id == sid, Lead.pipeline_id == pid))
+        assert code == stage
+    assert (await retention.left_to_funnel(db, commit=True))["new"] == 0  # a second run adds nothing
+
+
+async def test_no_answer_call_moves_a_return_card_to_no_answer(client, db, owner_h):
+    from app.models import LeadStage, Student
+    from app.models.learning import StudentStatus
+    from app.services import crm, retention
+    from tests.conftest import branch_id
+    from tests.test_core_learning import _student
+
+    bid = await branch_id(db, "Янги шахар")
+    s = await _student(db, client, owner_h, bid, "Недозвон Ушедший", "+77052227711")
+    st = await db.get(Student, s["id"])
+    st.status, st.left_at = StudentStatus.LEFT, now()
+    lead = await retention.return_card(db, st, None)
+    await crm.got_in_touch(db, lead, None, "не берёт", answered=False)
+    assert (await db.get(LeadStage, lead.stage_id)).code == "no_answer"
+    await crm.got_in_touch(db, lead, None, "ответил")
+    assert (await db.get(LeadStage, lead.stage_id)).code == "contacted"

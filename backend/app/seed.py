@@ -37,6 +37,7 @@ MAIN_STAGES = [
 ]
 RETURN_STAGES = [
     ("left", "Ушёл", "#5B6782", False, False, 72),
+    ("no_answer", "Недозвон", "#C2410C", False, False, 72),
     ("contacted", "Связались", "#7B52C7", False, False, 72),
     ("agreed", "Договорились", "#C98A06", False, False, None),
     ("paid", "Оплатил", "#1E8E5A", True, False, None),

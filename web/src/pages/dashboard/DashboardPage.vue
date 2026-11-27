@@ -150,12 +150,11 @@ async function exportExcel() {
         <StatTile tone="info" icon="clock" :label="t('dash.k.paused')" :value="rep.gone?.frozen ?? 0" :hint="spanLabel" @open="showGone('frozen')" />
         <StatTile tone="warn" icon="groups" :label="t('nv.dd.waitGroup')" :value="rep.gone?.waiting ?? 0" :hint="t('nv.dd.now')" @open="showGone('waiting')" />
       </div>
-      <h2 class="dd-h">CRM</h2>
-      <div class="dd-row four stagger" data-testid="dash-crm">
+      <h2 v-if="rep.leads" class="dd-h">CRM</h2>
+      <div v-if="rep.leads" class="dd-row three stagger" data-testid="dash-crm">
         <template v-if="rep.leads">
           <StatTile v-for="x in leadTiles" :key="x.key" :tone="x.key === 'paid' ? 'ok' : 'navy'" :icon="x.icon" :label="t(`nv.dd.${x.key}`)" :value="x.n" :hint="spanLabel" @open="show(x.key)" />
         </template>
-        <StatTile tone="red" icon="alert" :label="t('dash.k.debtors')" :value="rep.debtors.count" :hint="t('nv.dd.now')" @open="show('debtors')" />
       </div>
       <template v-if="rep.unmarked || rep.overdue">
         <h2 class="dd-h">{{ t('nv.dd.rowControl') }}</h2>
@@ -255,6 +254,7 @@ async function exportExcel() {
 .dd-row { display: grid; gap: 14px; margin-bottom: 20px }
 .dd-row.five { grid-template-columns: repeat(5, minmax(0, 1fr)) }
 .dd-row.four { grid-template-columns: repeat(4, minmax(0, 1fr)) }
+.dd-row.three { grid-template-columns: repeat(3, minmax(0, 1fr)) }
 .dd-ctl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-bottom: 20px; align-items: start }
 .dd-list { max-height: 320px; overflow-y: auto }
 .dd-list .list-row { width: 100%; padding-left: 16px; padding-right: 16px }
@@ -263,5 +263,5 @@ async function exportExcel() {
 .dd-sales { min-width: 820px }
 .dd-sales th { white-space: nowrap }
 @media (max-width: 1100px) { .dd-row.five { grid-template-columns: repeat(3, minmax(0, 1fr)) } .dd-row.four { grid-template-columns: repeat(2, minmax(0, 1fr)) } }
-@media (max-width: 640px) { .dd-row.five, .dd-row.four { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px } .dd-row.five > :first-child { grid-column: 1 / -1 } }
+@media (max-width: 640px) { .dd-row.five, .dd-row.four, .dd-row.three { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px } .dd-row.five > :first-child { grid-column: 1 / -1 } }
 </style>

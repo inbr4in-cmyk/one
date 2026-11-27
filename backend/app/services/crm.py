@@ -17,26 +17,31 @@ async def stage_by_code(db: AsyncSession, pipeline_code: str, stage_code: str) -
     )
 
 
-async def no_answer_stage(db: AsyncSession) -> LeadStage | None:
+async def no_answer_stage(db: AsyncSession, pipeline: str = "main") -> LeadStage | None:
     """«Недозвон»: the school adds it in Справочники, so it is found by its name (or the code on a new install)."""
     return await db.scalar(
         select(LeadStage).join(Pipeline, Pipeline.id == LeadStage.pipeline_id)
-        .where(Pipeline.code == "main", LeadStage.archived_at.is_(None),
+        .where(Pipeline.code == pipeline, LeadStage.archived_at.is_(None),
                or_(LeadStage.code == "no_answer", func.lower(LeadStage.name) == "недозвон")).order_by(LeadStage.id).limit(1))
 
 
 async def got_in_touch(db: AsyncSession, lead: Lead, actor_id: int | None, text: str | None = None, answered: bool = True) -> None:
-    """A call or a reply: «Новая заявка» → «Недозвон» when nobody answered, «Новая заявка»/«Недозвон» → contacted otherwise."""
+    """A call or a reply: «Новая заявка» → «Недозвон» when nobody answered, «Новая заявка»/«Недозвон» → contacted otherwise.
+    The same in «Возврат» (owner, 27.11.2026): «Ушёл» → «Недозвон» → «Связались»."""
     cur = await db.get(LeadStage, lead.stage_id)
-    na = await no_answer_stage(db)
     if cur is None:
         return
+    pipe = await db.scalar(select(Pipeline.code).where(Pipeline.id == cur.pipeline_id))
+    if pipe not in ("main", "return"):
+        return
+    first = "new" if pipe == "main" else "left"
+    na = await no_answer_stage(db, pipe)
     if not answered and na is not None:
-        if cur.code == "new":
+        if cur.code == first:
             await move(db, lead, na, actor_id, text)
         return
-    if cur.code == "new" or (na is not None and cur.id == na.id):
-        contacted = await stage_by_code(db, "main", "contacted")
+    if cur.code == first or (na is not None and cur.id == na.id):
+        contacted = await stage_by_code(db, pipe, "contacted")
         if contacted:
             await move(db, lead, contacted, actor_id, text)
 
