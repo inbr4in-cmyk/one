@@ -27,7 +27,7 @@ from app.models.learning import LessonStatus, StudentStatus
 from app.modules.academics.schedule import extend_all
 from app.modules.crm.service import create_lead, crm_people
 from app.services.clock import at_local, end_of_local_day, local, now, period_of, today
-from app.services import bookpay
+from app.services import bookpay, retention
 from app.services.coins import award_auto
 from app.services.messaging import notify_user, retry_failed
 from app.services.values import setting
@@ -285,11 +285,9 @@ async def mark_left(db: AsyncSession) -> int:
     n = 0
     for s in rows:
         s.status, s.left_at = StudentStatus.LEFT, now()
-        lead = await create_lead(db, full_name=s.full_name, phone=s.phone, branch_id=s.branch_id, source="return",
-                                 owner_id=None, assignee_id=s.sales_user_id, pipeline="return", stage="left",
-                                 student_id=s.id, level_id=s.level_id)
+        lead = await retention.return_card(db, s, None, "left", f"Ушёл: нет занятий {days} дней")
         await write_audit(db, actor_id=None, action="student.left", entity="student", entity_id=s.id,
-                          branch_id=s.branch_id, after={"return_lead_id": lead.id}, note=f"Нет занятий {days} дней")
+                          branch_id=s.branch_id, after={"return_lead_id": lead.id if lead else None}, note=f"Нет занятий {days} дней")
         n += 1
     return n
 
@@ -568,6 +566,8 @@ if __name__ == "__main__":
                                  "lesson-duplicates-fix-new": lambda db: _dupes(db, "new", True),
                                  "finished-groups-preview": lambda db: close_finished_groups(db, commit=False),
                                  "finished-groups-fix": lambda db: close_finished_groups(db, commit=True),
+                                 "left-to-funnel-preview": lambda db: retention.left_to_funnel(db, False),
+                                 "left-to-funnel-fix": lambda db: retention.left_to_funnel(db, True),
                                  "noshow-pay-preview": lambda db: __import__("app.services.payroll", fromlist=["recalc_noshow"]).recalc_noshow(db, False),
                                  "noshow-pay-fix": lambda db: __import__("app.services.payroll", fromlist=["recalc_noshow"]).recalc_noshow(db, True),
                                  "book-lessons-preview": lambda db: bookpay.restore_lessons(db, commit=False),

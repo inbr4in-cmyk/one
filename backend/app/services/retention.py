@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import Role, Student, Task, TaskAssignee, User, UserBranch
 from app.models.identity import UserRole
 from app.models.work import TaskStatus
-from app.services.clock import now
+from app.services.clock import local, now
 from app.services.messaging import notify_user
 
 OPEN = (TaskStatus.NEW, TaskStatus.IN_PROGRESS, TaskStatus.REVIEW)
@@ -125,3 +125,78 @@ async def no_trial_bonus(db: AsyncSession, user_id: int) -> bool:
     codes = set((await db.scalars(select(Role.code).join(UserRole, UserRole.role_id == Role.id)
                                   .where(UserRole.user_id == user_id, Role.archived_at.is_(None)))).all())
     return bool(codes & {"branch_admin", "office_manager"}) and "sales" not in codes
+
+
+async def return_card(db: AsyncSession, s: Student, actor_id: int | None, stage: str = "left", why: str | None = None):
+    """Owner, 27.11.2026: a student who left is at once a card in the «Возврат» funnel, worked like any lead (tasks,
+    stages). One open card per student: asked again, the card is found and only moved forward when the school now
+    knows more (may come back → «Связались», a return day is set → «Договорились»)."""
+    from app.models import Lead, LeadEvent, LeadStage, Pipeline
+    from app.modules.crm.service import create_lead
+    from app.services import crm
+
+    lead = await db.scalar(
+        select(Lead).join(Pipeline, Pipeline.id == Lead.pipeline_id).join(LeadStage, LeadStage.id == Lead.stage_id)
+        .where(Lead.student_id == s.id, Pipeline.code == "return", Lead.archived_at.is_(None),
+               LeadStage.is_won.is_(False), LeadStage.is_lost.is_(False)).order_by(Lead.id.desc()).limit(1))
+    target = await crm.stage_by_code(db, "return", stage) or await crm.stage_by_code(db, "return", "left")
+    if target is None:
+        return None  # the school removed the funnel
+    if lead is None:
+        seller = await db.get(User, s.sales_user_id) if s.sales_user_id else None
+        if seller is not None and (not seller.is_active or seller.archived_at is not None):
+            seller = None
+        lead = await create_lead(db, full_name=s.full_name, phone=s.phone, branch_id=s.branch_id, source="return",
+                                 owner_id=None, assignee_id=seller.id if seller else None, pipeline="return",
+                                 stage=target.code, student_id=s.id, level_id=s.level_id, notify=False)
+        if why:
+            db.add(LeadEvent(lead_id=lead.id, at=now(), kind="note", text=why, actor_id=actor_id, meta={}))
+    elif lead.stage_id != target.id:
+        cur = await db.get(LeadStage, lead.stage_id)
+        if cur is not None and target.order > cur.order:
+            await crm.move(db, lead, target, actor_id, why)
+    s.lead_id = lead.id  # a payment of this student moves this card to «Оплатил»
+    return lead
+
+
+async def close_return_card(db: AsyncSession, s: Student, actor_id: int | None, why: str) -> None:
+    """The student did not leave after all (or is studying again without a payment): the open card leaves the funnel."""
+    from app.models import Lead, LeadEvent, LeadStage, Pipeline
+
+    for lead in await db.scalars(
+            select(Lead).join(Pipeline, Pipeline.id == Lead.pipeline_id).join(LeadStage, LeadStage.id == Lead.stage_id)
+            .where(Lead.student_id == s.id, Pipeline.code == "return", Lead.archived_at.is_(None),
+                   LeadStage.is_won.is_(False), LeadStage.is_lost.is_(False))):
+        lead.archived_at = now()
+        db.add(LeadEvent(lead_id=lead.id, at=now(), kind="note", text=why, actor_id=actor_id, meta={}))
+
+
+async def left_to_funnel(db: AsyncSession, commit: bool) -> dict:
+    """One-off: every student who is «ушёл» today and has no open card in «Возврат» gets one on «Ушёл»."""
+    from app.models.learning import StudentStatus
+    from app.models import Branch, Lead
+
+    out = {"left": 0, "new": 0, "had_card": 0, "by_branch": {}, "no_manager": 0, "lines": []}
+    for s in list(await db.scalars(select(Student).where(Student.status == StudentStatus.LEFT, Student.archived_at.is_(None))
+                                   .order_by(Student.branch_id, Student.full_name))):
+        out["left"] += 1
+        before = await db.scalar(select(func.max(Lead.id))) or 0
+        stage = "left" if not s.return_note else "contacted"
+        why = "Ушёл" + (f" {local(s.left_at):%d.%m.%Y}" if s.left_at else "") + (f". Причина: {s.leave_reason}" if s.leave_reason else "") \
+            + (f". Возврат: {s.return_note}" if s.return_note else "")
+        lead = await return_card(db, s, None, stage, why)
+        if lead is None or lead.id <= before:
+            out["had_card"] += 1
+            continue
+        out["new"] += 1
+        b = await db.scalar(select(Branch.name).where(Branch.id == s.branch_id))
+        out["by_branch"][b] = out["by_branch"].get(b, 0) + 1
+        who = await db.scalar(select(User.full_name).where(User.id == lead.assignee_id)) if lead.assignee_id else None
+        out["no_manager"] += who is None
+        out["lines"].append(f"{b}: {s.full_name} — {why} — {who or 'общий'}")
+    if commit:
+        await db.commit()
+    else:
+        await db.rollback()
+    out["applied"] = commit
+    return out

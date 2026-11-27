@@ -334,8 +334,10 @@ async def _mark_left(db: DB, s: Student, actor: Actor, reason: str, note: str | 
             "Свяжитесь с учеником или родителями и верните его на учёбу.", actor.id,
             who=await retention.branch_admins(db, s.branch_id),
             due_at=at_local(return_on, time(10)) if return_on else now() + timedelta(days=7))
-    return (f"Ушёл {local(s.left_at):%d.%m.%Y}. Причина: {reason}" + (f". Возврат: {note}" if note else "")
-            + (f". Возвращено уроков: {returned}" if returned else ""))
+    text = f"Ушёл {local(s.left_at):%d.%m.%Y}. Причина: {reason}" + (f". Возврат: {note}" if note else "")
+    # the «Возврат» funnel: a day to come back is known → «Договорились», may come back → «Связались», else «Ушёл»
+    await retention.return_card(db, s, actor.id, "agreed" if return_on else "contacted" if note else "left", text)
+    return text + (f". Возвращено уроков: {returned}" if returned else "")
 
 
 @router.patch("/{student_id}", response_model=StudentOut)
@@ -375,6 +377,7 @@ async def update_student(student_id: int, body: StudentPatch, db: DB, actor: Act
             await retention.rejoin_groups(db, s, local(s.left_at).date())
         s.left_at = None
         await retention.close_tasks(db, s.id, "return")
+        await retention.close_return_card(db, s, actor.id, "Ученик снова учится: статус изменён в карточке")
     if "contract_no" in data:
         data["contract_no"] = (data["contract_no"] or "").strip() or None
         await _contract_free(db, data["contract_no"], s.id)
@@ -418,6 +421,7 @@ async def leave_decision(student_id: int, body: LeaveDecisionIn, db: DB, actor: 
             if s.left_at:
                 await retention.rejoin_groups(db, s, local(s.left_at).date())
             s.status, s.left_at = StudentStatus.ACTIVE, None
+            await retention.close_return_card(db, s, actor.id, f"Остаётся учиться. {reason}")
         s.leave_reason = s.return_note = None
         text = f"Остаётся учиться. {reason}"
         s.leave_requested_at = s.leave_requested_by = None

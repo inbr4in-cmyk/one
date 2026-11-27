@@ -368,3 +368,51 @@ async def test_missed_individual_lesson_pays_half_of_its_own_rate_and_old_ones_a
     assert done["diff"] == 2250 and done["by_teacher"] == {"Половина Ставки 1": 750, "Половина Ставки 2": 1500}
     assert [(await paid(lid)).amount for lid, _ in lessons] == [1000, 1750, 2500]
     assert (await recalc_noshow(db, False))["changed"] == 0
+
+
+async def test_student_who_left_is_at_once_a_card_in_the_return_funnel(client, db, owner_h):
+    from app.models import Lead, LeadStage, Student
+    from app.services import retention
+    from tests.conftest import branch_id
+    from tests.test_core_learning import _student
+
+    bid = await branch_id(db, "Янги шахар")
+
+    async def card(sid):
+        rows = list(await db.scalars(select(Lead).where(Lead.student_id == sid).order_by(Lead.id)))
+        for x in rows:
+            await db.refresh(x)
+        return [((await db.get(LeadStage, x.stage_id)).code, x.archived_at is None) for x in rows]
+
+    a = (await _student(db, client, owner_h, bid, "Ушёл Просто", "+77052229001"))["id"]
+    b = (await _student(db, client, owner_h, bid, "Ушёл Вернётся", "+77052229002"))["id"]
+    c = (await _student(db, client, owner_h, bid, "Ушёл Давно", "+77052229003"))["id"]
+    url = "/api/students/{}/leave-decision"
+    assert (await client.post(url.format(a), headers=owner_h, json={"left": True, "reason": "переезд"})).status_code == 200
+    r = await client.post(url.format(b), headers=owner_h, json={
+        "left": True, "reason": "каникулы", "return_on": str((now() + timedelta(days=20)).date())})
+    assert r.status_code == 200, r.text
+    assert await card(a) == [("left", True)] and await card(b) == [("agreed", True)]
+    # the card is on the board of the funnel and is moved like a lead
+    board = (await client.get(f"/api/crm/board?pipeline=return&branch_id={bid}", headers=owner_h)).json()
+    names = [x["full_name"] for col in board["columns"] for x in col["leads"]]
+    assert "Ушёл Просто" in names and "Ушёл Вернётся" in names
+    # a reason typed again does not make a second card
+    assert (await client.post(url.format(a), headers=owner_h, json={"left": True, "reason": "переезд в Алматы"})).status_code == 200
+    assert await card(a) == [("left", True)]
+    # stays after all: the card leaves the funnel; leaves again: a new one
+    assert (await client.post(url.format(a), headers=owner_h, json={"left": False, "reason": "передумал"})).status_code == 200
+    assert await card(a) == [("left", False)]
+    assert (await client.post(url.format(a), headers=owner_h, json={"left": True, "reason": "всё же ушёл"})).status_code == 200
+    assert await card(a) == [("left", False), ("left", True)]
+
+    # those who left before the funnel: preview changes nothing, the fix makes the cards once
+    st = await db.get(Student, c)
+    st.status, st.left_at, st.leave_reason = "left", now() - timedelta(days=10), "дорого"
+    await db.commit()
+    pre = await retention.left_to_funnel(db, False)
+    assert pre["left"] == 3 and pre["new"] == 1 and pre["had_card"] == 2 and pre["applied"] is False
+    assert await card(c) == []
+    done = await retention.left_to_funnel(db, True)
+    assert done["new"] == 1 and "дорого" in done["lines"][0] and await card(c) == [("left", True)]
+    assert (await retention.left_to_funnel(db, False))["new"] == 0
