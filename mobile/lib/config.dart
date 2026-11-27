@@ -3,7 +3,7 @@ class AppConfig {
   AppConfig._();
 
   /// Origin of the One English server; the API lives under `/api`.
-  static const apiBase = String.fromEnvironment('OE_API_BASE', defaultValue: 'https://app.oneenglish.kz');
+  static const apiBase = String.fromEnvironment('OE_API_BASE', defaultValue: 'https://english.inbrain.kz');
 
   /// `ios` or `android` forces the visual style (used for web previews and screenshots).
   static const platformOverride = String.fromEnvironment('OE_PLATFORM');

@@ -6,12 +6,12 @@ Flutter, one codebase for iOS and Android. Talks to the same backend as the web 
 
 ```sh
 flutter pub get
-flutter run --dart-define=OE_API_BASE=https://app.oneenglish.kz
+flutter run --dart-define=OE_API_BASE=https://english.inbrain.kz
 ```
 
 Build-time options (`--dart-define`):
 
-- `OE_API_BASE` — backend origin, default `https://app.oneenglish.kz`.
+- `OE_API_BASE` — backend origin, default `https://english.inbrain.kz`.
 - `OE_PLATFORM=ios|android` — force the iOS or Android look (useful for `flutter build web` previews).
 
 ## Push notifications (Firebase)
