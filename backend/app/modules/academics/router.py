@@ -1019,6 +1019,8 @@ class Roster(BaseModel):
     rows: list[RosterRow]
     # the level's plan: the teacher must pick what was taught (empty = the level has no plan, nothing to pick)
     plan: list[dict] = []
+    # only an ordinary group goes by the plan lesson by lesson: there the pick is a must (owner, 27.11.2026)
+    plan_required: bool = False
 
 
 async def _edit_rights(db: DB, actor: Actor, lesson: Lesson) -> tuple[bool, bool]:
@@ -1077,7 +1079,16 @@ async def roster(lesson_id: int, db: DB, actor: Actor = require("attendance", "v
                               lessons_left=None))
     can_edit, needs_reason = await _edit_rights(db, actor, lesson)
     return Roster(lesson=(await _lesson_outs(db, [lesson]))[0], can_edit=can_edit, needs_reason=needs_reason, rows=rows,
-                  plan=plan.numbered(await plan.items(db, lesson.level_id)) if plan.plannable(lesson) else [])
+                  plan=plan.numbered(await plan.items(db, lesson.level_id)) if plan.plannable(lesson) else [],
+                  plan_required=await _plan_required(db, lesson))
+
+
+async def _plan_required(db, lesson: Lesson) -> bool:
+    """Duo and individual lessons do not follow the level's plan lesson by lesson: the teacher may pick a plan
+    lesson there, but does not have to. An ordinary group must."""
+    if not lesson.group_id:
+        return False
+    return await db.scalar(select(Group.kind).where(Group.id == lesson.group_id)) == "group"
 
 
 class MarkIn(In):
@@ -1172,7 +1183,7 @@ async def mark(lesson_id: int, body: MarksIn, db: DB, actor: Actor = require("at
             plan_row = next((r for r in rows if r.id == body.plan_item_id), None)
             if body.plan_item_id and plan_row is None:
                 raise bad_request("Этого урока нет в плане уровня")
-            if plan_row is None and lesson.plan_item_id is None:
+            if plan_row is None and lesson.plan_item_id is None and await _plan_required(db, lesson):
                 raise bad_request("Выберите, какой урок по плану проведён")
     allowed_students = {r.student_id for r in (await roster(lesson.id, db, actor)).rows if r.student_id}
     allowed_leads = set((await db.scalars(select(Lead.id).where(Lead.trial_lesson_id == lesson.id))).all())

@@ -310,3 +310,61 @@ async def test_tasks_newest_first_and_complaint_pops_up_for_admins(client, db, o
     assert any(ch == f"user:{owner_id}" and p.get("kind") == "complaint" for ch, p in popped)
     assert (await client.get("/api/complaints", headers=th)).status_code == 403  # the list is for administrators only
     assert crm.alert
+
+
+async def test_missed_individual_lesson_pays_half_of_its_own_rate_and_old_ones_are_counted_again(client, db, owner_h):
+    from app.models import Accrual, Level, Room
+    from app.services import plan
+    from app.services.payroll import recalc_noshow
+    from tests.conftest import branch_id, level_id
+    from tests.test_core_learning import _lesson_now, _student
+
+    bid = await branch_id(db, "Янги шахар")
+    teachers = [await make_staff(db, "teacher", ["Янги шахар"], f"+7705222801{i}", f"Половина Ставки {i}") for i in range(3)]
+    rooms = list(await db.scalars(select(Room).where(Room.branch_id == bid).order_by(Room.id)))
+    rooms[1].teacher_rate = 3500
+    ele = await level_id(db, "ELE")
+    (await db.get(Level, ele)).name = "Elementary"
+    await db.flush()
+    await plan.seed(db)  # the level has a plan: an individual lesson is saved without picking a row
+    lessons = []
+    for i, (room, lvl_rate) in enumerate(((rooms[0], None), (rooms[1], None), (rooms[2], 5000))):
+        lvl, teacher = ele, teachers[i]
+        if lvl_rate:
+            lvl = await level_id(db, "PRE")
+            (await db.get(Level, lvl)).teacher_rate = lvl_rate
+            await db.flush()
+        g = (await client.post("/api/groups", headers=owner_h, json={
+            "name": f"Индив П{i}", "branch_id": bid, "level_id": lvl, "teacher_id": teacher.id,
+            "room_id": room.id, "kind": "individual"})).json()
+        s = await _student(db, client, owner_h, bid, f"Не Пришёл {i}", f"+7705222802{i}")
+        await client.post(f"/api/groups/{g['id']}/members", headers=owner_h, json={"student_id": s["id"]})
+        lesson = await _lesson_now(db, g, teacher, room)
+        lessons.append((lesson.id, s["id"]))
+
+    async def paid(lid):
+        a = await db.scalar(select(Accrual).where(Accrual.kind == "lesson", Accrual.ref_id == lid))
+        await db.refresh(a)
+        return a
+
+    got = []
+    for lid, sid in lessons:
+        ro = (await client.get(f"/api/lessons/{lid}/attendance", headers=owner_h)).json()
+        assert ro["plan_required"] is False
+        r = await client.put(f"/api/lessons/{lid}/attendance", headers=owner_h,
+                             json={"marks": [{"student_id": sid, "status": "absent"}], "reason": "позже"})
+        assert r.status_code == 200, r.text
+        got.append((await paid(lid)).amount)
+    assert got == [1000, 1750, 2500]
+
+    # the lessons counted before the rule: a fixed 1000 each
+    for lid, _ in lessons:
+        (await paid(lid)).amount = 1000
+    await db.commit()
+    pre = await recalc_noshow(db, False)
+    assert pre["lessons"] == 3 and pre["changed"] == 2 and pre["diff"] == 2250 and pre["applied"] is False
+    assert [(await paid(lid)).amount for lid, _ in lessons] == [1000, 1000, 1000]
+    done = await recalc_noshow(db, True)
+    assert done["diff"] == 2250 and done["by_teacher"] == {"Половина Ставки 1": 750, "Половина Ставки 2": 1500}
+    assert [(await paid(lid)).amount for lid, _ in lessons] == [1000, 1750, 2500]
+    assert (await recalc_noshow(db, False))["changed"] == 0

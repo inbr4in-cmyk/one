@@ -126,6 +126,8 @@ export interface Roster {
   needs_reason: boolean
   rows: RosterRow[]
   plan?: { id: number; no: number; month: number; num: number; title: string; kind: string }[]
+  /** only an ordinary group must pick the plan lesson; duo and individual may leave it empty */
+  plan_required?: boolean
 }
 
 export interface MarkIn {

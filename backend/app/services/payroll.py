@@ -115,6 +115,10 @@ def teacher_lesson_pay(n: int, base: int, extra: int, threshold: int) -> int:
     return base + extra * max(0, n - threshold)
 
 
+NOSHOW_SHARE = 0.5
+NOSHOW_TEXT = "ученик не пришёл, урок списан"
+
+
 async def accrue_lesson(db: AsyncSession, *, teacher_id: int, lesson_id: int, n: int, on: date, branch_id: int,
                         group_name: str, actor_id: int | None, kind: str = "group") -> None:
     """Upsert the pay for one held lesson. If the attendance is corrected later the amount follows; once the
@@ -151,15 +155,17 @@ async def accrue_lesson(db: AsyncSession, *, teacher_id: int, lesson_id: int, n:
         came = await db.scalar(select(func.count()).select_from(Attendance).where(
             Attendance.lesson_id == lesson_id, Attendance.status.in_((AttendanceStatus.PRESENT, AttendanceStatus.LATE))))
         if not came:
-            amount, nobody = 0, True
+            full, amount, nobody = amount, 0, True
             # Owner's rule from 01.11.2026: an individual lesson the student missed and lost from the balance
-            # (no warning, or asked off again that month) still pays the teacher a small fixed sum.
+            # (no warning, or asked off again that month) still pays the teacher. Since 27.11.2026 it is half of
+            # what this very lesson pays when held (2000 → 1000, IELTS 5000 → 2500, a room's 3500 → 1750), for all
+            # lessons from 01.11 — before that it was a fixed 1000 whatever the lesson.
             if kind == "individual" and on >= date(2026, 11, 1) and await db.scalar(select(Attendance.id).where(
                     Attendance.lesson_id == lesson_id, Attendance.charged.is_(True)).limit(1)):
-                amount, noshow = await rate(db, "teacher_individual_noshow", on), True
+                amount, noshow = round(full * NOSHOW_SHARE), True
     if not await on_rates(db, teacher_id):
         amount = 0  # оклад only: the lesson is recorded, the pay is in the salary
-    desc = f"Урок {group_name} {on.strftime('%d.%m')}: " + ("ученик не пришёл, урок списан" if noshow else "ученик не пришёл, без оплаты" if nobody else f"{n} уч.")
+    desc = f"Урок {group_name} {on.strftime('%d.%m')}: " + (NOSHOW_TEXT if noshow else "ученик не пришёл, без оплаты" if nobody else f"{n} уч.")
     existing = await db.scalar(select(Accrual).where(Accrual.kind == "lesson", Accrual.ref_type == "lesson",
                                                      Accrual.ref_id == lesson_id))
     if existing is None:
@@ -180,3 +186,43 @@ async def accrue_lesson(db: AsyncSession, *, teacher_id: int, lesson_id: int, n:
     db.add(Accrual(user_id=teacher_id, kind="correction", amount=amount, ref_type=f"lesson:{lesson_id}", ref_id=None,
                    period=period_of(today()), branch_id=branch_id, description=f"Исправление: {desc}", created_by=actor_id))
     existing.description = f"{existing.description} (исправлено)"
+
+
+async def recalc_noshow(db: AsyncSession, commit: bool) -> dict:
+    """One-off after the rule of 27.11.2026: individual lessons since 01.11 that the student missed and lost were paid
+    a fixed 1000; now they pay half of the lesson's own rate. Every such lesson is counted again by the current rule
+    (the same code as marking attendance). Preview changes nothing; an approved period gets a correction line."""
+    from app.modules.academics.router import accrue_for_lesson
+
+    rows = list(await db.scalars(select(Accrual).where(Accrual.kind == "lesson", Accrual.ref_type == "lesson",
+                                                       Accrual.description.like(f"%{NOSHOW_TEXT}%")).order_by(Accrual.id)))
+    out = {"lessons": len(rows), "changed": 0, "before": 0, "after": 0, "by_teacher": {}, "lines": []}
+    from app.models import User
+
+    for a in rows:
+        lesson = await db.get(Lesson, a.ref_id)
+        if lesson is None:
+            continue
+        old = a.amount
+        top = await db.scalar(select(func.max(Accrual.id)))
+        await accrue_for_lesson(db, lesson, None)
+        await db.flush()
+        await db.refresh(a)
+        # an approved month is not rewritten: the difference comes as correction lines of the current month
+        fixes = await db.scalar(select(func.coalesce(func.sum(Accrual.amount), 0)).where(
+            Accrual.kind == "correction", Accrual.ref_type == f"lesson:{lesson.id}", Accrual.id > top))
+        new = old + fixes if fixes else a.amount
+        out["before"] += old
+        out["after"] += new
+        if new != old:
+            out["changed"] += 1
+            name = await db.scalar(select(User.full_name).where(User.id == a.user_id))
+            out["by_teacher"][name] = out["by_teacher"].get(name, 0) + new - old
+            out["lines"].append(f"{a.description}: {old} -> {new} ({name})")
+    out["diff"] = out["after"] - out["before"]
+    if commit:
+        await db.commit()
+    else:
+        await db.rollback()
+    out["applied"] = commit
+    return out

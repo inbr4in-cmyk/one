@@ -568,5 +568,7 @@ if __name__ == "__main__":
                                  "lesson-duplicates-fix-new": lambda db: _dupes(db, "new", True),
                                  "finished-groups-preview": lambda db: close_finished_groups(db, commit=False),
                                  "finished-groups-fix": lambda db: close_finished_groups(db, commit=True),
+                                 "noshow-pay-preview": lambda db: __import__("app.services.payroll", fromlist=["recalc_noshow"]).recalc_noshow(db, False),
+                                 "noshow-pay-fix": lambda db: __import__("app.services.payroll", fromlist=["recalc_noshow"]).recalc_noshow(db, True),
                                  "book-lessons-preview": lambda db: bookpay.restore_lessons(db, commit=False),
                                  "book-lessons-fix": lambda db: bookpay.restore_lessons(db, commit=True)}[cmd])))

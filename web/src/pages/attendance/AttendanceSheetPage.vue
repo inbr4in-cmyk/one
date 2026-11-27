@@ -129,7 +129,7 @@ async function save() {
     error.value = t('attendance.reasonNeeded')
     return
   }
-  if (roster.value?.plan?.length && !planId.value) {
+  if (roster.value?.plan?.length && roster.value.plan_required && !planId.value) {
     error.value = t('nv.plan.required')
     return
   }
