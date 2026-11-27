@@ -16,10 +16,10 @@ from app.core.permissions import NETWORK, OWN
 from app.core.ratelimit import client_ip, hit
 from app.core.schemas import In, ORM
 from app.core.security import mask_phone
-from app.models import Conversation, ExternalContact, ExternalMessage, Lead, LeadEvent, LeadStage, MessageTemplate, Student, User
+from app.models import Branch, Conversation, ExternalContact, ExternalMessage, Lead, LeadEvent, LeadStage, MessageTemplate, Student, User
 from app.modules.crm.service import merge_into_student, set_branch
 from app.modules.students.scope import get_student_scoped
-from app.modules.inbox.service import comment_to_answer, handle_bridge_events, handle_meta_payload, in_window
+from app.modules.inbox.service import comment_to_answer, handle_bridge_events, handle_meta_payload, in_window, line_branch, wa_phone_ids
 from app.services import meta, wa_bridge
 from app.services.clock import now
 from app.services.messaging import get_template, render
@@ -100,50 +100,74 @@ async def webhook_wa_bridge(request: Request, db: DB) -> dict:
 
 
 # ---------- WhatsApp linked by QR (settings) ----------
-def _link_out(st: dict, actor: Actor) -> dict:
+def _link_out(st: dict, actor: Actor, line: int = 0, branch: str | None = None) -> dict:
     me = st.get("me") if isinstance(st.get("me"), dict) else None
-    return {"state": st.get("state"), "qr": st.get("qr") if actor.is_owner else None,
+    return {"line": line, "branch": branch, "state": st.get("state"), "qr": st.get("qr") if actor.is_owner else None,
             "phone": ("+" + str(me["phone"])) if me and me.get("phone") else None, "name": me.get("name") if me else None,
             "linked_at": st.get("linked_at"), "pending": st.get("pending") or 0, "last_close": st.get("last_close"),
             "can_manage": actor.is_owner}
 
 
 @router.get("/settings/whatsapp-link")
-async def wa_link_status(actor: Actor = require("settings", "view")) -> dict:
-    return _link_out(await wa_bridge.status(), actor)
+async def wa_link_status(db: DB, actor: Actor = require("settings", "view")) -> list[dict]:
+    """A number for every branch. The number linked before branches had their own (line 0) is shown while it is
+    linked, or when the school has no branch to give a number to."""
+    all_ = await wa_bridge.statuses()
+    down = {**wa_bridge.OFF, "state": "unavailable" if wa_bridge.enabled() else "disabled"}
+    one = (lambda line: down) if all_ is None else (lambda line: all_.get(line, wa_bridge.OFF))
+    branches = list(await db.scalars(select(Branch).where(Branch.archived_at.is_(None)).order_by(Branch.id)))
+    out = [_link_out(one(b.id), actor, b.id, b.name) for b in branches]
+    if not branches or one(0).get("state") in ("open", "connecting", "qr", "banned"):
+        out.insert(0, _link_out(one(0), actor))
+    return out
 
 
-def _owner_only(actor: Actor) -> None:
+class LineIn(In):
+    line: int = Field(0, ge=0, le=1_000_000)
+
+
+async def _line(db: DB, actor: Actor, line: int) -> str | None:
     if not actor.is_owner:  # the school's own WhatsApp: only the owner links and unlinks it
         raise HTTPException(403, "Только администратор школы может подключать WhatsApp")
+    if not line:
+        return None
+    if await line_branch(db, line) is None:
+        raise not_found("Филиал")
+    return (await db.get(Branch, line)).name
 
 
 @router.post("/settings/whatsapp-link/connect")
-async def wa_link_connect(db: DB, actor: Actor = require("settings", "edit")) -> dict:
-    _owner_only(actor)
+async def wa_link_connect(db: DB, body: LineIn | None = None, actor: Actor = require("settings", "edit")) -> dict:
+    line = body.line if body else 0
+    name = await _line(db, actor, line)
     if not wa_bridge.enabled():
         raise conflict("Служба WhatsApp на сервере не установлена")
     try:
-        st = await wa_bridge.start()
+        st = await wa_bridge.start(line)
     except Exception:  # noqa: BLE001 — the service is down or answered oddly
         raise conflict("Служба WhatsApp на сервере не отвечает") from None
     wa_bridge.forget()
-    await write_audit(db, actor_id=actor.id, action="whatsapp.link_start", entity="settings", entity_id=None, ip=actor.ip)
+    await write_audit(db, actor_id=actor.id, action="whatsapp.link_start", entity="settings", entity_id=None, ip=actor.ip,
+                      branch_id=line or None)
     await db.commit()
-    return _link_out(st, actor)
+    return _link_out(st, actor, line, name)
 
 
 @router.post("/settings/whatsapp-link/disconnect")
-async def wa_link_disconnect(db: DB, actor: Actor = require("settings", "edit")) -> dict:
-    _owner_only(actor)
+async def wa_link_disconnect(db: DB, body: LineIn | None = None, actor: Actor = require("settings", "edit")) -> dict:
+    line = body.line if body else 0
+    if not actor.is_owner:
+        raise HTTPException(403, "Только администратор школы может подключать WhatsApp")
+    b = await db.get(Branch, line) if line else None  # an archived branch's number can still be unlinked
     try:
-        st = await wa_bridge.logout()
+        st = await wa_bridge.logout(line)
     except Exception:  # noqa: BLE001
         raise conflict("Служба WhatsApp на сервере не отвечает") from None
     wa_bridge.forget()
-    await write_audit(db, actor_id=actor.id, action="whatsapp.unlink", entity="settings", entity_id=None, ip=actor.ip)
+    await write_audit(db, actor_id=actor.id, action="whatsapp.unlink", entity="settings", entity_id=None, ip=actor.ip,
+                      branch_id=b.id if b else None)
     await db.commit()
-    return _link_out(st, actor)
+    return _link_out(st, actor, line, b.name if b else None)
 
 
 # ---------- conversations ----------
@@ -158,6 +182,7 @@ class ConversationOut(BaseModel):
     last_preview: str | None
     in_window: bool
     free_reply: bool = False  # WhatsApp linked by QR: no 24 h rule
+    wa_line: int | None = None  # the branch whose WhatsApp number the client wrote to
     contact: dict
     lead: dict | None
     student: dict | None = None
@@ -190,12 +215,12 @@ async def _out(db: DB, actor: Actor, conv: Conversation) -> ConversationOut:
     stage = await db.get(LeadStage, lead.stage_id) if lead else None
     show = actor.can("students", "view_contacts")
     student = await db.get(Student, c.student_id) if c.student_id else None
-    free = conv.channel == "whatsapp" and await wa_bridge.linked()
+    free = conv.channel == "whatsapp" and await wa_bridge.linked(conv.wa_line or 0)
     return ConversationOut(
         student={"id": student.id, "full_name": student.full_name} if student else None,
         id=conv.id, channel=conv.channel, branch_id=conv.branch_id, assignee_id=conv.assignee_id, unread=conv.unread,
         status=conv.status, last_message_at=conv.last_message_at.isoformat() if conv.last_message_at else None,
-        last_preview=conv.last_preview, in_window=in_window(conv) or free, free_reply=free,
+        last_preview=conv.last_preview, in_window=in_window(conv) or free, free_reply=free, wa_line=conv.wa_line,
         contact={"id": c.id, "name": c.display_name, "username": c.username,
                  "phone": c.phone if show else mask_phone(c.phone), "student_id": c.student_id},
         lead={"id": lead.id, "full_name": lead.full_name, "stage": stage.name if stage else None,
@@ -264,10 +289,12 @@ async def _send(db: DB, actor: Actor, conv: Conversation, text: str, kind: str =
     contact = await db.get(ExternalContact, conv.contact_id)
     if conv.channel == "whatsapp":
         # Linked by QR: the answer leaves from the school's own WhatsApp. «lid:…» chats exist only there.
-        if contact.external_id.startswith("lid:") or await wa_bridge.linked():
-            res = await wa_bridge.send_text(contact.external_id, text)
+        # The answer leaves from the number the client wrote to: each branch may have its own.
+        line = conv.wa_line or 0
+        if contact.external_id.startswith("lid:") or await wa_bridge.linked(line):
+            res = await wa_bridge.send_text(contact.external_id, text, line)
         else:
-            res = await meta.wa_send_text(contact.external_id, text)
+            res = await meta.wa_send_text(contact.external_id, text, (await wa_phone_ids(db)).get(line))
     else:
         late = conv.last_inbound_at is not None and now() - conv.last_inbound_at > timedelta(hours=24)
         res = await meta.ig_send_text(contact.external_id, text, human_agent=late,
@@ -301,7 +328,7 @@ async def _send(db: DB, actor: Actor, conv: Conversation, text: str, kind: str =
 @router.post("/inbox/conversations/{conv_id}/messages", response_model=MessageOut, status_code=201)
 async def reply(conv_id: int, body: SendIn, db: DB, actor: Actor = require("inbox", "reply")) -> MessageOut:
     conv = await _get(db, actor, conv_id, "reply")
-    if not in_window(conv) and not (conv.channel == "whatsapp" and await wa_bridge.linked()):
+    if not in_window(conv) and not (conv.channel == "whatsapp" and await wa_bridge.linked(conv.wa_line or 0)):
         # Meta only allows free-form replies within 24h (Instagram: 7 days for a person) of the client's last message.
         if conv.channel == "instagram":
             raise conflict("Прошло больше 7 дней с последнего сообщения клиента — Instagram не даёт ответить первым")
@@ -338,7 +365,8 @@ async def send_template(conv_id: int, body: TemplateIn, db: DB, actor: Actor = r
         raise not_found("Шаблон")
     text = render(tpl.body, body.variables)
     contact = await db.get(ExternalContact, conv.contact_id)
-    res = await meta.wa_send_template(contact.external_id, tpl.wa_template_name or tpl.code, tpl.locale, list(map(str, body.variables.values())))
+    res = await meta.wa_send_template(contact.external_id, tpl.wa_template_name or tpl.code, tpl.locale, list(map(str, body.variables.values())),
+                                      (await wa_phone_ids(db)).get(conv.wa_line or 0))
     msg = ExternalMessage(conversation_id=conv.id, at=now(), direction="out", external_message_id=res.external_id, kind="template",
                           text=text, status="sent" if res.ok else "failed", error=res.error, sender_id=actor.id)
     db.add(msg)

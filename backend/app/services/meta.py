@@ -112,12 +112,13 @@ def wa_configured() -> bool:
     return bool(s.wa_d360_api_key or (s.wa_phone_number_id and s.wa_access_token))
 
 
-def _wa_target() -> tuple[str, str]:
-    """Where WhatsApp messages go and with which key: 360dialog when its key is set, otherwise Meta directly."""
+def _wa_target(phone_id: str | None = None) -> tuple[str, str]:
+    """Where WhatsApp messages go and with which key: 360dialog when its key is set, otherwise Meta directly.
+    phone_id: the branch's own number of the same WhatsApp account; without it the first (main) number sends."""
     s = get_settings()
     if s.wa_d360_api_key:
         return f"{D360}/messages", s.wa_d360_api_key
-    return f"{_graph()}/{s.wa_phone_number_id}/messages", s.wa_access_token
+    return f"{_graph()}/{phone_id or s.wa_phone_number_id}/messages", s.wa_access_token
 
 
 def verify_d360(header: str | None) -> bool:
@@ -135,24 +136,24 @@ def _not_configured(what: str, to: str) -> SendResult:
     return SendResult(True)
 
 
-async def wa_send_text(to_phone: str, text: str) -> SendResult:
+async def wa_send_text(to_phone: str, text: str, phone_id: str | None = None) -> SendResult:
     s = get_settings()
     if not wa_configured():
         return _not_configured("WA text", to_phone)
     return await _post(
-        *_wa_target(),
+        *_wa_target(phone_id),
         {"messaging_product": "whatsapp", "recipient_type": "individual", "to": to_phone.lstrip("+"), "type": "text",
          "text": {"body": text}},
     )
 
 
-async def wa_send_template(to_phone: str, name: str, locale: str, params: list[str]) -> SendResult:
+async def wa_send_template(to_phone: str, name: str, locale: str, params: list[str], phone_id: str | None = None) -> SendResult:
     s = get_settings()
     if not wa_configured():
         return _not_configured(f"WA template {name}", to_phone)
     lang = {"ru": "ru", "kk": "kk"}.get(locale, "ru")
     return await _post(
-        *_wa_target(),
+        *_wa_target(phone_id),
         {
             "messaging_product": "whatsapp",
             "recipient_type": "individual",

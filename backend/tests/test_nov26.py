@@ -15,7 +15,7 @@ URL = "/api/webhooks/wa-bridge"
 JH = {"Content-Type": "application/json"}
 
 
-def _on(monkeypatch, state="open"):
+def _on(monkeypatch, state="open", lines=(0,)):
     monkeypatch.setattr(get_settings(), "wa_bridge_url", "http://127.0.0.1:8720")
     monkeypatch.setattr(get_settings(), "wa_bridge_secret", SECRET)
     calls = []
@@ -26,8 +26,9 @@ def _on(monkeypatch, state="open"):
             return {"id": f"OUT{len(calls)}"}
         if path == "/logout":
             return {"state": "off"}
-        return {"state": state if path == "/status" else "qr", "qr": "2@qr-data", "me": {"phone": "77000000000", "name": "One"},
-                "linked_at": 1795000000, "pending": 0, "last_close": None}
+        one = {"state": state if path == "/status" else "qr", "qr": "2@qr-data", "me": {"phone": "77000000000", "name": "One"},
+               "linked_at": 1795000000, "pending": 0, "last_close": None}
+        return {"lines": {str(n): one for n in lines}} if path == "/status" else one
     monkeypatch.setattr(wa_bridge, "_call", fake)
     wa_bridge.forget()
     return calls
@@ -74,7 +75,7 @@ async def test_manager_answers_through_the_link_without_the_24h_window(client, d
     monkeypatch.setattr(meta, "_post", no_meta)
     r = await client.post(f"/api/inbox/conversations/{cid}/messages", headers=owner_h, json={"text": "Добрый день!"})
     assert r.status_code == 201 and r.json()["status"] == "sent", r.text
-    assert calls[-1] == ("POST", "/send", {"to": "77011117071", "text": "Добрый день!"})
+    assert calls[-1] == ("POST", "/send", {"line": 0, "to": "77011117071", "text": "Добрый день!"})
     r = await client.post(f"/api/inbox/conversations/{convs[None]['id']}/messages", headers=owner_h, json={"text": "Здравствуйте"})
     assert r.status_code == 201 and calls[-1][2]["to"] == "lid:123456789", r.text
 
@@ -101,7 +102,7 @@ async def test_notifications_and_login_codes_never_use_the_link(client, db, owne
 
 async def test_only_the_owner_links_and_unlinks(client, db, owner_h, monkeypatch):
     r = await client.get("/api/settings/whatsapp-link", headers=owner_h)
-    assert r.json()["state"] == "disabled" and r.json()["qr"] is None
+    assert r.json() and all(x["state"] == "disabled" and x["qr"] is None for x in r.json())
     assert (await client.post("/api/settings/whatsapp-link/connect", headers=owner_h)).status_code == 409
     calls = _on(monkeypatch, state="qr")
     r = await client.post("/api/settings/whatsapp-link/connect", headers=owner_h)
@@ -110,11 +111,85 @@ async def test_only_the_owner_links_and_unlinks(client, db, owner_h, monkeypatch
     await db.commit()
     bh = await login(client, "+77052228801")
     r = await client.get("/api/settings/whatsapp-link", headers=bh)
-    assert r.status_code in (200, 403) and (r.status_code == 403 or r.json()["qr"] is None)
+    assert r.status_code in (200, 403) and (r.status_code == 403 or all(x["qr"] is None for x in r.json()))
     assert (await client.post("/api/settings/whatsapp-link/connect", headers=bh)).status_code == 403
     assert (await client.post("/api/settings/whatsapp-link/disconnect", headers=bh)).status_code == 403
     r = await client.post("/api/settings/whatsapp-link/disconnect", headers=owner_h)
-    assert r.status_code == 200 and r.json()["state"] == "off" and ("POST", "/logout", None) in calls
+    assert r.status_code == 200 and r.json()["state"] == "off" and ("POST", "/logout", {"line": 0}) in calls
+
+
+async def test_each_branch_has_its_own_whatsapp_number(client, db, owner_h, monkeypatch):
+    """Owner, 27.11.2026: a number per branch. The lead gets the branch of the number, the answer leaves from it."""
+    from app.models import Lead
+    from tests.conftest import branch_id
+
+    north, south = await branch_id(db, "Север"), await branch_id(db, "Янги шахар")
+    calls = _on(monkeypatch, lines=(north, south))
+    h = {"X-Bridge-Secret": SECRET}
+    r = await _post(client, [_ev("in", "L1", "77011118001", "Запишите на пробный", line=north),
+                             _ev("in", "L2", "77011118002", "Здравствуйте", line=south),
+                             _ev("in", "L3", "77011118001", "И к вам тоже", line=south),  # the same person, the other branch
+                             _ev("in", "L4", "77011118003", "?", line=999999)], **h)  # a number of no branch
+    assert r.json()["stored"] == 4
+    convs = (await client.get("/api/inbox/conversations", headers=owner_h)).json()
+    by = {(c["contact"]["phone"], c["wa_line"]): c for c in convs}
+    assert set(by) == {("+77011118001", north), ("+77011118002", south), ("+77011118001", south), ("+77011118003", 999999)}
+    assert by[("+77011118001", north)]["branch_id"] == north and by[("+77011118002", south)]["branch_id"] == south
+    assert by[("+77011118001", south)]["branch_id"] == south and by[("+77011118003", 999999)]["branch_id"] is None
+    lead = await db.get(Lead, by[("+77011118001", north)]["lead"]["id"])
+    assert lead.branch_id == north and by[("+77011118001", south)]["lead"]["id"] == lead.id  # one card for one person
+
+    r = await client.post(f"/api/inbox/conversations/{by[('+77011118002', south)]['id']}/messages", headers=owner_h, json={"text": "Добрый день"})
+    assert r.status_code == 201 and calls[-1] == ("POST", "/send", {"line": south, "to": "77011118002", "text": "Добрый день"})
+    # typed on the phone of the northern branch: lands in that branch's chat only
+    await _post(client, [_ev("out", "L5", "77011118001", "С телефона Севера", line=north)], **h)
+    texts = list(await db.scalars(select(ExternalMessage.text).where(
+        ExternalMessage.conversation_id == by[("+77011118001", north)]["id"]).order_by(ExternalMessage.id)))
+    assert texts == ["Запишите на пробный", "С телефона Севера"]
+
+    # only one branch is linked now: the other one's chat falls back to the 24 h rule of the official number
+    _on(monkeypatch, lines=(south,))
+    assert (await client.get(f"/api/inbox/conversations/{by[('+77011118001', north)]['id']}", headers=owner_h)).json()["free_reply"] is False
+    cards = (await client.get("/api/settings/whatsapp-link", headers=owner_h)).json()
+    assert {(x["line"], x["state"]) for x in cards} >= {(north, "off"), (south, "open")} and all(x["line"] for x in cards)
+    assert (await client.post("/api/settings/whatsapp-link/connect", headers=owner_h, json={"line": 424242})).status_code == 404
+    r = await client.post("/api/settings/whatsapp-link/connect", headers=owner_h, json={"line": north})
+    assert r.status_code == 200 and r.json()["line"] == north and r.json()["branch"] == "Север"
+
+
+async def test_official_numbers_of_the_branches(client, db, owner_h, monkeypatch):
+    """Meta: several numbers of one WhatsApp account. The webhook says which number got the message."""
+    from tests.conftest import branch_id
+
+    north = await branch_id(db, "Север")
+    assert (await client.put("/api/settings/wa_numbers", headers=owner_h, json={"value": {str(north): "111222333"}})).status_code == 204
+    monkeypatch.setattr(get_settings(), "wa_phone_number_id", "999000")
+    monkeypatch.setattr(get_settings(), "wa_access_token", "t" * 30)
+    sent = []
+
+    async def fake_post(url, token, payload):
+        sent.append(url)
+        return meta.SendResult(True, external_id=f"wamid.{len(sent)}")
+    monkeypatch.setattr(meta, "_post", fake_post)
+
+    def hook(phone_id, mid, frm):
+        return {"object": "whatsapp_business_account", "entry": [{"changes": [{"field": "messages", "value": {
+            "metadata": {"phone_number_id": phone_id}, "contacts": [{"wa_id": frm, "profile": {"name": "Клиент"}}],
+            "messages": [{"from": frm, "id": mid, "timestamp": str(int(now().timestamp())), "type": "text", "text": {"body": "Привет"}}]}}]}]}
+    from app.modules.inbox.service import handle_meta_payload
+
+    assert await handle_meta_payload(db, hook("111222333", "wamid.A", "77011119001")) == 1
+    assert await handle_meta_payload(db, hook("999000", "wamid.B", "77011119002")) == 1
+    await db.commit()
+    by = {c["contact"]["phone"]: c for c in (await client.get("/api/inbox/conversations", headers=owner_h)).json()}
+    assert by["+77011119001"]["wa_line"] == north and by["+77011119001"]["branch_id"] == north
+    assert by["+77011119002"]["wa_line"] is None and by["+77011119002"]["branch_id"] is None
+    for phone in ("+77011119001", "+77011119002"):
+        assert (await client.post(f"/api/inbox/conversations/{by[phone]['id']}/messages", headers=owner_h, json={"text": "Ответ"})).status_code == 201
+    assert sent[0].endswith("/111222333/messages") and sent[1].endswith("/999000/messages")
+    # login codes and notifications go from the first number
+    await meta.wa_send_text("+77011119003", "Код")
+    assert sent[-1].endswith("/999000/messages")
 
 
 async def test_dashboard_day_counts_left_paused_and_sources_of_the_period(client, db, owner_h):

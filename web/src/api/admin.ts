@@ -101,9 +101,9 @@ export const adminApi = {
   audit: (p: { entity?: string; actor_id?: number | null; action?: string; since?: string; limit?: number; offset?: number }) =>
     http.get<Page<AuditRow>>(`/audit${qs(p)}`),
   settings: () => http.get<Record<string, unknown>>('/settings'),
-  waLink: () => http.get<WaLink>('/settings/whatsapp-link', { silent: true }),
-  waLinkConnect: () => http.post<WaLink>('/settings/whatsapp-link/connect', {}, { silent: true }),
-  waLinkDisconnect: () => http.post<WaLink>('/settings/whatsapp-link/disconnect', {}, { silent: true }),
+  waLinks: () => http.get<WaLink[]>('/settings/whatsapp-link', { silent: true }),
+  waLinkConnect: (line: number) => http.post<WaLink>('/settings/whatsapp-link/connect', { line }, { silent: true }),
+  waLinkDisconnect: (line: number) => http.post<WaLink>('/settings/whatsapp-link/disconnect', { line }, { silent: true }),
   putSetting: (key: string, value: unknown) => http.put<null>(`/settings/${key}`, { value }, { silent: true }),
   rates: () => http.get<Rate[]>('/rates'),
   addRate: (body: Rate) => http.post<Rate>('/rates', body, { silent: true }),
@@ -122,8 +122,11 @@ export interface AssignableRole {
   description?: string | null
 }
 
-/** The school's WhatsApp linked by QR. `qr` comes only to the owner. */
+/** A WhatsApp number of the school linked by QR: one per branch (`line` = the branch id; 0 = the number linked
+ * before branches had their own). `qr` comes only to the owner. */
 export interface WaLink {
+  line: number
+  branch: string | null
   state: 'disabled' | 'unavailable' | 'off' | 'qr' | 'connecting' | 'open' | 'logged_out' | 'banned'
   qr: string | null
   phone: string | null

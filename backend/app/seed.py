@@ -88,6 +88,8 @@ DEFAULT_SETTINGS = {
     # A lead with no note and no task for this long: its manager is told to work it (0 = off).
     "lead_idle_hours": 3,
     # An Instagram comment makes a lead only when it has one of these words (comma-separated; empty = every comment).
+    # Official WhatsApp numbers of the branches: {branch id: Meta phone number id}. The first number is in the env.
+    "wa_numbers": {},
     "ig_comment_lead_words": "цена, цену, цены, сколько, стоимость, стоит, почём, хочу, запись, записаться, подробнее, инфо, +, баға, қанша, жазыл",
     "trial_counts_in_n": True,
     "nonpayment_block_days": 5,

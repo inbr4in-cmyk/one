@@ -29,6 +29,30 @@ def in_window(conv: Conversation) -> bool:
     return conv.last_inbound_at is not None and now() - conv.last_inbound_at < window
 
 
+async def line_branch(db: AsyncSession, line: int | None) -> int | None:
+    """A WhatsApp line is the branch whose number it is; 0 or nothing is the first number, which has no branch."""
+    if not line:
+        return None
+    b = await db.get(Branch, line)
+    return b.id if b and b.archived_at is None else None
+
+
+async def wa_phone_ids(db: AsyncSession) -> dict[int, str]:
+    """Official WhatsApp numbers of the branches: {branch id: Meta phone number id}. The first number is in the env."""
+    raw = await setting(db, "wa_numbers")
+    out: dict[int, str] = {}
+    for k, v in raw.items() if isinstance(raw, dict) else []:
+        if str(k).isdigit() and int(k) > 0 and isinstance(v, str) and v.isdigit() and len(v) <= 32:
+            out[int(k)] = v
+    return out
+
+
+def _conv_of(contact_id: int, line: int | None):
+    """The chat of this person with this number of the school (a person may write to both branches)."""
+    q = select(Conversation).where(Conversation.contact_id == contact_id)
+    return q.where(Conversation.wa_line == line if line else Conversation.wa_line.is_(None)).order_by(Conversation.id.desc())
+
+
 async def _contact(db: AsyncSession, channel: str, external_id: str, name: str | None, username: str | None,
                    phone: str | None) -> tuple[ExternalContact, bool]:
     c = await db.scalar(select(ExternalContact).where(ExternalContact.channel == channel, ExternalContact.external_id == external_id))
@@ -75,25 +99,34 @@ async def _link_lead(db: AsyncSession, contact: ExternalContact, branch_id: int)
 
 async def receive(db: AsyncSession, *, channel: str, external_id: str, message_id: str, text: str | None,
                   kind: str = "text", media_url: str | None = None, name: str | None = None, username: str | None = None,
-                  phone: str | None = None, at: datetime | None = None, make_lead: bool = True) -> ExternalMessage | None:
+                  phone: str | None = None, at: datetime | None = None, make_lead: bool = True,
+                  wa_line: int | None = None) -> ExternalMessage | None:
     """Store one inbound message idempotently (Meta retries webhooks)."""
     if await db.scalar(select(ExternalMessage.id).where(ExternalMessage.external_message_id == message_id)):
         return None
     phone = normalize_phone(phone) if phone else None
     contact, _ = await _contact(db, channel, external_id, name, username, phone)
-    conv = await db.scalar(select(Conversation).where(Conversation.contact_id == contact.id).order_by(Conversation.id.desc()))
+    wa_line = wa_line or None
+    conv = await db.scalar(_conv_of(contact.id, wa_line))
     # A new person has no branch yet: staff pick it when they get in touch or book the trial (owner, 18.11.2026).
-    branch_id = conv.branch_id if conv else None
+    # Unless he wrote to a branch's own WhatsApp number: then the branch is known at once (owner, 27.11.2026).
+    own = await line_branch(db, wa_line)
+    branch_id = conv.branch_id if conv else own
     if make_lead:
         lead = await _link_lead(db, contact, branch_id)
     else:  # a comment without a request: it is shown in «Входящие», a lead is not made for it
         lead = await db.get(Lead, contact.lead_id) if contact.lead_id else None
     if lead:
-        branch_id = lead.branch_id
+        if own and lead.branch_id is None:
+            from app.modules.crm.service import set_branch
+
+            await set_branch(db, lead, own, None)
+        if not own:
+            branch_id = lead.branch_id
         if lead.full_name == NO_NAME and (contact.display_name or contact.username):
             lead.full_name = contact.display_name or f"@{contact.username}"  # the name became known later
     if conv is None:
-        conv = Conversation(contact_id=contact.id, channel=channel, branch_id=branch_id,
+        conv = Conversation(contact_id=contact.id, channel=channel, branch_id=branch_id, wa_line=wa_line,
                             assignee_id=lead.assignee_id if lead else None)
         db.add(conv)
         await db.flush()
@@ -144,7 +177,7 @@ def _dicts(value) -> list[dict]:
     return [x for x in value if isinstance(x, dict)] if isinstance(value, list) else []
 
 
-async def _wa_message(db: AsyncSession, m: dict, names: dict) -> bool:
+async def _wa_message(db: AsyncSession, m: dict, names: dict, line: int | None = None) -> bool:
     kind = m.get("type", "text")
     body = m.get(kind) if isinstance(m.get(kind), dict) else {}
     text = body.get("body") if kind == "text" else body.get("caption")
@@ -155,10 +188,10 @@ async def _wa_message(db: AsyncSession, m: dict, names: dict) -> bool:
     return await receive(db, channel="whatsapp", external_id=wa_id, message_id=m["id"],
                          text=str(text)[:4000] if text is not None else None, kind=mapped,
                          media_url=body.get("id") if kind != "text" else None, name=names.get(wa_id), phone=wa_id,
-                         at=_ts(m.get("timestamp"))) is not None
+                         at=_ts(m.get("timestamp")), wa_line=line) is not None
 
 
-async def _wa_echo(db: AsyncSession, m: dict) -> bool:
+async def _wa_echo(db: AsyncSession, m: dict, line: int | None = None) -> bool:
     """The number also lives in the WhatsApp Business app on the school's phone: an answer typed there is shown in
     the chat on the site as an outgoing message. It makes no lead and no unread mark."""
     to, mid = m.get("to"), m.get("id")
@@ -171,10 +204,11 @@ async def _wa_echo(db: AsyncSession, m: dict) -> bool:
     text = body.get("body") if kind == "text" else body.get("caption")
     mapped = {"image": "image", "audio": "audio", "voice": "audio", "document": "file", "video": "file"}.get(kind, "text")
     contact, _ = await _contact(db, "whatsapp", to, None, None, normalize_phone(to))
-    conv = await db.scalar(select(Conversation).where(Conversation.contact_id == contact.id).order_by(Conversation.id.desc()))
+    conv = await db.scalar(_conv_of(contact.id, line))
     if conv is None:
         lead = await db.get(Lead, contact.lead_id) if contact.lead_id else None
-        conv = Conversation(contact_id=contact.id, channel="whatsapp", branch_id=lead.branch_id if lead else None,
+        conv = Conversation(contact_id=contact.id, channel="whatsapp", wa_line=line or None,
+                            branch_id=await line_branch(db, line) or (lead.branch_id if lead else None),
                             assignee_id=lead.assignee_id if lead else None)
         db.add(conv)
         await db.flush()
@@ -192,11 +226,12 @@ async def _wa_echo(db: AsyncSession, m: dict) -> bool:
     return True
 
 
-async def _bridge_out(db: AsyncSession, chat: str, mid: str, kind: str, text: str | None, at: datetime | None) -> bool:
+async def _bridge_out(db: AsyncSession, chat: str, mid: str, kind: str, text: str | None, at: datetime | None,
+                      line: int | None = None) -> bool:
     """An answer typed on the school's phone. Shown only in a chat the site already has: the same number also holds
     personal chats, and what the owner writes to people the school does not know stays on the phone."""
     contact = await db.scalar(select(ExternalContact).where(ExternalContact.channel == "whatsapp", ExternalContact.external_id == chat))
-    conv = contact and await db.scalar(select(Conversation).where(Conversation.contact_id == contact.id).order_by(Conversation.id.desc()))
+    conv = contact and await db.scalar(_conv_of(contact.id, line))
     if not conv or await db.scalar(select(ExternalMessage.id).where(ExternalMessage.external_message_id == mid)):
         return False
     t = at or now()
@@ -226,11 +261,12 @@ async def handle_bridge_events(db: AsyncSession, events: list) -> int:
         text = str(ev["text"])[:4000] if isinstance(ev.get("text"), str) and ev["text"] else None
         phone = ev.get("phone") if isinstance(ev.get("phone"), str) and ev["phone"].isdigit() else None
         name = str(ev["name"])[:120] if isinstance(ev.get("name"), str) and ev["name"].strip() else None
+        line = ev.get("line") if type(ev.get("line")) is int and 0 < ev["line"] <= 1_000_000 else None
         if ev.get("type") == "in":
             coro = receive(db, channel="whatsapp", external_id=chat, message_id="wab:" + mid, text=text, kind=kind, name=name,
-                           phone=phone, at=_ts(ev.get("ts")))
+                           phone=phone, at=_ts(ev.get("ts")), wa_line=line)
         elif ev.get("type") == "out":
-            coro = _bridge_out(db, chat, "wab:" + mid, kind, text, _ts(ev.get("ts")))
+            coro = _bridge_out(db, chat, "wab:" + mid, kind, text, _ts(ev.get("ts")), line)
         else:
             continue
         stored += await _one(db, "WhatsApp link message", coro)
@@ -320,6 +356,7 @@ async def handle_meta_payload(db: AsyncSession, payload) -> int:
         return 0
     n = 0
     obj = payload.get("object")
+    by_phone = {v: k for k, v in (await wa_phone_ids(db)).items()} if obj == "whatsapp_business_account" else {}
     for entry in payload.get("entry") if isinstance(payload.get("entry"), list) else []:
         if not isinstance(entry, dict):
             log.warning("Meta webhook: skipped entry %r", entry)
@@ -328,13 +365,16 @@ async def handle_meta_payload(db: AsyncSession, payload) -> int:
             for change in _dicts(entry.get("changes")):
                 value = change.get("value") if isinstance(change.get("value"), dict) else {}
                 names = {c.get("wa_id"): (c.get("profile") or {}).get("name") for c in _dicts(value.get("contacts"))}
+                # which of the school's numbers got it: a branch's own number, or the first one
+                md = value.get("metadata") if isinstance(value.get("metadata"), dict) else {}
+                line = by_phone.get(md.get("phone_number_id"))
                 for m in _dicts(value.get("messages")):
-                    n += await _one(db, f"message {m.get('id')}", _wa_message(db, m, names))
+                    n += await _one(db, f"message {m.get('id')}", _wa_message(db, m, names, line))
                 for st in _dicts(value.get("statuses")):
                     await _one(db, f"status {st.get('id')}", _wa_status(db, st))
                 if change.get("field") == "smb_message_echoes":
                     for m in _dicts(value.get("message_echoes")):
-                        await _one(db, f"echo {m.get('id')}", _wa_echo(db, m))
+                        await _one(db, f"echo {m.get('id')}", _wa_echo(db, m, line))
         elif obj == "instagram":
             for ev in _dicts(entry.get("messaging")):
                 n += await _one(db, f"event {ev.get('timestamp')}", _ig_event(db, ev))

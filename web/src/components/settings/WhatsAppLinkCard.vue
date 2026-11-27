@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { toDataURL } from 'qrcode'
 import { UiButton, UiCard, UiChip, UiPrompt, UiSkeleton } from '@/components/ui'
@@ -7,21 +7,23 @@ import { adminApi, type WaLink } from '@/api/admin'
 import { useToastStore } from '@/stores/toast'
 import { apiErr } from '@/utils/err'
 
-/** Settings: the school's WhatsApp linked by QR, like WhatsApp Web. Only the owner links and unlinks it. */
+/** Settings: the school's WhatsApp numbers linked by QR, like WhatsApp Web — one per branch. Only the owner links
+ * and unlinks them. */
 const { t } = useI18n()
 const toast = useToastStore()
-const link = ref<WaLink | null>(null)
-const img = ref('')
-const busy = ref(false)
-const asking = ref(false)
+const links = ref<WaLink[] | null>(null)
+const imgs = reactive<Record<number, string>>({})
+const busy = ref<number | null>(null)
+const asking = ref<number | null>(null)
 let timer: ReturnType<typeof setTimeout> | undefined
 let alive = true
 
-const waiting = computed(() => link.value?.state === 'qr' || link.value?.state === 'connecting')
-const tone = computed(() => (link.value?.state === 'open' ? 'ok' : link.value?.state === 'banned' || link.value?.state === 'unavailable' ? 'red' : waiting.value ? 'warn' : 'info'))
+const isWaiting = (l: WaLink) => l.state === 'qr' || l.state === 'connecting'
+const waiting = computed(() => (links.value ?? []).some(isWaiting))
+const tone = (l: WaLink) => (l.state === 'open' ? 'ok' : l.state === 'banned' || l.state === 'unavailable' ? 'red' : isWaiting(l) ? 'warn' : 'info')
 
-watch(() => link.value?.qr, async (v) => {
-  img.value = v ? await toDataURL(v, { margin: 1, width: 264 }).catch(() => '') : ''
+watch(links, async (list) => {
+  for (const l of list ?? []) imgs[l.line] = l.qr ? await toDataURL(l.qr, { margin: 1, width: 264 }).catch(() => '') : ''
 })
 
 function plan() {
@@ -30,34 +32,38 @@ function plan() {
 }
 async function load() {
   try {
-    link.value = await adminApi.waLink()
+    links.value = await adminApi.waLinks()
   } catch {
     /* shown as it was; the next try is soon */
   }
   plan()
 }
-async function connect() {
-  busy.value = true
+function put(l: WaLink) {
+  links.value = (links.value ?? []).map((x) => (x.line === l.line ? l : x))
+  plan()
+}
+async function connect(line: number) {
+  busy.value = line
   try {
-    link.value = await adminApi.waLinkConnect()
-    plan()
+    put(await adminApi.waLinkConnect(line))
   } catch (e) {
     toast.error(apiErr(e) ?? t('errors.generic'))
   } finally {
-    busy.value = false
+    busy.value = null
   }
 }
 async function disconnect() {
-  busy.value = true
+  const line = asking.value
+  if (line === null) return
+  busy.value = line
   try {
-    link.value = await adminApi.waLinkDisconnect()
-    asking.value = false
+    put(await adminApi.waLinkDisconnect(line))
+    asking.value = null
     toast.show(t('nv.wa.unlinked'), 'ok')
-    plan()
   } catch (e) {
     toast.error(apiErr(e) ?? t('errors.generic'))
   } finally {
-    busy.value = false
+    busy.value = null
   }
 }
 onMounted(load)
@@ -69,36 +75,40 @@ onBeforeUnmount(() => {
 
 <template>
   <UiCard :title="t('nv.wa.title')" data-testid="wa-link">
-    <UiSkeleton v-if="!link" :lines="3" />
+    <UiSkeleton v-if="!links" :lines="3" />
     <div v-else class="stack wa-link">
-      <div class="set-row">
-        <div class="grow">
-          <b>{{ link.state === 'open' && link.phone ? link.phone : t('nv.wa.number') }}</b>
-          <span v-if="link.state === 'open' && link.name">{{ link.name }}</span>
+      <div v-for="link in links" :key="link.line" class="stack wa-line" :data-testid="`wa-line-${link.line}`">
+        <div class="set-row">
+          <div class="grow">
+            <b>{{ link.branch ?? t('nv.wa.number') }}</b>
+            <span v-if="link.state === 'open' && link.phone">{{ link.phone }}<template v-if="link.name"> · {{ link.name }}</template></span>
+          </div>
+          <UiChip :tone="tone(link)">{{ t(`nv.wa.state.${link.state}`) }}</UiChip>
         </div>
-        <UiChip :tone="tone">{{ t(`nv.wa.state.${link.state}`) }}</UiChip>
+        <template v-if="link.can_manage">
+          <div v-if="link.state === 'qr'" class="wa-qr">
+            <img v-if="imgs[link.line]" :src="imgs[link.line]" width="264" height="264" :alt="t('nv.wa.qrAlt')" />
+            <UiSkeleton v-else :lines="6" />
+            <p>{{ t('nv.wa.how') }}</p>
+          </div>
+          <p v-if="link.state === 'banned'" class="form-err" role="alert">{{ t('nv.wa.bannedNote') }}</p>
+          <p v-else-if="link.state === 'unavailable' || link.state === 'disabled'" class="form-err" role="alert">{{ t('nv.wa.downNote') }}</p>
+          <div v-if="link.state === 'open' || link.state === 'connecting'">
+            <UiButton icon="x" :loading="busy === link.line" @click="asking = link.line">{{ t('nv.wa.unlink') }}</UiButton>
+          </div>
+          <div v-else-if="['off', 'logged_out', 'banned'].includes(link.state)">
+            <UiButton variant="navy" icon="chat" :loading="busy === link.line" data-testid="wa-connect" @click="connect(link.line)">{{ t('nv.wa.connect') }}</UiButton>
+          </div>
+        </template>
       </div>
-      <template v-if="link.can_manage">
-        <div v-if="link.state === 'qr'" class="wa-qr">
-          <img v-if="img" :src="img" width="264" height="264" :alt="t('nv.wa.qrAlt')" />
-          <UiSkeleton v-else :lines="6" />
-          <p>{{ t('nv.wa.how') }}</p>
-        </div>
-        <p v-if="link.state === 'banned'" class="form-err" role="alert">{{ t('nv.wa.bannedNote') }}</p>
-        <p v-else-if="link.state === 'unavailable' || link.state === 'disabled'" class="form-err" role="alert">{{ t('nv.wa.downNote') }}</p>
-        <div v-if="link.state === 'open' || link.state === 'connecting'">
-          <UiButton icon="x" :loading="busy" @click="asking = true">{{ t('nv.wa.unlink') }}</UiButton>
-        </div>
-        <div v-else-if="['off', 'logged_out', 'banned'].includes(link.state)">
-          <UiButton variant="navy" icon="chat" :loading="busy" data-testid="wa-connect" @click="connect">{{ t('nv.wa.connect') }}</UiButton>
-        </div>
-      </template>
     </div>
-    <UiPrompt v-model:open="asking" :title="t('nv.wa.unlinkTitle')" :text="t('nv.wa.unlinkText')" :confirm-label="t('nv.wa.unlink')" danger :busy="busy" @confirm="disconnect" />
+    <UiPrompt :open="asking !== null" :title="t('nv.wa.unlinkTitle')" :text="t('nv.wa.unlinkText')" :confirm-label="t('nv.wa.unlink')" danger :busy="busy !== null" @update:open="(v: boolean) => { if (!v) asking = null }" @confirm="disconnect" />
   </UiCard>
 </template>
 
 <style scoped>
+
+.wa-line + .wa-line { border-top: 1px solid var(--line, #e5e7eb); padding-top: 14px; }
 .wa-qr { display: grid; justify-items: center; gap: 10px; padding: 8px 0; text-align: center; }
 .wa-qr img { border-radius: 12px; background: #fff; padding: 8px; box-sizing: content-box; }
 .wa-qr p { margin: 0; color: var(--muted, #6b7280); font-size: 13px; max-width: 320px; }

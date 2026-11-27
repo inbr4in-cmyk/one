@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Index, String, UniqueConstraint, text
+from sqlalchemy import Boolean, Index, Integer, String, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import ArchiveMixin, Base, IdMixin, TimestampMixin
@@ -132,6 +132,9 @@ class Conversation(IdMixin, TimestampMixin, Base):
     last_inbound_at: Mapped[DTN]  # 24h customer-care window for free-form replies
     last_preview: Mapped[StrN]
     status: Mapped[str] = mapped_column(String(16), default="open")  # open | closed
+    # WhatsApp: which of the school's numbers the client wrote to — the branch id of that number; empty = the first
+    # (main) number. The answer leaves from the same number.
+    wa_line: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class ExternalMessage(IdMixin, Base):
