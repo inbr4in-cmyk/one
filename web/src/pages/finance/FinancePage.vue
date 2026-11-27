@@ -3,7 +3,8 @@ import { keptRef } from '@/utils/kept'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { UiButton, UiCard, UiChip, UiEmptyState, UiInput, UiPager, UiPeriod, UiPrompt, UiSelect, UiSkeleton, UiTable, UiTabs, type TableColumn } from '@/components/ui'
-import HBars from '@/components/charts/HBars.vue'
+import SourceTiles from '@/components/dashboard/SourceTiles.vue'
+import StatTile from '@/components/dashboard/StatTile.vue'
 import ExpenseDrawer from '@/components/ops/ExpenseDrawer.vue'
 import { financeApi, type Expense, type ExpenseCategory, type Pnl } from '@/api/finance'
 import { useAuthStore } from '@/stores/auth'
@@ -82,16 +83,29 @@ watch(() => [period.value, branch.filterId, catFilter.value, range.value.from, r
 watch(offset, loadExpenses)
 
 const totals = computed(() => pnl.value?.total)
+/* an icon and a colour per category, as on the dashboard; a category the school added itself takes a spare colour */
+const REV_LOOK: Record<string, { icon: string; color: string }> = {
+  course: { icon: 'graduation', color: '#1A3F8A' }, book: { icon: 'books', color: '#C98A06' }, books: { icon: 'books', color: '#C98A06' },
+  shop: { icon: 'shop', color: '#7B52C7' }, other: { icon: 'wallet', color: '#0E8FA8' },
+}
+const EXP_LOOK: [RegExp, string, string][] = [
+  [/аренд|жалға/i, 'home', '#1A3F8A'], [/зарплат|жалақы/i, 'salary', '#1E8E5A'], [/реклам|жарнама/i, 'zap', '#D6286E'], [/коммунал/i, 'idea', '#C98A06'],
+  [/книг|кітап/i, 'books', '#7B52C7'], [/материал/i, 'notebook', '#0E8FA8'], [/магазин|товар|дүкен/i, 'shop', '#B4532A'], [/налог|салық/i, 'file', '#C8102E'],
+]
+function catLook(name: string) {
+  const hit = EXP_LOOK.find(([re]) => re.test(name))
+  return hit ? { icon: hit[1], color: hit[2] } : { icon: 'wallet' }
+}
 const byCategory = computed(() => {
   const acc = new Map<string, number>()
   for (const r of pnl.value?.branches ?? []) for (const [k, v] of Object.entries(r.expenses)) acc.set(k, (acc.get(k) ?? 0) + v)
-  const rows = [...acc.entries()].map(([k, v]) => ({ key: k, label: k, value: v }))
+  const rows = [...acc.entries()].map(([k, v]) => ({ key: `e:${k}`, label: k, value: v, ...catLook(k) }))
   return rows.sort((a, b) => b.value - a.value)
 })
 const revenueCats = computed(() => {
   const acc = new Map<string, number>()
   for (const r of pnl.value?.branches ?? []) for (const [k, v] of Object.entries(r.net_by_category ?? r.revenue)) acc.set(k, (acc.get(k) ?? 0) + v)
-  return [...acc.entries()].map(([k, v]) => ({ key: k, label: te(`fin.revCat.${k}`) ? t(`fin.revCat.${k}`) : k, value: v })).sort((a, b) => b.value - a.value)
+  return [...acc.entries()].map(([k, v]) => ({ key: `r:${k}`, label: te(`fin.revCat.${k}`) ? t(`fin.revCat.${k}`) : k, value: v, ...(REV_LOOK[k] ?? {}) })).sort((a, b) => b.value - a.value)
 })
 const marginLabel = (m: number | null) => (m === null ? '—' : `${num(m, loc.value, 1)}%`)
 
@@ -159,13 +173,12 @@ async function exportFile(kind: 'payments' | 'pnl') {
   </div>
 
   <template v-if="tab === 'pnl'">
-    <div class="grid fin-k stagger" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr))">
-      <template v-if="!totals"><div v-for="i in 3" :key="i" class="card kpi"><UiSkeleton :lines="3" /></div></template>
-      <template v-else>
-        <div class="card kpi"><div class="k">{{ t('fin.gross') }}</div><div class="v num">{{ money(totals.receipts, loc) }}</div><span class="muted" style="font-size: 12px">{{ totals.refunds ? t('nv.fin.refundsNet', { refunds: money(totals.refunds, loc), net: money(totals.net_revenue, loc) }) : t('fin.noRefunds') }}</span></div>
-        <div class="card kpi"><div class="k">{{ t('fin.expenses') }}</div><div class="v num">{{ money(totals.total_expenses, loc) }}</div></div>
-        <div class="card kpi"><div class="k">{{ t('fin.profit') }}</div><div class="v num" :class="{ redc: totals.profit < 0 }">{{ money(totals.profit, loc) }}</div><span class="muted" style="font-size: 12px">{{ t('fin.margin', { m: marginLabel(totals.margin) }) }}</span></div>
-      </template>
+    <div v-if="!totals" class="fin-row"><div v-for="i in 4" :key="i" class="card kpi"><UiSkeleton :lines="3" /></div></div>
+    <div v-else class="fin-row stagger" data-testid="fin-tiles">
+      <StatTile plain lead icon="wallet" :label="t('fin.gross')" :value="totals.receipts" suffix="₸" :hint="totals.refunds ? t('nv.fin.refundsNet', { refunds: money(totals.refunds, loc), net: money(totals.net_revenue, loc) }) : t('fin.noRefunds')" />
+      <StatTile icon="debt" tone="red" :label="t('fin.expenses')" :value="totals.total_expenses" suffix="₸" @open="tab = 'expenses'" />
+      <StatTile plain icon="trend" :tone="totals.profit < 0 ? 'red' : 'ok'" :label="t('fin.profit')" :value="totals.profit" suffix="₸" />
+      <StatTile plain icon="kpi" tone="info" :label="t('fin.marginCol')" :value="Math.round(totals.margin ?? 0)" suffix="%" />
     </div>
 
     <div class="grid fin-a">
@@ -196,12 +209,12 @@ async function exportFile(kind: 'payments' | 'pnl') {
       <div class="grid" style="align-content: start; grid-template-columns: minmax(0, 1fr)">
         <UiCard :title="t('nv.fin.netByCat')">
           <UiSkeleton v-if="!pnl" :lines="3" />
-          <HBars v-else-if="revenueCats.length" :items="revenueCats" :format="(v) => money(v, loc)" />
+          <SourceTiles v-else-if="revenueCats.length" plain :items="revenueCats" :format="(v) => money(v, loc)" />
           <p v-else class="muted m0">{{ t('fin.noRevenue') }}</p>
         </UiCard>
         <UiCard :title="t('fin.expensesByCat')">
           <UiSkeleton v-if="!pnl" :lines="3" />
-          <HBars v-else-if="byCategory.length" :items="byCategory" :format="(v) => money(v, loc)" />
+          <SourceTiles v-else-if="byCategory.length" plain :items="byCategory" :format="(v) => money(v, loc)" />
           <p v-else class="muted m0">{{ t('fin.noExpenses') }}</p>
         </UiCard>
       </div>
@@ -238,3 +251,9 @@ async function exportFile(kind: 'payments' | 'pnl') {
   <ExpenseDrawer v-model:open="drawer" :expense="editing" :categories="categories" @saved="reload" @category-added="(c) => categories.push(c)" />
   <UiPrompt :open="archiving !== null" :title="t('fin.archiveTitle')" :text="archiving ? `${catName(archiving.category_id)} · ${money(archiving.amount, loc)}` : ''" :confirm-label="t('fin.archive')" danger :busy="busy" @update:open="(v) => !v && (archiving = null)" @confirm="archive" />
 </template>
+
+<style scoped>
+.fin-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 18px }
+@media (max-width: 1100px) { .fin-row { grid-template-columns: repeat(2, minmax(0, 1fr)) } }
+@media (max-width: 520px) { .fin-row { grid-template-columns: minmax(0, 1fr) } }
+</style>

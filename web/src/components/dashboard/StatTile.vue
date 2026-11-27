@@ -3,7 +3,7 @@
 import { onBeforeUnmount, ref, watch } from 'vue'
 import { UiIcon } from '@/components/ui'
 
-const props = defineProps<{ label: string; value: number; icon: string; tone?: 'navy' | 'ok' | 'red' | 'warn' | 'info'; hint?: string; lead?: boolean }>()
+const props = defineProps<{ label: string; value: number; icon: string; tone?: 'navy' | 'ok' | 'red' | 'warn' | 'info'; hint?: string; lead?: boolean; suffix?: string; plain?: boolean }>()
 defineEmits<{ open: [] }>()
 
 const shown = ref(0)
@@ -24,17 +24,17 @@ function run(to: number) {
 }
 watch(() => props.value, (v) => run(v ?? 0), { immediate: true })
 onBeforeUnmount(() => cancelAnimationFrame(raf))
-const fmt = (n: number) => n.toLocaleString('ru-RU').replace(/,/g, ' ')
+const fmt = (n: number) => (n < 0 ? '−' : '') + Math.abs(n).toLocaleString('ru-RU').replace(/,/g, ' ')
 </script>
 
 <template>
-  <button type="button" class="st" :class="[`t-${tone ?? 'navy'}`, { lead }]" @click="$emit('open')">
+  <component :is="plain ? 'div' : 'button'" :type="plain ? undefined : 'button'" class="st" :class="[`t-${tone ?? 'navy'}`, { lead, plain }]" @click="!plain && $emit('open')">
     <span class="st-glow" aria-hidden="true" />
-    <span class="st-top"><span class="st-ico"><UiIcon :name="icon" :size="20" /></span><UiIcon name="arrow" :size="16" class="st-go" /></span>
-    <span class="st-v num">{{ fmt(shown) }}</span>
+    <span class="st-top"><span class="st-ico"><UiIcon :name="icon" :size="20" /></span><UiIcon v-if="!plain" name="arrow" :size="16" class="st-go" /></span>
+    <span class="st-v num">{{ fmt(shown) }}<small v-if="suffix">{{ suffix }}</small></span>
     <span class="st-k">{{ label }}</span>
     <span v-if="hint" class="st-h">{{ hint }}</span>
-  </button>
+  </component>
 </template>
 
 <style scoped>
@@ -56,6 +56,9 @@ const fmt = (n: number) => n.toLocaleString('ru-RU').replace(/,/g, ' ')
 .st-go { color: var(--c); opacity: 0; transform: translateX(-6px); transition: opacity .25s ease, transform .25s ease }
 .st:hover .st-go, .st:focus-visible .st-go { opacity: 1; transform: none }
 .st-v { position: relative; font-family: 'Unbounded'; font-weight: 600; font-size: 30px; letter-spacing: -.02em; line-height: 1.1 }
+.st.plain { cursor: default }
+.st-v small { font-size: .55em; font-weight: 500; margin-left: 4px }
+.st-v { white-space: nowrap }
 .st-k { position: relative; font-size: 13px; color: var(--muted) }
 .st-k::first-letter { text-transform: uppercase }
 .st-h { position: relative; font-size: 11.5px; color: var(--muted); opacity: .8 }

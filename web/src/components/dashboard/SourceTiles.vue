@@ -3,7 +3,7 @@
 // the strip on top shows the shares, a tile opens the CRM filtered by that source.
 import { computed, onMounted, ref } from 'vue'
 
-const props = defineProps<{ items: { key: string; label: string; value: number }[] }>()
+const props = defineProps<{ items: { key: string; label: string; value: number; icon?: string; color?: string }[]; format?: (v: number) => string; plain?: boolean }>()
 defineEmits<{ open: [key: string] }>()
 
 const LOOK: Record<string, { icon: string; color: string; brand?: boolean }> = {
@@ -14,12 +14,13 @@ const LOOK: Record<string, { icon: string; color: string; brand?: boolean }> = {
 }
 // the school's own sources (Справочники) take the next colour of this row
 const SPARE = ['#B4532A', '#2E9A6E', '#C2417F', '#4B5FD1', '#8A5D00', '#0B7A75']
-const total = computed(() => props.items.reduce((n, x) => n + x.value, 0))
+const total = computed(() => props.items.reduce((n, x) => n + Math.max(0, x.value), 0))
 const tiles = computed(() => {
   let spare = 0
   return props.items.map((x) => {
-    const look = LOOK[x.key] ?? { icon: 'user', color: SPARE[spare++ % SPARE.length] as string }
-    return { ...x, ...look, pct: total.value ? Math.round((100 * x.value) / total.value) : 0 }
+    const base = LOOK[x.key] ?? { icon: 'user', color: SPARE[spare++ % SPARE.length] as string }
+    const look = { ...base, icon: x.icon ?? base.icon, color: x.color ?? base.color }
+    return { ...x, ...look, brand: 'brand' in base && !x.icon ? base.brand : false, shown: props.format ? props.format(x.value) : String(x.value), pct: total.value ? Math.round((100 * x.value) / total.value) : 0 }
   })
 })
 const grown = ref(false)
@@ -28,16 +29,16 @@ onMounted(() => requestAnimationFrame(() => (grown.value = true)))
 
 <template>
   <div class="src">
-    <div class="src-strip" :class="{ grown }" aria-hidden="true"><i v-for="x in tiles" :key="x.key" :style="{ flexGrow: x.value, background: x.color }" /></div>
+    <div class="src-strip" :class="{ grown }" aria-hidden="true"><i v-for="x in tiles" :key="x.key" :style="{ flexGrow: Math.max(0, x.value), background: x.color }" /></div>
     <div class="src-grid stagger">
-      <button v-for="x in tiles" :key="x.key" type="button" class="src-t" :style="{ '--c': x.color }" @click="$emit('open', x.key)">
+      <component :is="plain ? 'div' : 'button'" v-for="x in tiles" :key="x.key" :type="plain ? undefined : 'button'" class="src-t" :class="{ plain, long: !!format }" :style="{ '--c': x.color }" @click="!plain && $emit('open', x.key)">
         <span class="src-top">
           <span class="src-ico" :class="{ 'src-full': x.brand }"><svg aria-hidden="true"><use :href="`#i-${x.icon}`" /></svg></span>
           <span class="src-pct num">{{ x.pct }}%</span>
         </span>
-        <span class="src-v num">{{ x.value }}</span>
+        <span class="src-v num">{{ x.shown }}</span>
         <span class="src-n">{{ x.label }}</span>
-      </button>
+      </component>
     </div>
   </div>
 </template>
@@ -60,6 +61,8 @@ onMounted(() => requestAnimationFrame(() => (grown.value = true)))
 .src-t:hover .src-ico { transform: scale(1.12) rotate(-6deg) }
 .src-pct { font-size: 12px; font-weight: 700; color: var(--c); background: color-mix(in srgb, var(--c) 13%, var(--surface)); padding: 3px 8px; border-radius: 999px }
 .src-v { font-family: 'Unbounded'; font-weight: 600; font-size: 24px; letter-spacing: -.02em; line-height: 1.15 }
+.src-t.plain { cursor: default }
+.src-t.long .src-v { font-size: 18px; white-space: nowrap }
 .src-n { font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
 @media (max-width: 640px) { .src-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px } .src-v { font-size: 20px } }
 @media (prefers-reduced-motion: reduce) { .src-strip, .src-t, .src-t::after, .src-ico { transition: none } .src-strip { transform: none } .src-t:hover { transform: none } }
