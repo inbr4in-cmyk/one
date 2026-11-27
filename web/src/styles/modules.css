@@ -45,7 +45,7 @@
 .wait.bad{color:var(--red-ink);font-weight:600}
 
 /* Inbox */
-.inbox{display:grid;grid-template-columns:320px minmax(0,1fr) 300px;height:calc(100vh - 64px - 48px);min-height:560px;overflow:hidden;padding:0}
+.inbox{display:grid;grid-template-columns:320px minmax(0,1fr) 300px;height:calc(100vh - 64px - 48px);min-height:300px;overflow:hidden;padding:0}
 .ib-list{border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
 .ib-list .hd{padding:14px 14px 10px;border-bottom:1px solid var(--line)}
 .ib-list .items{overflow-y:auto;flex:1}
