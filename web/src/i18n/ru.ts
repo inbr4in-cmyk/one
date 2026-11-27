@@ -54,6 +54,8 @@ const ru = {
     tooMany: 'Слишком много попыток, подождите {n} сек',
   },
   nav: {
+    sec: { student: 'Студент', money: 'Финансы' },
+    materials: 'Материалы',
     menu: 'Меню',
     settings: 'Настройки',
     dashboard: 'Дашборд',

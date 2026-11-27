@@ -23,7 +23,7 @@ const router = useRouter()
 const loc = computed(() => locale.value as Locale)
 
 type Box = 'mine' | 'created' | 'all'
-const f = kept('tasks.f', () => ({ box: 'mine' as Box, status: '' as TaskStatus | '', overdue: false, offset: 0 }))
+const f = kept('tasks.f', () => ({ box: 'mine' as Box, status: '' as TaskStatus | '', overdue: false, sort: 'new' as 'new' | 'due', offset: 0 }))
 const rows = ref<Task[]>([])
 const total = ref(0)
 const loading = ref(true)
@@ -42,7 +42,7 @@ async function load() {
   const my = ++seq
   loading.value = true
   try {
-    const page = await tasksApi.list({ box: f.box, status: f.status, overdue: f.overdue, branch_id: f.box === 'all' ? branch.filterId : null, limit: LIMIT, offset: f.offset })
+    const page = await tasksApi.list({ box: f.box, status: f.status, overdue: f.overdue, sort: f.sort ?? 'new', branch_id: f.box === 'all' ? branch.filterId : null, limit: LIMIT, offset: f.offset })
     if (my !== seq) return
     rows.value = page.items
     total.value = page.total
@@ -52,10 +52,22 @@ async function load() {
     if (my === seq) loading.value = false
   }
 }
-watch(() => [f.box, f.status, f.overdue, branch.filterId], () => (f.offset === 0 ? load() : (f.offset = 0)))
+watch(() => [f.box, f.status, f.overdue, f.sort, branch.filterId], () => (f.offset === 0 ? load() : (f.offset = 0)))
 watch(() => f.offset, load)
 onMounted(load)
 
+const sortOptions = computed(() => [{ value: 'new' as const, label: t('nv.tasks.sortNew') }, { value: 'due' as const, label: t('nv.tasks.sortDue') }])
+/** By date: the tasks of one day under one heading («Сегодня», «Вчера», the date). By deadline: one plain list. */
+const days = computed(() => {
+  const out: { day: string; items: Task[] }[] = []
+  for (const x of rows.value) {
+    const day = f.sort === 'due' ? '' : dayLabel(x.created_at, loc.value)
+    const last = out[out.length - 1]
+    if (last && last.day === day) last.items.push(x)
+    else out.push({ day, items: [x] })
+  }
+  return out
+})
 const dueText = (x: Task) => (x.due_at ? `${dayLabel(x.due_at, loc.value)}, ${hm(x.due_at, loc.value)}` : t('tasks.noDue'))
 function created(x: Task) {
   counters.refresh()
@@ -73,28 +85,32 @@ function created(x: Task) {
   <UiTabs v-model="f.box" :items="boxes" :label="t('nav.tasks')" />
   <div class="toolbar">
     <UiSelect v-model="f.status" :options="statusOptions" :label="t('tasks.statusLabel')" />
+    <UiSelect v-model="f.sort" :options="sortOptions" :label="t('nv.tasks.sort')" data-testid="tasks-sort" />
     <button type="button" class="tgl" :aria-pressed="f.overdue" @click="f.overdue = !f.overdue"><UiIcon name="clock" :size="16" />{{ t('tasks.overdueOnly') }}</button>
   </div>
 
   <UiCard flush>
     <div v-if="loading && !rows.length" class="card-pad"><UiSkeleton :lines="5" /></div>
     <div v-else-if="rows.length" class="lr-list task-list">
-      <RouterLink v-for="x in rows" :key="x.id" :to="`/tasks/${x.id}`" class="list-row task-row" :class="{ overdue: x.overdue, done: x.status === 'done' || x.status === 'cancelled' }">
-        <span class="prio" :class="x.priority" :title="t(`tasks.priority.${x.priority}`)" />
-        <div class="grow">
-          <b>{{ x.title }}</b>
-          <span>
-            {{ x.assignees.map((a) => a.full_name).join(', ') }}
-            <template v-if="f.box === 'mine' && x.creator_name"> · {{ t('tasks.from', { name: x.creator_name }) }}</template>
-            <template v-if="x.comments"> · <UiIcon name="chat" :size="14" /> {{ x.comments }}</template>
-            <template v-if="x.recurrence"> · {{ t(`tasks.${x.recurrence}`) }}</template>
-          </span>
-        </div>
-        <div class="task-side">
-          <UiChip :tone="STATUS_TONE[x.status]" small>{{ t(`tasks.status.${x.status}`) }}</UiChip>
-          <span class="due num" :class="{ redc: x.overdue }"><UiIcon v-if="x.overdue" name="alert" :size="14" />{{ x.overdue ? t('tasks.overdue', { when: relativeTime(x.due_at!, loc) }) : dueText(x) }}</span>
-        </div>
-      </RouterLink>
+      <template v-for="d in days" :key="d.day">
+        <div v-if="d.day" class="task-day"><span>{{ d.day }}</span><i>{{ d.items.length }}</i></div>
+        <RouterLink v-for="x in d.items" :key="x.id" :to="`/tasks/${x.id}`" class="list-row task-row" :class="{ overdue: x.overdue, done: x.status === 'done' || x.status === 'cancelled' }">
+          <span class="prio" :class="x.priority" :title="t(`tasks.priority.${x.priority}`)" />
+          <div class="grow">
+            <b>{{ x.title }}</b>
+            <span>
+              {{ x.assignees.map((a) => a.full_name).join(', ') }}
+              <template v-if="f.box === 'mine' && x.creator_name"> · {{ t('tasks.from', { name: x.creator_name }) }}</template>
+              <template v-if="x.comments"> · <UiIcon name="chat" :size="14" /> {{ x.comments }}</template>
+              <template v-if="x.recurrence"> · {{ t(`tasks.${x.recurrence}`) }}</template>
+            </span>
+          </div>
+          <div class="task-side">
+            <UiChip :tone="STATUS_TONE[x.status]" small>{{ t(`tasks.status.${x.status}`) }}</UiChip>
+            <span class="due num" :class="{ redc: x.overdue }"><UiIcon :name="x.overdue ? 'alert' : 'clock'" :size="14" />{{ x.overdue ? t('tasks.overdue', { when: relativeTime(x.due_at!, loc) }) : dueText(x) }}</span>
+          </div>
+        </RouterLink>
+      </template>
     </div>
     <UiEmptyState v-else icon="task" :title="f.overdue ? t('tasks.noOverdue') : t('tasks.empty')" />
     <UiPager v-model="f.offset" :total="total" :limit="LIMIT" />

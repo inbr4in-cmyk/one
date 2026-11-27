@@ -252,3 +252,61 @@ async def test_form_with_many_low_scores_is_saved(client, db, owner_h):
     assert r.status_code == 201, r.text
     row = (await client.get(f"/api/forms/{f.id}/responses", headers=owner_h)).json()
     assert len(row["items"] if isinstance(row, dict) else row) == 1
+
+
+async def test_students_export_is_for_administrators_only(client, db, owner_h):
+    """Owner, 27.11.2026: «Экспорт» in the students list, administrators only; a branch administrator gets his branch."""
+    import io
+
+    from openpyxl import load_workbook
+
+    from tests.conftest import branch_id
+    from tests.test_core_learning import _student
+
+    north, south = await branch_id(db, "Север"), await branch_id(db, "Янги шахар")
+    await _student(db, client, owner_h, north, "Экспорт Северный", "+77052227701")
+    await _student(db, client, owner_h, south, "=Экспорт Южный", "+77052227702")
+    r = await client.get("/api/students/export.xlsx", headers=owner_h)
+    assert r.status_code == 200 and "spreadsheetml" in r.headers["content-type"], r.text
+    ws = load_workbook(io.BytesIO(r.content)).active
+    names = [row[0].value for row in ws.iter_rows(min_row=2)]
+    assert "Экспорт Северный" in names and "=Экспорт Южный" in names
+    assert all(c.data_type == "s" for row in ws.iter_rows(min_row=2) for c in row[:1])  # a name is never a formula
+    await make_staff(db, "branch_admin", ["Север"], "+77052227703", "Админ Севера")
+    await make_staff(db, "teacher", ["Север"], "+77052227704", "Учитель Севера")
+    await make_staff(db, "sales", ["Север"], "+77052227705", "Менеджер Севера")
+    await db.commit()
+    r = await client.get("/api/students/export.xlsx", headers=await login(client, "+77052227703"))
+    names = [row[0].value for row in load_workbook(io.BytesIO(r.content)).active.iter_rows(min_row=2)]
+    assert r.status_code == 200 and "Экспорт Северный" in names and "=Экспорт Южный" not in names
+    for phone in ("+77052227704", "+77052227705"):
+        assert (await client.get("/api/students/export.xlsx", headers=await login(client, phone))).status_code == 403
+    assert (await client.get("/api/students/export.xlsx")).status_code == 401
+
+
+async def test_tasks_newest_first_and_complaint_pops_up_for_admins(client, db, owner_h, monkeypatch):
+    """Owner, 27.11.2026: tasks by date, the newest on top; a new complaint pops up on the administrators' screens."""
+    owner_id = (await client.get("/api/auth/me", headers=owner_h)).json()["id"]
+    for title, due in (("Первая", "2026-12-20T10:00:00+05:00"), ("Вторая", None), ("Третья", "2026-12-01T10:00:00+05:00")):
+        r = await client.post("/api/tasks", headers=owner_h, json={"title": title, "assignee_ids": [owner_id], "due_at": due})
+        assert r.status_code in (200, 201), r.text
+    rows = (await client.get("/api/tasks?box=mine", headers=owner_h)).json()["items"]
+    assert [x["title"] for x in rows][:3] == ["Третья", "Вторая", "Первая"]
+    rows = (await client.get("/api/tasks?box=mine&sort=due", headers=owner_h)).json()["items"]
+    assert [x["title"] for x in rows][:3] == ["Третья", "Первая", "Вторая"]
+
+    from app.services import crm
+    popped = []
+
+    async def fake_publish(channel, payload):
+        popped.append((channel, payload))
+    import app.services.realtime as rt
+    monkeypatch.setattr(rt, "publish", fake_publish)
+    await make_staff(db, "teacher", ["Север"], "+77052226601", "Учитель Жалоба")
+    await db.commit()
+    th = await login(client, "+77052226601")
+    r = await client.post("/api/complaints", headers=th, json={"subject": "Холодно в кабинете", "body": "В кабинете 3 не работает отопление"})
+    assert r.status_code in (200, 201), r.text
+    assert any(ch == f"user:{owner_id}" and p.get("kind") == "complaint" for ch, p in popped)
+    assert (await client.get("/api/complaints", headers=th)).status_code == 403  # the list is for administrators only
+    assert crm.alert

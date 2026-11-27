@@ -160,12 +160,9 @@ async def _can_decide_leave(db: DB, actor: Actor) -> bool:
     return actor.can("students", "archive") and not await retention.has_methodists(db)
 
 
-@router.get("", response_model=Page[StudentListOut])
-async def list_students(
-    db: DB, actor: Actor = require("students", "view"), q: str | None = None, branch_id: int | None = None,
-    status: str | None = None, level_id: int | None = None, group_id: int | None = None, debt: bool = False,
-    archived: bool = False, limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0),
-) -> Page[StudentListOut]:
+def _listed(actor: Actor, q: str | None, branch_id: int | None, status: str | None, level_id: int | None,
+            group_id: int | None, debt: bool, archived: bool):
+    """The students of the list with its filters: the page and the Excel export show the same people."""
     stmt = select(Student).where(student_filter(actor))
     stmt = stmt.where(Student.archived_at.is_not(None) if archived else Student.archived_at.is_(None))
     if q:
@@ -182,9 +179,65 @@ async def list_students(
                                                                             GroupMember.left_on.is_(None))))
     if debt:
         stmt = stmt.where(Student.lessons_left <= 0, Student.status == StudentStatus.ACTIVE)
+    return stmt
+
+
+@router.get("", response_model=Page[StudentListOut])
+async def list_students(
+    db: DB, actor: Actor = require("students", "view"), q: str | None = None, branch_id: int | None = None,
+    status: str | None = None, level_id: int | None = None, group_id: int | None = None, debt: bool = False,
+    archived: bool = False, limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0),
+) -> Page[StudentListOut]:
+    stmt = _listed(actor, q, branch_id, status, level_id, group_id, debt, archived)
     rows, total = await paginate(db, stmt.order_by(Student.full_name), limit, offset)
     names = await _group_names(db, [s.id for s in rows])
     return Page(items=[_list_out(s, actor, names.get(s.id, [])) for s in rows], total=total, limit=limit, offset=offset)
+
+
+STATUS_RU = {"lead": "Лид", "trial": "Пробный", "active": "Учится", "waiting": "Ждёт группу", "frozen": "На паузе", "finished": "Закончил", "left": "Ушёл"}
+EXPORT_MAX = 20000
+
+
+@router.get("/export.xlsx")
+async def export_students(
+    db: DB, actor: Actor = require("students", "archive"), q: str | None = None, branch_id: int | None = None,
+    status: str | None = None, level_id: int | None = None, group_id: int | None = None, debt: bool = False,
+    archived: bool = False,
+):
+    """Excel of the list as it is filtered (owner, 27.11.2026). Only the administrator and a branch administrator
+    (the people who may archive students); a branch administrator gets his branch only. Every export is in the audit log."""
+    from app.models import Branch
+    from app.modules.finance.router import _xlsx
+
+    rows = list(await db.scalars(_listed(actor, q, branch_id, status, level_id, group_id, debt, archived)
+                                 .order_by(Student.full_name).limit(EXPORT_MAX)))
+    ids = [s.id for s in rows]
+    groups = await _group_names(db, ids)
+    branches = dict((await db.execute(select(Branch.id, Branch.name))).all())
+    levels = dict((await db.execute(select(Level.id, Level.name))).all())
+    parents: dict[int, list[tuple[str, str | None]]] = {}
+    if ids:
+        for sid, name, phone in (await db.execute(
+                select(StudentGuardian.student_id, User.full_name, User.phone)
+                .join(User, User.id == StudentGuardian.user_id).where(StudentGuardian.student_id.in_(ids))
+                .order_by(StudentGuardian.id))).all():
+            parents.setdefault(sid, []).append((name, phone))
+    show = actor.can("students", "view_contacts")
+    ph = (lambda v: v or "") if show else (lambda v: mask_phone(v) or "")
+    d = lambda v: v.strftime("%d.%m.%Y") if v else ""  # noqa: E731
+    out = []
+    for s in rows:
+        ps = parents.get(s.id, [])
+        out.append([s.full_name, ph(s.phone), d(s.birth_date), ", ".join(n for n, _ in ps), ", ".join(ph(p) for _, p in ps if p),
+                    branches.get(s.branch_id, ""), levels.get(s.level_id, ""), ", ".join(groups.get(s.id, [])),
+                    STATUS_RU.get(s.status, s.status), s.lessons_left, s.money_balance, s.contract_no or "", d(s.contract_date),
+                    d(local(s.last_payment_at)) if s.last_payment_at else ""])
+    await write_audit(db, actor_id=actor.id, action="student.export", entity="student", entity_id=None, ip=actor.ip,
+                      branch_id=branch_id, note=f"{len(out)} учеников", after={"count": len(out), "status": status, "archived": archived})
+    await db.commit()
+    return _xlsx("Ученики", ["ФИО", "Телефон", "Дата рождения", "Родитель", "Телефон родителя", "Филиал", "Уровень", "Группы",
+                             "Статус", "Осталось уроков", "Баланс, ₸", "Договор №", "Дата договора", "Последняя оплата"],
+                 out, f"students-{today().isoformat()}.xlsx")
 
 
 async def _contract_free(db: DB, contract_no: str | None, student_id: int | None = None) -> None:

@@ -55,6 +55,8 @@ const kk: Messages = {
     tooMany: 'Әрекет тым көп, {n} сек күтіңіз',
   },
   nav: {
+    sec: { student: 'Студент', money: 'Қаржы' },
+    materials: 'Материалдар',
     menu: 'Мәзір',
     settings: 'Баптаулар',
     dashboard: 'Дашборд',

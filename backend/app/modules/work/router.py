@@ -130,7 +130,8 @@ async def _check_assignees(db: DB, actor: Actor, ids: list[int]) -> None:
 
 @router.get("/tasks", response_model=Page[TaskOut])
 async def list_tasks(db: DB, actor: Actor = require("tasks", "view"), box: str = "mine", status: str | None = None,
-                     overdue: bool = False, branch_id: int | None = None, limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0)) -> Page:
+                     overdue: bool = False, branch_id: int | None = None, sort: str = "new",
+                     limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0)) -> Page:
     q = select(Task).where(Task.archived_at.is_(None), _visible(actor))
     if box == "mine":
         q = q.where(_is_assignee(actor.id))
@@ -144,7 +145,9 @@ async def list_tasks(db: DB, actor: Actor = require("tasks", "view"), box: str =
         q = q.where(Task.due_at < now(), Task.status.not_in((TaskStatus.DONE, TaskStatus.CANCELLED)))
     if branch_id:
         q = q.where(Task.branch_id == branch_id)
-    rows, total = await paginate(db, q.order_by(Task.due_at.asc().nulls_last(), Task.id.desc()), limit, offset)
+    # Owner, 27.11.2026: by date, the newest task on top. «due» keeps the old order: the nearest deadline first.
+    order = (Task.due_at.asc().nulls_last(), Task.id.desc()) if sort == "due" else (Task.created_at.desc(), Task.id.desc())
+    rows, total = await paginate(db, q.order_by(*order), limit, offset)
     return Page(items=[await _out(db, t) for t in rows], total=total, limit=limit, offset=offset)
 
 

@@ -15,6 +15,14 @@ export interface NavItem {
   route?: string
   /** i18n key under `nav.` when it differs from `key` */
   label?: string
+  /** Folded under this heading of the menu (owner, 27.11.2026) */
+  section?: 'student' | 'money'
+}
+
+/** Menu headings that open and fold; a heading is shown when the user may open at least one of its items. */
+export const SECTIONS: Record<'student' | 'money', { icon: string }> = {
+  student: { icon: 'graduation' },
+  money: { icon: 'finance' },
 }
 
 export const NAV: NavItem[] = [
@@ -29,23 +37,25 @@ export const NAV: NavItem[] = [
     page: () => import('@/pages/chats/ChatsPage.vue'),
   },
   { key: 'schedule', path: '/schedule', icon: 'cal', perm: 'schedule.view', group: 'main', page: () => import('@/pages/schedule/SchedulePage.vue') },
-  { key: 'groups', path: '/groups', icon: 'groups', perm: 'schedule.view', group: 'main', page: () => import('@/pages/groups/GroupsPage.vue') },
-  { key: 'students', path: '/students', icon: 'users', perm: 'students.view', group: 'main', page: () => import('@/pages/students/StudentsPage.vue') },
+  { key: 'groups', path: '/groups', icon: 'groups', perm: 'schedule.view', group: 'main', section: 'student', page: () => import('@/pages/groups/GroupsPage.vue') },
+  { key: 'students', path: '/students', icon: 'users', perm: 'students.view', group: 'main', section: 'student', page: () => import('@/pages/students/StudentsPage.vue') },
   {
-    key: 'attendance', path: '/attendance', icon: 'check', perm: 'attendance.view', group: 'main',
+    key: 'attendance', path: '/attendance', icon: 'check', perm: 'attendance.view', group: 'main', section: 'student',
     page: () => import('@/pages/attendance/AttendancePage.vue'),
   },
-  { key: 'payments', path: '/payments', icon: 'wallet', perm: 'payments.view', group: 'main', page: () => import('@/pages/payments/PaymentsPage.vue') },
-  { key: 'finance', path: '/finance', icon: 'trend', perm: 'finance.view', group: 'main', page: () => import('@/pages/finance/FinancePage.vue') },
-  { key: 'payroll', path: '/payroll', icon: 'salary', perm: 'payroll.view', group: 'main', page: () => import('@/pages/payroll/PayrollPage.vue') },
+  { key: 'coins', path: '/coins', icon: 'coin', perm: ['coins.view', 'shop.view'], group: 'main', section: 'student', page: () => import('@/pages/coins/CoinsPage.vue') },
+  { key: 'roadmap', path: '/roadmap', icon: 'trend', group: 'main', section: 'student', page: () => import('@/pages/RoadmapPage.vue') },
+
+  { key: 'materials', path: '/materials', icon: 'notebook', group: 'main', section: 'student' },
+  { key: 'finance', path: '/finance', icon: 'trend', perm: 'finance.view', group: 'main', section: 'money', page: () => import('@/pages/finance/FinancePage.vue') },
+  { key: 'payroll', path: '/payroll', icon: 'salary', perm: 'payroll.view', group: 'main', section: 'money', page: () => import('@/pages/payroll/PayrollPage.vue') },
+  { key: 'payments', path: '/payments', icon: 'wallet', perm: 'payments.view', group: 'main', section: 'money', page: () => import('@/pages/payments/PaymentsPage.vue') },
+  { key: 'books', path: '/books', route: '/books/:tab(transfers|report)?', icon: 'book', perm: 'books.view', group: 'main', section: 'money', page: () => import('@/pages/books/BooksPage.vue') },
   { key: 'tasks', path: '/tasks', icon: 'task', perm: 'tasks.view', group: 'main', counter: 'tasks', soft: true, page: () => import('@/pages/tasks/TasksPage.vue') },
-  { key: 'coins', path: '/coins', icon: 'coin', perm: ['coins.view', 'shop.view'], group: 'main', page: () => import('@/pages/coins/CoinsPage.vue') },
-  { key: 'books', path: '/books', route: '/books/:tab(transfers|report)?', icon: 'book', perm: 'books.view', group: 'main', page: () => import('@/pages/books/BooksPage.vue') },
   { key: 'complaints', path: '/complaints', icon: 'flag', perm: 'complaints.view', group: 'main', route: '/complaints/:id(\\d+)?', page: () => import('@/pages/complaints/ComplaintsPage.vue') },
   { key: 'training', path: '/training', icon: 'learning-base', perm: 'training.view', group: 'main', page: () => import('@/pages/training/TrainingPage.vue') },
   { key: 'tests', path: '/tests', icon: 'tests', perm: 'tests.view', group: 'main', page: () => import('@/pages/tests/TestsPage.vue') },
   { key: 'forms', path: '/forms', icon: 'star', perm: 'students.archive', group: 'main', page: () => import('@/pages/forms/FormsPage.vue') },
-  { key: 'roadmap', path: '/roadmap', icon: 'trend', group: 'main', page: () => import('@/pages/RoadmapPage.vue') },
   { key: 'roles', path: '/settings/roles', icon: 'key', perm: 'roles.view', group: 'settings', page: () => import('@/pages/settings/RolesPage.vue') },
   { key: 'staff', path: '/settings/staff', icon: 'teachers', perm: 'staff.view', group: 'settings', page: () => import('@/pages/settings/StaffPage.vue') },
   { key: 'dictionaries', path: '/settings/dictionaries', icon: 'book', perm: ['settings.edit', 'finance.edit', 'branches.edit'], group: 'settings', page: () => import('@/pages/settings/DictionariesPage.vue') },

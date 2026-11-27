@@ -1,6 +1,9 @@
 /** Requests of 14.11: leave via the methodist, book out of a payment, pay breakdown, finance by dates. */
 export default {
   nv: {
+    exportXlsx: 'Экспорт',
+    tasks: { sort: 'Порядок', sortNew: 'Сначала новые', sortDue: 'По сроку' },
+    att: { who: 'Сотрудник', everyone: 'Все сотрудники' },
     wa: {
       title: 'WhatsApp по QR',
       number: 'Номер школы',

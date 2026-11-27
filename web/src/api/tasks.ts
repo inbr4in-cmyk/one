@@ -48,7 +48,7 @@ export interface TaskComment {
 }
 
 export const tasksApi = {
-  list: (p: { box: 'mine' | 'created' | 'all'; status?: TaskStatus | ''; overdue?: boolean; branch_id?: number | null; limit?: number; offset?: number }) =>
+  list: (p: { box: 'mine' | 'created' | 'all'; status?: TaskStatus | ''; overdue?: boolean; branch_id?: number | null; sort?: 'new' | 'due'; limit?: number; offset?: number }) =>
     http.get<Page<Task>>(`/tasks${qs(p)}`),
   get: (id: number) => http.get<Task>(`/tasks/${id}`, { silent: true }),
   create: (body: TaskIn) => http.post<Task>('/tasks', body, { silent: true }),

@@ -4,7 +4,7 @@ import { nowMs } from '@/utils/clock'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import { UiButton, UiChip, UiEmptyState, UiIcon, UiInput, UiSkeleton } from '@/components/ui'
+import { UiButton, UiChip, UiEmptyState, UiIcon, UiInput, UiSelect, UiSkeleton } from '@/components/ui'
 import { academicsApi, type Lesson } from '@/api/academics'
 import { useBranchStore } from '@/stores/branch'
 import { useRefsStore } from '@/stores/refs'
@@ -21,6 +21,14 @@ const loc = computed(() => locale.value as Locale)
 const date = keptRef('attendance.date', () => isoDate(schoolNow()))
 const lessons = ref<Lesson[]>([])
 const loading = ref(true)
+// Whose lessons to show (owner, 27.11.2026): the people who lead a lesson that day
+const who = keptRef('attendance.who', () => 0)
+const people = computed(() => {
+  const m = new Map<number, string>()
+  for (const l of lessons.value) if (l.teacher_name && !m.has(l.teacher_id)) m.set(l.teacher_id, l.teacher_name)
+  return [{ value: 0, label: t('nv.att.everyone') }, ...[...m].sort((a, b) => a[1].localeCompare(b[1])).map(([value, label]) => ({ value, label }))]
+})
+const shown = computed(() => (who.value && people.value.some((p) => p.value === who.value) ? lessons.value.filter((l) => l.teacher_id === who.value) : lessons.value))
 
 async function load() {
   loading.value = true
@@ -58,11 +66,13 @@ const isToday = computed(() => date.value === isoDate(schoolNow()))
     <UiButton size="sm" icon="arrow" :aria-label="t('attendance.nextDay')" @click="shift(1)" />
     <UiButton v-if="!isToday" size="sm" variant="ghost" @click="date = isoDate(schoolNow())">{{ t('schedule.today') }}</UiButton>
     <span class="muted">{{ dayLabel(parseDate(date), loc, { weekday: 'long', day: 'numeric', month: 'long' }) }}</span>
+    <span class="sp" />
+    <UiSelect v-if="people.length > 2" v-model="who" :options="people" :label="t('nv.att.who')" data-testid="att-who" />
   </div>
 
   <div v-if="loading" class="grid lesson-cards"><div v-for="i in 3" :key="i" class="card" style="padding: 16px"><UiSkeleton :lines="2" /></div></div>
-  <div v-else-if="lessons.length" class="grid lesson-cards stagger">
-    <button v-for="l in lessons" :key="l.id" type="button" class="card lesson-card" :class="{ live: live(l) }" @click="router.push(`/attendance/${l.id}`)">
+  <div v-else-if="shown.length" class="grid lesson-cards stagger">
+    <button v-for="l in shown" :key="l.id" type="button" class="card lesson-card" :class="{ live: live(l) }" @click="router.push(`/attendance/${l.id}`)">
       <span class="gav" :style="{ '--c': tone(refs.level(l.level_id)?.color) }">{{ (l.group_name ?? '·').slice(0, 2) }}</span>
       <span class="grow">
         <b>{{ l.group_name ?? (l.kind === 'support' ? 'Support · ' + (l.topic ?? '') : t('schedule.individual')) }}</b>

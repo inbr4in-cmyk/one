@@ -1,4 +1,4 @@
-import { http, qs } from './http'
+import { download, http, qs } from './http'
 import type { Page } from './org'
 
 export type StudentStatus = 'lead' | 'trial' | 'active' | 'waiting' | 'frozen' | 'finished' | 'left'
@@ -155,6 +155,8 @@ export interface StudentFilters {
 }
 
 export const studentsApi = {
+  /** Excel of the filtered list: administrators only (the server checks) */
+  exportList: (f: Omit<StudentFilters, 'limit' | 'offset'>) => download(`/students/export.xlsx${qs({ ...f })}`, `students.xlsx`),
   list: (f: StudentFilters) => http.get<Page<StudentListItem>>(`/students${qs({ ...f })}`),
   get: (id: number) => http.get<Student>(`/students/${id}`),
   create: (body: StudentIn) => http.post<Student>('/students', body),

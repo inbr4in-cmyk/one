@@ -19,6 +19,7 @@ from app.models.identity import UserKind
 from app.modules.crm.service import crm_people
 from app.services.clock import local, now
 from app.services import files
+from app.services.crm import alert
 from app.services.messaging import notify_user
 
 router = APIRouter(tags=["compliance"])
@@ -330,8 +331,9 @@ async def file_complaint(body: ComplaintIn, db: DB, actor: CurrentActor) -> dict
     await db.flush()
     handlers = set(await crm_people(db, branch, "complaints", "view")) if branch else await owner_ids(db)
     for uid in handlers - {body.against_user_id, actor.id}:
-        await notify_user(db, uid, "complaint", f"Новая жалоба: {c.subject}", body="Подтвердите получение в течение 24 часов",
-                          link=f"/complaints/{c.id}")
+        # administrators only hold complaints.view; the notice also pops up on their screen at once (owner, 27.11.2026)
+        await alert(db, uid, "complaint", f"Новая жалоба: {c.subject}", body="Подтвердите получение в течение 24 часов",
+                    link=f"/complaints/{c.id}")
     await write_audit(db, actor_id=actor.id, action="complaint.create", entity="complaint", entity_id=c.id, branch_id=branch,
                       ip=actor.ip)
     await db.commit()

@@ -1,5 +1,8 @@
 export default {
   nv: {
+    exportXlsx: 'Экспорт',
+    tasks: { sort: 'Реті', sortNew: 'Алдымен жаңалары', sortDue: 'Мерзімі бойынша' },
+    att: { who: 'Қызметкер', everyone: 'Барлық қызметкерлер' },
     wa: {
       title: 'WhatsApp QR арқылы',
       number: 'Мектеп нөмірі',
