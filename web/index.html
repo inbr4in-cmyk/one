@@ -22,7 +22,14 @@
     <script src="%BASE_URL%theme-init.js"></script>
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app">
+      <div id="boot" style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;font:16px/1.5 system-ui,sans-serif;text-align:center;background:#FAF6F3;color:#01225F">
+        <div>
+          <b style="display:block;font-size:22px;margin-bottom:8px">One English</b>
+          <span id="boot-t">Загрузка… / Жүктелуде…</span>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

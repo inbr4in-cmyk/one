@@ -39,7 +39,8 @@ function buildVersion(): Plugin {
 
 export default defineConfig(({ mode }) => ({
   plugins: mode === 'demo' ? [vue(), demoHtml()] : [vue(), buildVersion()],
-  ...(mode === 'demo' ? { base: './', build: { outDir: 'dist-demo', emptyOutDir: true } } : {}),
+  // Older phones (iOS 13+, Android WebView 80+) must open the public links too: forms, tests, lesson rating.
+  ...(mode === 'demo' ? { base: './', build: { outDir: 'dist-demo', emptyOutDir: true } } : { build: { target: ['es2019', 'chrome80', 'safari13', 'firefox78'] } }),
   define: {
     __BUILD_ID__: JSON.stringify(BUILD_ID),
     // vue-i18n feature flags: Composition API only, no devtools in production.
