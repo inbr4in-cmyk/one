@@ -82,6 +82,8 @@ const sinceMin = computed(() => {
   const floor = isoDate(addDays(schoolNow(), -31))
   return g.value?.starts_on && g.value.starts_on > floor ? g.value.starts_on : floor
 })
+/** «В группе с» may be a future day: paid today, starts in a week */
+const sinceMax = computed(() => isoDate(addDays(schoolNow(), 60)))
 function openMember() {
   const s = g.value?.starts_on
   memberSince.value = s && s < todayIso() && s >= sinceMin.value && !(members.value?.length) ? s : memberSince.value < sinceMin.value ? todayIso() : memberSince.value
@@ -345,7 +347,7 @@ const lessonState = (l: Lesson) => (l.status === 'cancelled' ? 'red' : l.attenda
     <GroupFormDrawer :open="modal === 'edit'" :group="g" :teachers="teachers" @update:open="(v) => !v && (modal = null)" @saved="(x) => (g = x)" />
 
     <UiModal :open="modal === 'member'" :title="t('groups.addMember')" @update:open="(v) => !v && (modal = null)">
-      <UiInput v-model="memberSince" type="date" :min="sinceMin" :max="todayIso()" :label="t('nv.memberSince')" style="margin-bottom: 12px" />
+      <UiInput v-model="memberSince" type="date" :min="sinceMin" :max="sinceMax" :label="t('nv.memberSince')" style="margin-bottom: 12px" />
       <StudentPicker :branch-id="g.branch_id" :exclude="members?.map((m) => m.student_id)" @pick="addMember" />
     </UiModal>
 
@@ -379,7 +381,7 @@ const lessonState = (l: Lesson) => (l.status === 'cancelled' ? 'red' : l.attenda
 
     <UiModal :open="sinceOf !== null" :title="t('nv.memberSinceEdit')" @update:open="(v) => !v && (sinceOf = null)">
       <p class="m0" style="margin-bottom: 12px"><b>{{ sinceOf?.full_name }}</b></p>
-      <UiInput v-model="sinceVal" type="date" :min="sinceMin" :max="todayIso()" :label="t('nv.memberSince')" />
+      <UiInput v-model="sinceVal" type="date" :min="sinceMin" :max="sinceMax" :label="t('nv.memberSince')" />
       <template #footer>
         <UiButton variant="ghost" @click="sinceOf = null">{{ t('common.cancel') }}</UiButton>
         <UiButton :loading="busy" @click="saveSince">{{ t('common.save') }}</UiButton>

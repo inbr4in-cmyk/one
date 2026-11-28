@@ -67,6 +67,7 @@ class GroupIn(In):
 
 
 BACKDATE_DAYS = 31  # how far back a schedule or a membership may be dated when it is entered later
+AHEAD_DAYS = 60  # «в группе с» in the future
 KIND_CAPACITY = {"individual": 1, "duo": 2}
 
 
@@ -289,8 +290,9 @@ async def add_member(group_id: int, body: MemberIn, db: DB, actor: Actor = requi
     since = body.joined_on or today()
     if since != today():
         # Entered late: the student really studies in the group from an earlier day (up to a month back).
-        if since > today() or since < today() - timedelta(days=BACKDATE_DAYS):
-            raise bad_request("Дата «в группе с»: не позже сегодня и не раньше чем месяц назад")
+        # Owner, 28.11.2026: or starts later (paid today, comes in a week): not on the lists and not charged before that day.
+        if since > today() + timedelta(days=AHEAD_DAYS) or since < today() - timedelta(days=BACKDATE_DAYS):
+            raise bad_request("Дата «в группе с»: не раньше чем месяц назад и не позже чем через два месяца")
         if g.starts_on and since < g.starts_on:
             raise bad_request(f"Группа открыта {g.starts_on:%d.%m.%Y}: раньше записать нельзя")
         if await db.scalar(select(GroupMember.id).where(GroupMember.student_id == s.id, GroupMember.left_on > since).limit(1)):
@@ -325,8 +327,8 @@ async def change_member_since(group_id: int, student_id: int, body: MemberSinceI
     since = body.joined_on
     if since == m.joined_on:
         return {"ok": True}
-    if since > today() or since < today() - timedelta(days=BACKDATE_DAYS):
-        raise bad_request("Дата «в группе с»: не позже сегодня и не раньше чем месяц назад")
+    if since > today() + timedelta(days=AHEAD_DAYS) or since < today() - timedelta(days=BACKDATE_DAYS):
+        raise bad_request("Дата «в группе с»: не раньше чем месяц назад и не позже чем через два месяца")
     if g.starts_on and since < g.starts_on:
         raise bad_request(f"Группа открыта {g.starts_on:%d.%m.%Y}: раньше записать нельзя")
     if await db.scalar(select(GroupMember.id).where(GroupMember.student_id == student_id, GroupMember.id != m.id,
@@ -1119,6 +1121,13 @@ async def _two_absences(db: DB, s: Student, lesson: Lesson, group: Group | None,
                Lesson.starts_at <= lesson.starts_at).order_by(Lesson.starts_at.desc()).limit(2))).all()
     # Only absences without a good reason count: «отпросился» is agreed in advance and nobody is alerted.
     if len(last) < 2 or any(st != AttendanceStatus.ABSENT for st, _ in last):
+        # Owner, 28.11.2026: the first absence without a reason is the teacher's to find out; the task is closed with
+        # the reason written. A second one in a row goes to the methodist and the branch admin instead (below).
+        if lesson.teacher_id and last and last[0][0] == AttendanceStatus.ABSENT:
+            await retention.follow_up(
+                db, s, "absence1", f"Узнать причину пропуска: {s.full_name}",
+                f"Ученик не был на уроке {local(lesson.starts_at):%d.%m}" + (f", группа «{group.name}»" if group else "")
+                + ". Узнайте у ученика причину и напишите её, когда закрываете задачу.", actor_id, who=[lesson.teacher_id])
         return
     days = " и ".join(f"{local(at):%d.%m}" for _, at in reversed(last))
     await retention.follow_up(

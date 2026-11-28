@@ -24,7 +24,11 @@ export interface Task {
   assignees: { id: number; full_name: string }[]
   comments: number
   created_at: string
+  kind?: TaskKind
 }
+
+/** What a task is about: the list is filtered by it */
+export type TaskKind = 'leave' | 'absence' | 'other'
 
 export interface TaskIn {
   title: string
@@ -48,11 +52,11 @@ export interface TaskComment {
 }
 
 export const tasksApi = {
-  list: (p: { box: 'mine' | 'created' | 'all'; status?: TaskStatus | ''; overdue?: boolean; branch_id?: number | null; sort?: 'new' | 'due'; limit?: number; offset?: number }) =>
+  list: (p: { box: 'mine' | 'created' | 'all'; status?: TaskStatus | ''; overdue?: boolean; branch_id?: number | null; sort?: 'new' | 'due'; kind?: TaskKind | ''; limit?: number; offset?: number }) =>
     http.get<Page<Task>>(`/tasks${qs(p)}`),
   get: (id: number) => http.get<Task>(`/tasks/${id}`, { silent: true }),
   create: (body: TaskIn) => http.post<Task>('/tasks', body, { silent: true }),
-  patch: (id: number, body: Partial<Omit<TaskIn, 'branch_id' | 'link_type' | 'link_id' | 'recurrence'>> & { status?: TaskStatus }) =>
+  patch: (id: number, body: Partial<Omit<TaskIn, 'branch_id' | 'link_type' | 'link_id' | 'recurrence'>> & { status?: TaskStatus; result?: string }) =>
     http.patch<Task>(`/tasks/${id}`, body),
   comments: (id: number) => http.get<TaskComment[]>(`/tasks/${id}/comments`),
   comment: (id: number, text: string) => http.post<{ id: number; at: string }>(`/tasks/${id}/comments`, { text }),

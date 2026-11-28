@@ -2,7 +2,7 @@ export default {
   nv: {
     rep: { managers: "Менеджерлер бойынша", teachers: "Мұғалімдер бойынша", manager: "Менеджер", teacher: "Мұғалім", allManagers: "Барлық менеджерлер", allTeachers: "Барлық мұғалімдер", empty: "Бұл күндерде дерек жоқ", total: "Барлығы", c: { new: "Жаңа лидтер", worked: "Өңделген лидтер", actions: "Қоңыраулар мен жазбалар", trial_booked: "Сынаққа жазды", trial_done: "Сынаққа келді", paid: "Төледі", lost: "Бас тартты", conversion: "Конверсия", returned: "Қайтарған оқушылар", tasks_done: "Орындалған тапсырма", tasks_overdue: "Мерзімі өткен", sales: "Сатылым", sales_sum: "Сатылым сомасы", bonus: "Бонустар", planned: "Кесте бойынша сабақ", held: "Өткізілді", held_pct: "Өткізілді, %", not_marked: "Белгіленбеген", cancelled: "Болмады", subs: "Алмастырған", plan_pct: "Деңгей жоспары бойынша", attendance_pct: "Қатысу", pay_lessons: "Сабақтар үшін", pay_other: "Бонустар", pay_total: "Барлық табыс" } },
     exportXlsx: 'Экспорт',
-    tasks: { sort: 'Реті', sortNew: 'Алдымен жаңалары', sortDue: 'Мерзімі бойынша' },
+    tasks: { result: 'Себебі немесе нәтижесі', kind: 'Тапсырма түрі', anyKind: 'Барлық тапсырма', k: { leave: 'Кеткісі келеді', absence: 'Сабақты жіберді', other: 'Басқа' }, sort: 'Реті', sortNew: 'Алдымен жаңалары', sortDue: 'Мерзімі бойынша' },
     att: { who: 'Қызметкер', everyone: 'Барлық қызметкерлер' },
     wa: {
       title: 'WhatsApp QR арқылы',

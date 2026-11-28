@@ -56,7 +56,7 @@ async function submit() {
   <UiModal v-model:open="open" :title="t('nv.join.title')">
     <form id="join-form" class="stack" @submit.prevent="submit">
       <UiField :label="t('nv.payp.group')"><UiSelect v-model="target" :options="options" :label="t('nv.payp.group')" block /></UiField>
-      <UiInput v-model="on" type="date" :min="minOn" :max="todayIso()" :label="t('nv.join.since')" />
+      <UiInput v-model="on" type="date" :min="minOn" :max="isoDate(addDays(schoolNow(), 60))" :label="t('nv.join.since')" />
       <div v-if="error" class="alert red" role="alert"><UiIcon name="alert" /><div class="grow"><b>{{ error }}</b></div></div>
     </form>
     <template #footer="{ close }">

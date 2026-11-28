@@ -99,7 +99,7 @@ async def test_tasks_flow_and_recurring(db, client, owner_h):
     assert (await client.post(f"/api/tasks/{t['id']}/comments", headers=oh, json={"text": "Обзвонила 12 из 14"})).status_code == 201
     owner_notes = (await db.scalars(select(Notification).where(Notification.kind == "task", Notification.user_id == t["creator_id"]))).all()
     assert len(owner_notes) == 2
-    assert (await client.patch(f"/api/tasks/{t['id']}", headers=owner_h, json={"status": "done"})).json()["done_at"]
+    assert (await client.patch(f"/api/tasks/{t['id']}", headers=owner_h, json={"status": "done", "result": "Сделано"})).json()["done_at"]
 
     r = await client.post("/api/tasks", headers=owner_h, json={
         "title": "Отчёт за день", "branch_id": y, "assignee_ids": [om.id], "recurrence": "daily"})

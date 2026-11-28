@@ -6,7 +6,7 @@ import { useRouter } from 'vue-router'
 import { UiButton, UiCard, UiChip, UiEmptyState, UiIcon, UiPager, UiSelect, UiSkeleton, UiTabs } from '@/components/ui'
 import TaskDrawer from '@/components/ops/TaskDrawer.vue'
 import { STATUS_TONE } from '@/components/ops/taskMeta'
-import { tasksApi, type Task, type TaskStatus } from '@/api/tasks'
+import { tasksApi, type Task, type TaskStatus, type TaskKind } from '@/api/tasks'
 import { useAuthStore } from '@/stores/auth'
 import TasksSwitch from '@/components/layout/TasksSwitch.vue'
 import { useBranchStore } from '@/stores/branch'
@@ -24,7 +24,7 @@ const router = useRouter()
 const loc = computed(() => locale.value as Locale)
 
 type Box = 'mine' | 'created' | 'all'
-const f = kept('tasks.f', () => ({ box: 'mine' as Box, status: '' as TaskStatus | '', overdue: false, sort: 'new' as 'new' | 'due', offset: 0 }))
+const f = kept('tasks.f', () => ({ box: 'mine' as Box, status: '' as TaskStatus | '', kind: '' as TaskKind | '', overdue: false, sort: 'new' as 'new' | 'due', offset: 0 }))
 const rows = ref<Task[]>([])
 const total = ref(0)
 const loading = ref(true)
@@ -36,6 +36,7 @@ const boxes = computed(() => [
   ...(auth.can('tasks.create') ? [{ value: 'created' as const, label: t('tasks.box.created') }] : []),
   ...(auth.can('tasks.view', 'branch') ? [{ value: 'all' as const, label: t('tasks.box.all') }] : []),
 ])
+const kindOptions = computed(() => [{ value: '' as const, label: t('nv.tasks.anyKind') }, ...(['leave', 'absence', 'other'] as const).map((k) => ({ value: k, label: t(`nv.tasks.k.${k}`) }))])
 const statusOptions = computed(() => [{ value: '' as const, label: f.box === 'all' ? t('tasks.anyStatus') : t('tasks.openOnly') },
   ...(['new', 'in_progress', 'review', 'done', 'cancelled'] as const).map((s) => ({ value: s, label: t(`tasks.status.${s}`) }))])
 
@@ -43,7 +44,7 @@ async function load() {
   const my = ++seq
   loading.value = true
   try {
-    const page = await tasksApi.list({ box: f.box, status: f.status, overdue: f.overdue, sort: f.sort ?? 'new', branch_id: f.box === 'all' ? branch.filterId : null, limit: LIMIT, offset: f.offset })
+    const page = await tasksApi.list({ box: f.box, status: f.status, kind: f.kind ?? '', overdue: f.overdue, sort: f.sort ?? 'new', branch_id: f.box === 'all' ? branch.filterId : null, limit: LIMIT, offset: f.offset })
     if (my !== seq) return
     rows.value = page.items
     total.value = page.total
@@ -53,7 +54,7 @@ async function load() {
     if (my === seq) loading.value = false
   }
 }
-watch(() => [f.box, f.status, f.overdue, f.sort, branch.filterId], () => (f.offset === 0 ? load() : (f.offset = 0)))
+watch(() => [f.box, f.status, f.kind, f.overdue, f.sort, branch.filterId], () => (f.offset === 0 ? load() : (f.offset = 0)))
 watch(() => f.offset, load)
 onMounted(load)
 
@@ -87,6 +88,7 @@ function created(x: Task) {
   <UiTabs v-model="f.box" :items="boxes" :label="t('nav.tasks')" />
   <div class="toolbar">
     <UiSelect v-model="f.status" :options="statusOptions" :label="t('tasks.statusLabel')" />
+    <UiSelect v-model="f.kind" :options="kindOptions" :label="t('nv.tasks.kind')" data-testid="tasks-kind" />
     <UiSelect v-model="f.sort" :options="sortOptions" :label="t('nv.tasks.sort')" data-testid="tasks-sort" />
     <button type="button" class="tgl" :aria-pressed="f.overdue" @click="f.overdue = !f.overdue"><UiIcon name="clock" :size="16" />{{ t('tasks.overdueOnly') }}</button>
   </div>
@@ -103,6 +105,7 @@ function created(x: Task) {
             <span>
               {{ x.assignees.map((a) => a.full_name).join(', ') }}
               <template v-if="f.box === 'mine' && x.creator_name"> · {{ t('tasks.from', { name: x.creator_name }) }}</template>
+              <template v-if="x.kind && x.kind !== 'other'"> · {{ t(`nv.tasks.k.${x.kind}`) }}</template>
               <template v-if="x.comments"> · <UiIcon name="chat" :size="14" /> {{ x.comments }}</template>
               <template v-if="x.recurrence"> · {{ t(`tasks.${x.recurrence}`) }}</template>
             </span>

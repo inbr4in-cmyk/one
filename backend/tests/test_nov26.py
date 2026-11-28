@@ -649,3 +649,54 @@ async def test_dashboard_crm_funnel_and_conversion_without_unqualified(client, d
     far = next(x for x in c1["unqualified"]["items"] if x["id"] == ids[0])
     assert far["lost_kind"] == "far" and any(x["id"] == ids[1] and x["lost_kind"] == "other" for x in c1["qualified"]["items"])
     assert c1["percent"] == round(100 * c1["paid"] / c1["base"], 1)
+
+
+async def test_first_absence_is_the_teachers_task_and_done_needs_a_result(db, client, owner_h):
+    """Owner, 28.11.2026: the first absence without a reason → a task for the lesson's teacher; a task is closed only
+    with the result written; the list is filtered by kind; a student may join a group from a future day."""
+    from datetime import timedelta
+
+    from app.models import GroupMember, Task, TaskAssignee
+    from app.services.clock import today
+    from tests.test_nov14 import _methodist, _past_lesson, _setup, _student
+
+    bid, teacher, room, g = await _setup(db, client, owner_h)
+    await _methodist(db)
+    s = await _student(db, client, owner_h, bid)
+    # a future «в группе с»: fine up to two months ahead
+    far = (today() + timedelta(days=90)).isoformat()
+    assert (await client.post(f"/api/groups/{g['id']}/members", headers=owner_h, json={"student_id": s["id"], "joined_on": far})).status_code == 400
+    week = today() + timedelta(days=7)
+    r = await client.post(f"/api/groups/{g['id']}/members", headers=owner_h, json={"student_id": s["id"], "joined_on": week.isoformat()})
+    assert r.status_code == 201, r.text
+    m = await db.scalar(select(GroupMember).where(GroupMember.student_id == s["id"]))
+    assert m.joined_on == week
+    l0 = await _past_lesson(db, g, teacher, room, 0)
+    sheet = (await client.get(f"/api/lessons/{l0.id}", headers=owner_h)).json()
+    assert s["id"] not in [x.get("student_id") for x in sheet.get("students", sheet.get("marks", []))]
+    m.joined_on = today() - timedelta(days=10)
+    await db.commit()
+
+    l1 = await _past_lesson(db, g, teacher, room, 3)
+    l2 = await _past_lesson(db, g, teacher, room, 1)
+    mark = lambda lesson: client.put(f"/api/lessons/{lesson.id}/attendance", headers=owner_h,  # noqa: E731
+                                     json={"marks": [{"student_id": s["id"], "status": "absent"}], "reason": "отметка"})
+    assert (await mark(l1)).status_code == 200
+    first = list(await db.scalars(select(Task).where(Task.auto_kind == "absence1", Task.link_id == s["id"])))
+    assert len(first) == 1 and "Узнать причину пропуска" in first[0].title
+    assert list(await db.scalars(select(TaskAssignee.user_id).where(TaskAssignee.task_id == first[0].id))) == [teacher.id]
+    assert (await mark(l2)).status_code == 200  # the second in a row: methodist's task, no new one for the teacher
+    assert len(list(await db.scalars(select(Task).where(Task.auto_kind == "absence1", Task.link_id == s["id"])))) == 1
+    assert len(list(await db.scalars(select(Task).where(Task.auto_kind == "absence2", Task.link_id == s["id"])))) == 1
+
+    tid = first[0].id
+    assert (await client.patch(f"/api/tasks/{tid}", headers=owner_h, json={"status": "done"})).status_code == 400
+    assert (await client.patch(f"/api/tasks/{tid}", headers=owner_h, json={"status": "done", "result": "  "})).status_code == 400
+    r = await client.patch(f"/api/tasks/{tid}", headers=owner_h, json={"status": "done", "result": "Болел"})
+    assert r.status_code == 200 and r.json()["status"] == "done" and r.json()["kind"] == "absence"
+    assert any(c["text"] == "Результат: Болел" for c in (await client.get(f"/api/tasks/{tid}/comments", headers=owner_h)).json())
+    other = (await client.post("/api/tasks", headers=owner_h, json={"title": "Обычная задача", "assignee_ids": [teacher.id]})).json()
+    ids = lambda kind: [x["id"] for x in (client_json[kind])["items"]]  # noqa: E731
+    client_json = {k: (await client.get(f"/api/tasks?box=all&kind={k}&limit=200", headers=owner_h)).json() for k in ("absence", "other", "leave")}
+    assert tid in ids("absence") and other["id"] not in ids("absence")
+    assert other["id"] in ids("other") and tid not in ids("other") and tid not in ids("leave")

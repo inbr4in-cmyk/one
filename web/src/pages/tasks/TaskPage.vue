@@ -33,6 +33,7 @@ const moving = ref<TaskStatus | null>(null)
 const editOpen = ref(false)
 const archiveOpen = ref(false)
 const busy = ref(false)
+const doneOpen = ref(false)
 
 const id = computed(() => Number(route.params.id))
 const me = computed(() => auth.user?.id ?? 0)
@@ -52,10 +53,14 @@ async function load() {
 }
 watch(id, load, { immediate: true })
 
-async function move(s: TaskStatus) {
+async function move(s: TaskStatus, result?: string) {
+  // closing a task needs the result (or the reason found out) written
+  if (s === 'done' && !result) return void (doneOpen.value = true)
+  doneOpen.value = false
   moving.value = s
   try {
-    task.value = await tasksApi.patch(id.value, { status: s })
+    task.value = await tasksApi.patch(id.value, { status: s, result })
+    if (result) comments.value = await tasksApi.comments(id.value).catch(() => comments.value)
     toast.ok(t('tasks.moved', { s: t(`tasks.status.${s}`) }))
     counters.refresh()
   } catch {
@@ -149,6 +154,7 @@ const due = (x: Task) => (x.due_at ? `${dayLabel(x.due_at, loc.value, { weekday:
     </div>
 
     <TaskDrawer v-model:open="editOpen" :task="task" @saved="(x) => (task = x)" />
+    <UiPrompt v-model:open="doneOpen" :title="t('tasks.to.done')" :text="task.title" :label="t('nv.tasks.result')" reason required :confirm-label="t('tasks.to.done')" :busy="moving === 'done'" data-testid="task-done" @confirm="(v) => move('done', v)" />
     <UiPrompt v-model:open="archiveOpen" :title="t('tasks.archiveTitle')" :text="task.title" :confirm-label="t('tasks.archive')" danger :busy="busy" @confirm="archive" />
   </template>
 </template>

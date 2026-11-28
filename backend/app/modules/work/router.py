@@ -39,6 +39,16 @@ class TaskPatch(In):
     due_at: datetime | None = None
     status: str | None = Field(default=None, max_length=255)
     assignee_ids: list[int] | None = Field(default=None, min_length=1, max_length=50)
+    # what was done / the reason found out: a must to close the task (owner, 28.11.2026)
+    result: str | None = Field(default=None, max_length=4000)
+
+
+# Owner, 28.11.2026: the three kinds the task list is filtered by.
+KINDS = {"leave": ("leave",), "absence": ("absence1", "absence2")}
+
+
+def kind_of(auto_kind: str | None) -> str:
+    return next((k for k, v in KINDS.items() if auto_kind in v), "other")
 
 
 class TaskOut(BaseModel):
@@ -60,6 +70,7 @@ class TaskOut(BaseModel):
     assignees: list[dict]
     comments: int = 0
     created_at: datetime
+    kind: str = "other"  # leave | absence | other
 
 
 async def _link_title(db: DB, kind: str | None, ref: int | None) -> str | None:
@@ -92,7 +103,7 @@ async def _out(db: DB, t: Task) -> TaskOut:
                    due_at=t.due_at, status=t.status, done_at=t.done_at,
                    overdue=bool(t.due_at and t.due_at < now() and t.status not in (TaskStatus.DONE, TaskStatus.CANCELLED)),
                    link_type=t.link_type, link_id=t.link_id, link_title=link_title, recurrence=t.recurrence,
-                   assignees=[{"id": i, "full_name": n_} for i, n_ in rows], comments=n or 0, created_at=t.created_at)
+                   assignees=[{"id": i, "full_name": n_} for i, n_ in rows], comments=n or 0, created_at=t.created_at, kind=kind_of(t.auto_kind))
 
 
 def _is_assignee(user_id: int):
@@ -130,7 +141,7 @@ async def _check_assignees(db: DB, actor: Actor, ids: list[int]) -> None:
 
 @router.get("/tasks", response_model=Page[TaskOut])
 async def list_tasks(db: DB, actor: Actor = require("tasks", "view"), box: str = "mine", status: str | None = None,
-                     overdue: bool = False, branch_id: int | None = None, sort: str = "new",
+                     overdue: bool = False, branch_id: int | None = None, sort: str = "new", kind: str | None = None,
                      limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0)) -> Page:
     q = select(Task).where(Task.archived_at.is_(None), _visible(actor))
     if box == "mine":
@@ -145,6 +156,10 @@ async def list_tasks(db: DB, actor: Actor = require("tasks", "view"), box: str =
         q = q.where(Task.due_at < now(), Task.status.not_in((TaskStatus.DONE, TaskStatus.CANCELLED)))
     if branch_id:
         q = q.where(Task.branch_id == branch_id)
+    if kind in KINDS:
+        q = q.where(Task.auto_kind.in_(KINDS[kind]))
+    elif kind == "other":
+        q = q.where(or_(Task.auto_kind.is_(None), Task.auto_kind.not_in([x for v in KINDS.values() for x in v])))
     # Owner, 27.11.2026: by date, the newest task on top. «due» keeps the old order: the nearest deadline first.
     order = (Task.due_at.asc().nulls_last(), Task.id.desc()) if sort == "due" else (Task.created_at.desc(), Task.id.desc())
     rows, total = await paginate(db, q.order_by(*order), limit, offset)
@@ -189,7 +204,7 @@ async def update_task(task_id: int, body: TaskPatch, db: DB, actor: Actor = requ
                                                    or t.branch_id in actor.branches_for("tasks", "create")))
     is_assignee = await db.scalar(select(TaskAssignee).where(TaskAssignee.task_id == t.id, TaskAssignee.user_id == actor.id))
     fields = body.model_dump(exclude_unset=True)
-    edits = {k: v for k, v in fields.items() if k not in ("status",)}
+    edits = {k: v for k, v in fields.items() if k not in ("status", "result")}
     if edits and not is_creator:
         raise forbidden("Менять задачу может её автор")
     before = {"status": t.status, "title": t.title}
@@ -210,6 +225,11 @@ async def update_task(task_id: int, body: TaskPatch, db: DB, actor: Actor = requ
             raise bad_request("Неизвестный статус")
         if not is_creator and not (is_assignee and body.status in ASSIGNEE_MOVES.get(t.status, set())):
             raise forbidden("Этот статус ставит автор задачи")
+        if body.status == TaskStatus.DONE:
+            result = (body.result or "").strip()
+            if not result:
+                raise bad_request("Напишите результат или причину: без этого задачу закрыть нельзя")
+            db.add(TaskComment(task_id=t.id, author_id=actor.id, at=now(), text=f"Результат: {result}"[:4000]))
         t.status = body.status
         t.done_at = now() if body.status == TaskStatus.DONE else None
         if body.status in (TaskStatus.REVIEW, TaskStatus.DONE) and t.creator_id != actor.id:
