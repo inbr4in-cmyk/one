@@ -370,7 +370,7 @@ async def test_lead_always_has_a_next_task_and_a_daily_one_repeats(client, db, o
     assert len(board["tasks"]) == 1 and len(board["done"]) == 2
     # a refused lead needs no task: the open one is closed with it
     lost = await db.scalar(select(LeadStage).where(LeadStage.code == "lost", LeadStage.pipeline_id == (await client.get(f"/api/crm/leads/{lid}", headers=owner_h)).json()["lead"]["pipeline_id"]))
-    r = await client.post(f"/api/crm/leads/{lid}/stage", headers=owner_h, json={"stage_id": lost.id, "lost_reason": "Дорого"})
+    r = await client.post(f"/api/crm/leads/{lid}/stage", headers=owner_h, json={"stage_id": lost.id, "lost_kind": "other", "lost_reason": "Дорого"})
     assert r.status_code == 200, r.text
     assert r.json()["needs_task"] is False and r.json()["task"] is None
     db.expire_all()

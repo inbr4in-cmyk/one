@@ -84,7 +84,9 @@ class Lead(IdMixin, TimestampMixin, ArchiveMixin, Base):
     level_id: Mapped[int | None] = fk("levels.id", nullable=True)
     placement_score: Mapped[IntN]
     trial_lesson_id: Mapped[int | None] = fk("lessons.id", nullable=True)
-    lost_reason: Mapped[StrN]
+    lost_reason: Mapped[StrN]  # the manager's own words about the refusal
+    # Why the lead refused (owner, 28.11.2026): online | other_city | far | other. Needed for the conversion numbers.
+    lost_kind: Mapped[str | None] = mapped_column(String(16), default=None)
     next_action_at: Mapped[DTN]
     last_activity_at: Mapped[DTN]
     notes: Mapped[TextN]

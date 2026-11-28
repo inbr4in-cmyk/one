@@ -111,6 +111,7 @@ class LeadCard(BaseModel):
     trial_at: datetime | None = None
     trial_teacher: str | None = None  # who gives the trial lesson (the substitute, if there is one)
     lost_reason: str | None
+    lost_kind: str | None = None
     next_action_at: datetime | None
     last_activity_at: datetime | None
     notes: str | None
@@ -432,7 +433,18 @@ async def patch_lead(lead_id: int, body: LeadPatch, db: DB, actor: Actor = requi
 
 class StageIn(In):
     stage_id: int
+    lost_kind: str | None = None
     lost_reason: str | None = Field(default=None, max_length=255)
+
+
+def _lost(kind: str | None, note: str | None) -> tuple[str, str | None]:
+    """A refusal: one reason of the list and the manager's description, both a must (owner, 28.11.2026)."""
+    note = (note or "").strip() or None
+    if kind not in crm_svc.LOST_KINDS:
+        raise bad_request("Выберите причину отказа")
+    if not note:
+        raise bad_request("Напишите описание причины отказа")
+    return kind, note
 
 
 @router.post("/leads/{lead_id}/stage", response_model=LeadCard)
@@ -441,16 +453,37 @@ async def change_stage(lead_id: int, body: StageIn, db: DB, actor: Actor = requi
     st = await db.get(LeadStage, body.stage_id)
     if st is None or st.archived_at:
         raise not_found("Этап")
-    if st.is_lost and not body.lost_reason:
-        raise bad_request("Отказ — только с причиной")
+    kind, note = _lost(body.lost_kind, body.lost_reason) if st.is_lost else (None, None)
     if st.code == "trial_done":
         raise bad_request("«Пришёл на пробный» ставит учитель отметкой посещаемости")
-    lead.lost_reason = body.lost_reason if st.is_lost else None
+    lead.lost_kind, lead.lost_reason = kind, note
     if st.id != lead.stage_id:
         await crm_svc.worked(db, lead, actor.id)
-    await crm_svc.move(db, lead, st, actor.id, f"{st.name}" + (f": {body.lost_reason}" if body.lost_reason else ""))
+    await crm_svc.move(db, lead, st, actor.id, f"{st.name}" + (f": {crm_svc.lost_text(kind, note)}" if kind else ""))
     await write_audit(db, actor_id=actor.id, action="lead.stage", entity="lead", entity_id=lead.id, branch_id=lead.branch_id,
-                      ip=actor.ip, after={"stage": st.code, "reason": body.lost_reason})
+                      ip=actor.ip, after={"stage": st.code, "reason": note, "kind": kind})
+    await db.commit()
+    return (await _cards(db, actor, [lead]))[0]
+
+
+class LostIn(In):
+    lost_kind: str
+    lost_reason: str | None = Field(default=None, max_length=255)
+
+
+@router.post("/leads/{lead_id}/lost-reason", response_model=LeadCard)
+async def set_lost_reason(lead_id: int, body: LostIn, db: DB, actor: Actor = require("crm", "edit")) -> LeadCard:
+    """The reason of a refusal is chosen or corrected on a lead that already stands on «Отказ»."""
+    lead = await get_lead_scoped(db, actor, lead_id, "edit")
+    st = await db.get(LeadStage, lead.stage_id)
+    if st is None or not st.is_lost:
+        raise bad_request("Причина отказа — только у лида на этапе «Отказ»")
+    kind, note = _lost(body.lost_kind, body.lost_reason)
+    before = {"kind": lead.lost_kind, "reason": lead.lost_reason}
+    lead.lost_kind, lead.lost_reason = kind, note
+    db.add(LeadEvent(lead_id=lead.id, at=now(), kind="note", text=f"Причина отказа: {crm_svc.lost_text(kind, note)}", actor_id=actor.id, meta={}))
+    await write_audit(db, actor_id=actor.id, action="lead.lost_reason", entity="lead", entity_id=lead.id, branch_id=lead.branch_id,
+                      ip=actor.ip, before=before, after={"kind": kind, "reason": note})
     await db.commit()
     return (await _cards(db, actor, [lead]))[0]
 
@@ -532,6 +565,7 @@ async def _book_trial(db: DB, actor: Actor, lead: Lead, lesson: Lesson, notify: 
     """Put the lead on this lesson as a trial visitor: stage, history, the WhatsApp note."""
     old_id = lead.trial_lesson_id
     lead.trial_lesson_id = lesson.id
+    lead.lost_kind = None
     lead.lost_reason = None  # a lead from «Отказ» booked again is back in work; the refusal stays in the history
     if old_id and old_id != lesson.id:
         # an individual trial made just for this lead and now moved: its old slot is released
@@ -784,7 +818,7 @@ async def set_stage_access(body: StageAccessIn, db: DB, actor: Actor = require("
 
 @router.get("/analytics")
 async def analytics(db: DB, actor: Actor = require("crm", "view"), date_from: date | None = None, date_to: date | None = None,
-                    branch_id: int | None = None, manager_id: int | None = None) -> dict:
+                    branch_id: int | None = None, manager_id: int | None = None, source: str | None = None) -> dict:
     """ТЗ 9.4: conversion by stage, source, manager and branch. A lead belongs to its responsible manager (or, with none, to
     who brought it in); every stage of the main funnel shows how many leads of the period passed through it."""
     d1 = date_from or (today() - timedelta(days=30))
@@ -793,12 +827,15 @@ async def analytics(db: DB, actor: Actor = require("crm", "view"), date_from: da
     q = select(Lead).where(lead_filter(actor), crm_svc.not_return(), Lead.created_at >= start, Lead.created_at < end)
     if branch_id:
         q = q.where(Lead.branch_id == branch_id)
+    if source:
+        q = q.where(Lead.source == source)
     every = list(await db.scalars(q))
     who = lambda x: x.assignee_id or x.owner_id  # noqa: E731
     leads = [x for x in every if who(x) == manager_id] if manager_id else every
     stages = {s.id: s for s in await db.scalars(select(LeadStage))}
     events = list(await db.scalars(select(LeadEvent).where(LeadEvent.lead_id.in_([x.id for x in every]), LeadEvent.kind == "stage")))
-    reached: dict[int, set[str]] = {}
+    # the stage a lead stands on counts as reached too (imported and seeded leads have no stage events)
+    reached: dict[int, set[str]] = {x.id: {stages[x.stage_id].code} for x in every if x.stage_id in stages}
     passed: dict[int, set[int]] = {x.id: {x.stage_id} for x in every}
     for e in events:
         st = stages.get((e.meta or {}).get("to"))
@@ -831,9 +868,12 @@ async def analytics(db: DB, actor: Actor = require("crm", "view"), date_from: da
         return {str(k): funnel(v) for k, v in g.items()}
 
     reasons: dict[str, int] = {}
+    kinds: dict[str, int] = {k: 0 for k in crm_svc.LOST_KINDS}
     for x in leads:
         if x.lost_reason:
             reasons[x.lost_reason] = reasons.get(x.lost_reason, 0) + 1
+        if x.stage_id in stages and stages[x.stage_id].is_lost:
+            kinds[x.lost_kind if x.lost_kind in kinds else "other"] += 1
     names = dict((await db.execute(select(User.id, User.full_name).where(User.id.in_({who(x) for x in every if who(x)})))).all())
     mine: dict = {}
     for x in every:
@@ -845,7 +885,8 @@ async def analytics(db: DB, actor: Actor = require("crm", "view"), date_from: da
                                key=lambda r: -r["total"]),
             "by_owner": [{"user_id": int(k) if k != "None" else None, "name": names.get(int(k)) if k != "None" else None, **v}
                          for k, v in group_by(who).items()],
-            "by_branch": group_by(lambda x: x.branch_id), "lost_reasons": dict(sorted(reasons.items(), key=lambda kv: -kv[1]))}
+            "by_branch": group_by(lambda x: x.branch_id), "lost_reasons": dict(sorted(reasons.items(), key=lambda kv: -kv[1])),
+            "lost_kinds": [{"code": k, "name": crm_svc.LOST_KINDS[k], "count": n} for k, n in kinds.items()]}
 
 
 # ---- «Откуда узнал»: lead sources, edited on the Справочники page ----

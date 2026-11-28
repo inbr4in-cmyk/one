@@ -17,6 +17,15 @@ async def stage_by_code(db: AsyncSession, pipeline_code: str, stage_code: str) -
     )
 
 
+# Owner, 28.11.2026: a refusal always has one of these reasons and the manager's description under it.
+LOST_KINDS = {"online": "Хочет онлайн", "other_city": "Живёт в другом городе", "far": "Живёт в нашем городе, но далеко от нас",
+              "other": "Другое"}
+
+
+def lost_text(kind: str | None, note: str | None) -> str:
+    return ". ".join(x for x in (LOST_KINDS.get(kind or ""), (note or "").strip()) if x)
+
+
 def not_return():
     """Owner, 28.11.2026: cards of the «Возврат» funnel are former students, not new leads. They stay out of the
     dashboard, the sales rating, the CRM analytics and the reports; the funnel will get numbers of its own later."""

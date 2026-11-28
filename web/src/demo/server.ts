@@ -290,7 +290,7 @@ const handlers: [string, RegExp, Handler][] = [
   }],
 
   // CRM
-  ['POST', /^\/crm\/leads\/(\d+)\/stage$/, (m, body) => moveLead(Number(m[1]), Number(body.stage_id), (body.lost_reason as string) ?? null)],
+  ['POST', /^\/crm\/leads\/(\d+)\/stage$/, (m, body) => moveLead(Number(m[1]), Number(body.stage_id), (body.lost_reason as string) ?? null, (body.lost_kind as string) ?? null)],
   ['POST', /^\/crm\/leads\/(\d+)\/events$/, (m, body) => {
     const ev: Row = { id: nextId(), at: nowIso(), kind: body.kind, text: body.text, actor_id: me().id, meta: body.result ? { result: body.result } : {} }
     const d = exact(`/crm/leads/${m[1]}`, new URLSearchParams()) as { events?: Row[]; lead?: Row } | undefined
@@ -459,7 +459,7 @@ function quote(body: Json): { lessons: number; lesson_price: number; gross: numb
   return { lessons, lesson_price: price, gross, discount, money_balance_used: used, to_pay: gross - discount - used }
 }
 
-function moveLead(id: number, stageId: number, lostReason: string | null): unknown {
+function moveLead(id: number, stageId: number, lostReason: string | null, lostKind: string | null = null): unknown {
   let moved: Row | null = null
   for (const b of all('/crm/board') as { columns?: { stage: Row; total: number; leads: Row[] }[] }[]) {
     const cols = b?.columns ?? []
@@ -469,7 +469,7 @@ function moveLead(id: number, stageId: number, lostReason: string | null): unkno
       if (i < 0) continue
       const lead = c.leads.splice(i, 1)[0] as Row
       c.total = Math.max(0, c.total - 1)
-      Object.assign(lead, { stage_id: stageId, stage_changed_at: nowIso(), lost_reason: lostReason, stale: false })
+      Object.assign(lead, { stage_id: stageId, stage_changed_at: nowIso(), lost_reason: lostReason, lost_kind: lostKind, stale: false })
       if (to) {
         to.leads.unshift(lead)
         to.total++
@@ -479,7 +479,7 @@ function moveLead(id: number, stageId: number, lostReason: string | null): unkno
   }
   const d = exact(`/crm/leads/${id}`, new URLSearchParams()) as { lead?: Row; events?: Row[] } | undefined
   if (d?.lead) {
-    Object.assign(d.lead, { stage_id: stageId, stage_changed_at: nowIso(), lost_reason: lostReason })
+    Object.assign(d.lead, { stage_id: stageId, stage_changed_at: nowIso(), lost_reason: lostReason, lost_kind: lostKind })
     d.events?.unshift({ id: nextId(), at: nowIso(), kind: 'stage', text: null, actor_id: me().id, meta: { to: stageId } })
     moved ??= d.lead
   }

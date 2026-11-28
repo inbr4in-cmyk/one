@@ -7,9 +7,10 @@ import { useRouter } from 'vue-router'
 import { UiAvatar, UiButton, UiChip, UiDrawer, UiField, UiIcon, UiInput, UiModal, UiPrompt, UiSegmented, UiSelect, UiSkeleton, UiTextarea } from '@/components/ui'
 import LevelTag from '@/components/students/LevelTag.vue'
 import LinkStudentModal from './LinkStudentModal.vue'
+import LostReasonModal from './LostReasonModal.vue'
 import TrialPicker from './TrialPicker.vue'
 import LeadTasks from './LeadTasks.vue'
-import { crmApi, type Lead, type LeadDetails, type Pipeline, type Stage } from '@/api/crm'
+import { crmApi, type Lead, type LeadDetails, type LostKind, type Pipeline, type Stage } from '@/api/crm'
 import type { Lesson } from '@/api/academics'
 import { ApiError } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
@@ -36,6 +37,7 @@ const eventText = ref('')
 const busy = ref(false)
 const trialOpen = ref(false)
 const lostPrompt = ref<Stage | null>(null)
+const lostEdit = ref(false)
 const archivePrompt = ref(false)
 const linkOpen = ref(false)
 const phone = ref('')
@@ -106,13 +108,14 @@ async function changeStage(id: number) {
     stageSel.value = l.stage_id
   }
 }
-async function confirmLost(reason: string) {
+async function confirmLost(kind: LostKind, note: string) {
   const l = lead.value
-  if (!l || !lostPrompt.value) return
+  if (!l || !(lostPrompt.value || lostEdit.value)) return
   busy.value = true
   try {
-    updated(await crmApi.stage(l.id, lostPrompt.value.id, reason))
+    updated(lostPrompt.value ? await crmApi.stage(l.id, lostPrompt.value.id, { kind, note }) : await crmApi.lostReason(l.id, kind, note))
     lostPrompt.value = null
+    lostEdit.value = false
     await load(l.id)
   } finally {
     busy.value = false
@@ -348,7 +351,10 @@ watch(() => props.leadId, (id) => id && load(id), { immediate: true })
       <div v-if="!stage?.is_lost" class="stepper">
         <div v-for="(s, i) in steps" :key="s.id" class="step" :class="{ done: i < curIdx, cur: i === curIdx }"><i />{{ stageName(s) }}</div>
       </div>
-      <UiChip v-else tone="red">{{ stageName(stage) }}<template v-if="lead.lost_reason"> · {{ lead.lost_reason }}</template></UiChip>
+      <div v-else class="lost-box" data-testid="lead-lost">
+        <div class="lost-h"><UiChip tone="red">{{ stageName(stage) }}<template v-if="lead.lost_kind"> · {{ t(`crm.lostKind.${lead.lost_kind}`) }}</template></UiChip><button v-if="canEdit" type="button" class="linkbtn" data-testid="lead-lost-edit" @click="lostEdit = true">{{ t('common.edit') }}</button></div>
+        <p v-if="lead.lost_reason" class="m0">{{ lead.lost_reason }}</p>
+      </div>
       <UiSelect v-if="canEdit" v-model="stageSel" :options="stageOptions" :label="t('crm.moveTo')" block @update:model-value="changeStage" />
 
       <h4 class="sec-h">{{ t('crm.data') }}</h4>
@@ -406,7 +412,7 @@ watch(() => props.leadId, (id) => id && load(id), { immediate: true })
   </UiDrawer>
   <UiPrompt :open="delEvent !== null" :title="t('nv.leadDel.event')" :text="t('nv.leadDel.eventText', { text: delEvent?.text ?? '' })" :confirm-label="t('nv.payDel.action')" danger :busy="busy" @update:open="(v) => !v && (delEvent = null)" @confirm="removeEvent" />
   <UiPrompt :open="delTrial" :title="t('nv.leadDel.trial')" :text="t('nv.leadDel.trialText')" :confirm-label="t('nv.payDel.action')" danger :busy="busy" @update:open="(v) => !v && (delTrial = false)" @confirm="removeTrial" />
-  <UiPrompt :open="lostPrompt !== null" :title="t('crm.lostTitle')" :text="t('crm.lostText')" :label="t('crm.lostReason')" reason required :confirm-label="t('crm.markLost')" danger :busy="busy" @update:open="(v) => !v && (lostPrompt = null)" @confirm="confirmLost" />
+  <LostReasonModal :open="lostPrompt !== null || lostEdit" :kind="lostEdit ? lead?.lost_kind : null" :note="lostEdit ? lead?.lost_reason : null" :confirm-label="lostEdit ? t('common.save') : t('crm.markLost')" :busy="busy" @update:open="(v) => !v && ((lostPrompt = null), (lostEdit = false))" @confirm="confirmLost" />
   <UiModal :open="editOpen" :title="t('nv.leadEdit')" @update:open="(v) => (editOpen = v)">
     <form id="lead-edit" class="stack" @submit.prevent="saveEdit">
       <UiInput v-model="edit.full_name" :label="t('students.form.name')" :maxlength="255" />
@@ -429,3 +435,9 @@ watch(() => props.leadId, (id) => id && load(id), { immediate: true })
   <LinkStudentModal v-model:open="linkOpen" :busy="busy" :preset="lead?.existing_student ?? null" @confirm="linkStudent" />
   <UiPrompt :open="archivePrompt" :title="t('crm.archive')" :text="t('crm.archiveText')" :confirm-label="t('crm.archive')" danger :busy="busy" @update:open="(v) => (archivePrompt = v)" @confirm="archive" />
 </template>
+
+<style scoped>
+.lost-box { display: grid; gap: 6px; margin-bottom: 10px }
+.lost-h { display: flex; align-items: center; gap: 12px; flex-wrap: wrap }
+.lost-h .linkbtn { margin: 0 }
+</style>

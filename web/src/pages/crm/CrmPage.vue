@@ -6,13 +6,14 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { stageRenamed } from '@/utils/stages'
 import { useRoute, useRouter } from 'vue-router'
-import { UiAvatar, UiButton, UiIcon, UiInput, UiPrompt, UiSelect, UiSkeleton, UiTabs } from '@/components/ui'
+import { UiAvatar, UiButton, UiIcon, UiInput, UiSelect, UiSkeleton, UiTabs } from '@/components/ui'
 import LevelTag from '@/components/students/LevelTag.vue'
 import LeadCreateDrawer from '@/components/crm/LeadCreateDrawer.vue'
 import LeadDrawer from '@/components/crm/LeadDrawer.vue'
+import LostReasonModal from '@/components/crm/LostReasonModal.vue'
 import CrmAnalytics from '@/components/crm/CrmAnalytics.vue'
 import CrmTasks from '@/components/crm/CrmTasks.vue'
-import { crmApi, type Board, type Lead, type Pipeline, type Stage } from '@/api/crm'
+import { crmApi, type Board, type Lead, type LostKind, type Pipeline, type Stage } from '@/api/crm'
 import { ApiError } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
 import { useBranchStore } from '@/stores/branch'
@@ -148,7 +149,7 @@ function onDrop(s: Stage) {
   move(found.lead, s, null)
 }
 
-async function move(lead: Lead, s: Stage, reason: string | null) {
+async function move(lead: Lead, s: Stage, reason: { kind: LostKind; note: string } | null) {
   const b = board.value
   const from = findLead(lead.id)
   const to = b?.columns.find((c) => c.stage.id === s.id)
@@ -173,11 +174,11 @@ async function move(lead: Lead, s: Stage, reason: string | null) {
     toast.error(e instanceof ApiError && e.detail ? e.detail : t('crm.moveFailed'))
   }
 }
-async function confirmLost(reason: string) {
+async function confirmLost(kind: LostKind, note: string) {
   const m = lostMove.value
   if (!m) return
   lostMove.value = null
-  await move(m.lead, m.stage, reason)
+  await move(m.lead, m.stage, { kind, note })
 }
 
 function onChanged(l: Lead) {
@@ -255,7 +256,7 @@ function onCardKey(e: KeyboardEvent, l: Lead) {
                 <span v-else class="chip red xs" :title="t('crm.unassigned')"><span class="chip-t">{{ t('crm.unassigned') }}</span></span>
               </div>
               <div class="meta">
-                <template v-if="l.lost_reason">{{ t('crm.reason', { r: l.lost_reason }) }}</template>
+                <template v-if="l.lost_kind || l.lost_reason">{{ t('crm.reason', { r: [l.lost_kind ? t(`crm.lostKind.${l.lost_kind}`) : '', l.lost_reason].filter(Boolean).join('. ') }) }}</template>
                 <template v-else-if="l.trial_at">{{ t('crm.trialAt', { when: `${dayLabel(l.trial_at, locale as Locale, { day: 'numeric', month: 'short' })}, ${hm(l.trial_at, locale as Locale)}` }) }}<template v-if="l.trial_teacher"> · {{ l.trial_teacher }}</template></template>
                 <template v-else-if="l.phone">{{ formatPhone(l.phone) }}</template>
                 <template v-else-if="l.age">{{ t('students.age', { n: l.age }) }}</template>
@@ -283,7 +284,7 @@ function onCardKey(e: KeyboardEvent, l: Lead) {
 
   <LeadCreateDrawer v-model:open="creating" @created="(l) => { load(); openId = l.id }" />
   <LeadDrawer :lead-id="openId" :pipelines="pipelines" @close="openId = null" @changed="onChanged" @removed="onRemoved" />
-  <UiPrompt :open="lostMove !== null" :title="t('crm.lostTitle')" :text="t('crm.lostText')" :label="t('crm.lostReason')" reason required :confirm-label="t('crm.markLost')" danger :busy="busy" @update:open="(v) => !v && (lostMove = null)" @confirm="confirmLost" />
+  <LostReasonModal :open="lostMove !== null" :confirm-label="t('crm.markLost')" :busy="busy" @update:open="(v) => !v && (lostMove = null)" @confirm="confirmLost" />
 </template>
 
 <style scoped>

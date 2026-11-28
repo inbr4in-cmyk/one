@@ -56,6 +56,7 @@ export interface Lead {
   trial_at: string | null
   trial_teacher?: string | null
   lost_reason: string | null
+  lost_kind?: LostKind | null
   next_action_at: string | null
   last_activity_at: string | null
   notes: string | null
@@ -149,6 +150,10 @@ export interface StageAccess {
   cells: Record<string, StageLevel>
 }
 
+/** Reasons of a refusal (owner, 28.11.2026); the names are in i18n `crm.lostKind`. */
+export const LOST_KINDS = ['online', 'other_city', 'far', 'other'] as const
+export type LostKind = (typeof LOST_KINDS)[number]
+
 export interface Funnel {
   new: number
   contacted: number
@@ -166,6 +171,7 @@ export interface Analytics {
   by_owner: (Funnel & { user_id: number | null; name: string | null })[]
   by_branch: Record<string, Funnel>
   lost_reasons: Record<string, number>
+  lost_kinds?: { code: LostKind; name: string; count: number }[]
   stages: { id: number; code: string; name: string; color: string; is_won: boolean; is_lost: boolean }[]
   /** leads of the period that were on each stage, in the order of `stages` */
   stage_counts: number[]
@@ -201,8 +207,9 @@ export const crmApi = {
   get: (id: number) => http.get<LeadDetails>(`/crm/leads/${id}`),
   patch: (id: number, body: Partial<LeadIn> & { is_hot?: boolean; next_action_at?: string | null; branch_id?: number; assignee_id?: number }) =>
     http.patch<Lead>(`/crm/leads/${id}`, body),
-  stage: (id: number, stage_id: number, lost_reason?: string | null, silent = false) =>
-    http.post<Lead>(`/crm/leads/${id}/stage`, { stage_id, lost_reason }, { silent }),
+  stage: (id: number, stage_id: number, lost?: { kind: LostKind; note: string } | null, silent = false) =>
+    http.post<Lead>(`/crm/leads/${id}/stage`, { stage_id, lost_kind: lost?.kind, lost_reason: lost?.note }, { silent }),
+  lostReason: (id: number, lost_kind: LostKind, lost_reason: string) => http.post<Lead>(`/crm/leads/${id}/lost-reason`, { lost_kind, lost_reason }),
   event: (id: number, body: { kind: 'call' | 'note' | 'meeting'; text: string; result?: string | null }) =>
     http.post<LeadEvent>(`/crm/leads/${id}/events`, body),
   trialSlots: (teacher_id: number, branch_id: number, day: string, minutes: number) =>
@@ -217,7 +224,7 @@ export const crmApi = {
   setStageAccess: (user_id: number, stage_id: number, level: StageLevel) => http.put<null>('/crm/stage-access', { user_id, stage_id, level }, { silent: true }),
   linkStudent: (id: number, student_id: number) => http.post<{ student_id: number }>(`/crm/leads/${id}/link-student`, { student_id }),
   archive: (id: number) => http.post<null>(`/crm/leads/${id}/archive`),
-  analytics: (p: { date_from?: string; date_to?: string; branch_id?: number | null; manager_id?: number | null }) =>
+  analytics: (p: { date_from?: string; date_to?: string; branch_id?: number | null; manager_id?: number | null; source?: string | null }) =>
     http.get<Analytics>(`/crm/analytics${qs(p)}`),
 }
 

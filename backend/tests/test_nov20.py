@@ -91,7 +91,7 @@ async def test_refused_lead_is_booked_on_a_trial_again_and_the_card_shows_the_te
     await db.flush()
     lead = (await client.post("/api/crm/leads", headers=owner_h, json={"full_name": "Отказник", "branch_id": bid})).json()
     lost = await stage_by_code(db, "main", "lost")
-    r = await client.post(f"/api/crm/leads/{lead['id']}/stage", headers=owner_h, json={"stage_id": lost.id, "lost_reason": "Дорого"})
+    r = await client.post(f"/api/crm/leads/{lead['id']}/stage", headers=owner_h, json={"stage_id": lost.id, "lost_kind": "other", "lost_reason": "Дорого"})
     assert r.status_code == 200 and r.json()["lost_reason"] == "Дорого"
     r = await client.post(f"/api/crm/leads/{lead['id']}/trial", headers=owner_h, json={"lesson_id": lesson.id, "notify": False})
     assert r.status_code == 200, r.text

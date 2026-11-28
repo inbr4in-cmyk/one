@@ -584,3 +584,32 @@ async def test_return_cards_are_not_new_leads_anywhere(client, db, owner_h):
     assert a_after["managers"] == a_before["managers"]
     r_after = (await client.get(f"/api/reports/managers?{span}", headers=owner_h)).json()
     assert r_after["total"] == r_before["total"] and "returned" not in r_after["total"]
+
+
+async def test_refusal_needs_a_reason_of_the_list_and_a_description(client, db, owner_h):
+    """Owner, 28.11.2026: «Отказ» = a reason of the list + the manager's description; analytics count refusals by reason."""
+    from app.services import crm as crm_svc
+    from app.services.clock import today
+    from tests.conftest import branch_id
+
+    r = await client.post("/api/crm/leads", headers=owner_h, json={"full_name": "Лид Отказ Причина", "phone": "+77075559901",
+                                                               "source": "walk_in", "branch_id": await branch_id(db, "Север")})
+    lid = r.json()["id"]
+    lost = await crm_svc.stage_by_code(db, "main", "lost")
+    url = f"/api/crm/leads/{lid}/stage"
+    assert (await client.post(url, headers=owner_h, json={"stage_id": lost.id, "lost_reason": "Дорого"})).status_code == 400
+    assert (await client.post(url, headers=owner_h, json={"stage_id": lost.id, "lost_kind": "online"})).status_code == 400
+    assert (await client.post(f"/api/crm/leads/{lid}/lost-reason", headers=owner_h,
+                              json={"lost_kind": "far", "lost_reason": "Далеко"})).status_code == 400  # not on «Отказ» yet
+    r = await client.post(url, headers=owner_h, json={"stage_id": lost.id, "lost_kind": "other", "lost_reason": "Дорого"})
+    assert r.status_code == 200 and r.json()["lost_kind"] == "other" and r.json()["lost_reason"] == "Дорого"
+    span = f"date_from={today()}&date_to={today()}"
+    kinds = {k["code"]: k["count"] for k in (await client.get(f"/api/crm/analytics?{span}", headers=owner_h)).json()["lost_kinds"]}
+    r = await client.post(f"/api/crm/leads/{lid}/lost-reason", headers=owner_h, json={"lost_kind": "far", "lost_reason": "Живёт в Сайраме"})
+    assert r.status_code == 200 and r.json()["lost_kind"] == "far" and r.json()["lost_reason"] == "Живёт в Сайраме"
+    a = (await client.get(f"/api/crm/analytics?{span}&source=walk_in", headers=owner_h)).json()
+    after = {k["code"]: k["count"] for k in a["lost_kinds"]}
+    assert after["far"] == kinds["far"] + 1 and after["other"] == kinds["other"] - 1
+    assert (await client.get(f"/api/crm/analytics?{span}&source=no_such", headers=owner_h)).json()["total"]["new"] == 0
+    card = (await client.get(f"/api/crm/leads/{lid}", headers=owner_h)).json()
+    assert any("Причина отказа: Живёт в нашем городе, но далеко от нас. Живёт в Сайраме" in (e["text"] or "") for e in card["events"])
