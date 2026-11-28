@@ -22,6 +22,10 @@ LOST_KINDS = {"online": "Хочет онлайн", "other_city": "Живёт в 
               "other": "Другое"}
 
 
+# Not our client: such a refusal does not count against the conversion.
+UNQUALIFIED = {"online", "other_city", "far"}
+
+
 def lost_text(kind: str | None, note: str | None) -> str:
     return ". ".join(x for x in (LOST_KINDS.get(kind or ""), (note or "").strip()) if x)
 

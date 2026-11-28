@@ -477,6 +477,9 @@ async def dashboard_day(db: DB, actor: Actor = require("dashboard", "view"), bra
         booked_ids = [i for i, s in stages.items() if s.code == "trial_booked"]
         won_ids = [i for i, s in stages.items() if s.is_won]
         contacted_ids = [i for i, s in stages.items() if s.code == "contacted"]
+        done_ids = [i for i, s in stages.items() if s.code == "trial_done"]
+        lost_ids = [i for i, s in stages.items() if s.is_lost]
+        fresh_ids = [i for i, s in stages.items() if s.code == "new"]
         ev = select(LeadEvent.lead_id).where(LeadEvent.at >= start, LeadEvent.at < end)
         to = LeadEvent.meta["to"].as_integer()
         answered = LeadEvent.meta["result"].as_string().is_distinct_from("no_answer")  # «недозвон» is not a contact
@@ -488,16 +491,33 @@ async def dashboard_day(db: DB, actor: Actor = require("dashboard", "view"), bra
                 (LeadEvent.kind == "message") & (LeadEvent.meta["out"].as_boolean().is_(True)),
                 (LeadEvent.kind == "stage") & to.in_(contacted_ids or [-1]))),
             "trial": ev.where(LeadEvent.kind == "stage", to.in_(booked_ids or [-1])),
+            "trial_done": ev.where(LeadEvent.kind == "stage", to.in_(done_ids or [-1])),
             "paid": ev.where(or_(LeadEvent.kind == "sale", (LeadEvent.kind == "stage") & to.in_(won_ids or [-1]))),
+            # a refusal of the period that still stands (a lead booked again is back in work)
+            "lost": select(Lead.id).where(Lead.stage_id.in_(lost_ids or [-1]),
+                                          Lead.id.in_(ev.where(LeadEvent.kind == "stage", to.in_(lost_ids or [-1])))),
+            # the picture as of now: still on «Новая заявка» a day after it came in
+            "stale": select(Lead.id).where(Lead.stage_id.in_(fresh_ids or [-1]), Lead.created_at < now() - timedelta(hours=24)),
         }
         users = dict((await db.execute(select(User.id, User.full_name))).all())
         leads: dict = {}
         for key, ids in sets.items():
             rows = list(await db.scalars(select(Lead).where(Lead.id.in_(ids), *scope).order_by(Lead.id.desc()).limit(500)))
-            leads[key] = {"count": len(rows), "items": [] if narrowed else [
-                {"id": x.id, "full_name": x.full_name, "phone": x.phone, "source": x.source,
-                 "stage": stages[x.stage_id].name if x.stage_id in stages else None,
-                 "manager": users.get(x.assignee_id or x.owner_id), "branch_id": x.branch_id} for x in rows]}
+            item = lambda x: {"id": x.id, "full_name": x.full_name, "phone": x.phone, "source": x.source,  # noqa: E731
+                              "stage": stages[x.stage_id].name if x.stage_id in stages else None,
+                              "manager": users.get(x.assignee_id or x.owner_id), "branch_id": x.branch_id,
+                              "lost_kind": x.lost_kind if x.stage_id in lost_ids else None,
+                              "lost_reason": x.lost_reason if x.stage_id in lost_ids else None}
+            leads[key] = {"count": len(rows), "items": [] if narrowed else [item(x) for x in rows]}
+            if key == "new":
+                # Owner, 28.11.2026: conversion of the period's leads. A refusal «хочет онлайн / другой город / далеко» is
+                # not our client (unqualified) and leaves the base; a refusal «Другое» stays in it.
+                off = [x for x in rows if x.stage_id in lost_ids and x.lost_kind in crm_svc.UNQUALIFIED]
+                base = [x for x in rows if x not in off]
+                paid = sum(1 for x in base if x.stage_id in won_ids)
+                out["conversion"] = {"percent": round(100 * paid / len(base), 1) if base else 0.0, "paid": paid, "base": len(base),
+                                     "unqualified": {"count": len(off), "items": [] if narrowed else [item(x) for x in off]},
+                                     "qualified": {"count": len(base), "items": [] if narrowed else [item(x) for x in base]}}
         out["leads"] = leads
         by_source = (await db.execute(select(Lead.source, func.count()).where(
             Lead.created_at >= start, Lead.created_at < end, *scope).group_by(Lead.source))).all()

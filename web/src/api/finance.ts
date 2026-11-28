@@ -86,10 +86,12 @@ export interface ExpenseIn {
 
 type BranchQ = { branch_id?: number | null }
 
-export interface DayLead { id: number; full_name: string; phone: string | null; source: string; stage: string | null; manager: string | null; branch_id: number | null }
+export interface DayLead { id: number; full_name: string; phone: string | null; source: string; stage: string | null; manager: string | null; branch_id: number | null; lost_kind?: string | null; lost_reason?: string | null }
 export interface DayReport {
   day: string
-  leads?: Record<'new' | 'contacted' | 'trial' | 'paid', { count: number; items: DayLead[] }>
+  leads?: Record<'new' | 'contacted' | 'trial' | 'trial_done' | 'paid' | 'lost' | 'stale', { count: number; items: DayLead[] }>
+  /** Leads created in the period: paid / (all − unqualified refusals) */
+  conversion?: { percent: number; paid: number; base: number; unqualified: { count: number; items: DayLead[] }; qualified: { count: number; items: DayLead[] } }
   debtors: { count: number; items: { id: number; full_name: string; lessons_left: number; branch_id: number }[] }
   /** Leads created in the period, by source */
   sources?: Record<string, number>

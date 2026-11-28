@@ -41,7 +41,7 @@ const monthOptions = computed(() => Array.from({ length: 13 }, (_, i) => {
   const v = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
   return { value: v, label: periodLabel(v, loc.value) }
 }))
-type Tile = 'new' | 'contacted' | 'trial' | 'paid' | 'debtors' | 'students'
+type Tile = 'new' | 'contacted' | 'trial' | 'trial_done' | 'paid' | 'lost' | 'stale' | 'debtors' | 'students'
 const shown = ref<Tile | null>(null)
 const modal = ref(false)
 /** The person whose unmarked lessons or overdue tasks are open */
@@ -61,9 +61,14 @@ function show(k: Tile) {
   shown.value = k
   modal.value = true
 }
-const leadTiles = computed(() => (['new', 'trial', 'paid'] as const).map((k) => ({ key: k, icon: { new: 'crm', contacted: 'phone', trial: 'cal', paid: 'ok' }[k], n: rep.value?.leads?.[k].count ?? 0 })))
+const LEAD_TILES = { new: ['crm', 'navy'], contacted: ['phone', 'navy'], trial: ['cal', 'navy'], trial_done: ['user', 'info'], paid: ['ok', 'ok'], lost: ['x', 'red'], stale: ['clock', 'warn'] } as const
+const leadTiles = computed(() => (Object.keys(LEAD_TILES) as (keyof typeof LEAD_TILES)[]).map((k) => ({ key: k, icon: LEAD_TILES[k][0], tone: LEAD_TILES[k][1], n: rep.value?.leads?.[k]?.count ?? 0 })))
+const convModal = ref(false)
+const convTab = ref<'qualified' | 'unqualified'>('qualified')
+const convRows = computed(() => rep.value?.conversion?.[convTab.value].items ?? [])
+const lostLabel = (x: { lost_kind?: string | null; lost_reason?: string | null }) => [x.lost_kind ? t(`crm.lostKind.${x.lost_kind}`) : '', x.lost_reason].filter(Boolean).join('. ')
 const leadKey = computed(() => (shown.value && shown.value !== 'debtors' && shown.value !== 'students' ? shown.value : null))
-const leadRows = computed(() => (leadKey.value ? rep.value?.leads?.[leadKey.value].items ?? [] : []))
+const leadRows = computed(() => (leadKey.value ? rep.value?.leads?.[leadKey.value]?.items ?? [] : []))
 
 const SRC: Record<string, { cls: string; icon: string }> = {
   instagram: { cls: 'ig', icon: 'ig' }, whatsapp: { cls: 'wa', icon: 'wa' }, qr: { cls: 'qr', icon: 'qr' }, site: { cls: 'web', icon: 'globe' },
@@ -151,9 +156,10 @@ async function exportExcel() {
         <StatTile tone="warn" icon="groups" :label="t('nv.dd.waitGroup')" :value="rep.gone?.waiting ?? 0" :hint="t('nv.dd.now')" @open="showGone('waiting')" />
       </div>
       <h2 v-if="rep.leads" class="dd-h">CRM</h2>
-      <div v-if="rep.leads" class="dd-row three stagger" data-testid="dash-crm">
+      <div v-if="rep.leads" class="dd-row four stagger" data-testid="dash-crm">
         <template v-if="rep.leads">
-          <StatTile v-for="x in leadTiles" :key="x.key" :tone="x.key === 'paid' ? 'ok' : 'navy'" :icon="x.icon" :label="t(`nv.dd.${x.key}`)" :value="x.n" :hint="spanLabel" @open="show(x.key)" />
+          <StatTile v-for="x in leadTiles" :key="x.key" :tone="x.tone" :icon="x.icon" :label="t(`nv.dd.${x.key}`)" :value="x.n" :hint="x.key === 'stale' ? t('nv.dd.now') : spanLabel" @open="show(x.key)" />
+          <StatTile v-if="rep.conversion" tone="ok" icon="funnel" :label="t('nv.dd.conv')" :value="rep.conversion.percent" suffix="%" :hint="t('nv.dd.convOf', { paid: rep.conversion.paid, base: rep.conversion.base })" data-testid="dash-conv" @open="convModal = true" />
         </template>
       </div>
       <template v-if="rep.unmarked || rep.overdue">
@@ -220,13 +226,24 @@ async function exportExcel() {
         </RouterLink>
       </template>
       <template v-else-if="leadKey">
-        <p v-if="!leadRows.length" class="muted m0">{{ rep.leads?.[leadKey].count ? t('nv.dd.hidden') : t('nv.dd.none') }}</p>
+        <p v-if="!leadRows.length" class="muted m0">{{ rep.leads?.[leadKey]?.count ? t('nv.dd.hidden') : t('nv.dd.none') }}</p>
         <RouterLink v-for="x in leadRows" :key="x.id" :to="{ path: '/crm', query: { lead: x.id } }" class="list-row">
           <span class="srcico" :class="SRC[x.source]?.cls ?? 'call'"><svg><use :href="`#i-${SRC[x.source]?.icon ?? 'user'}`" /></svg></span>
-          <div class="grow"><b>{{ x.full_name }}</b><span>{{ [x.phone ? formatPhone(x.phone) : '', x.manager ?? t('crm.unassigned')].filter(Boolean).join(' · ') }}</span></div>
+          <div class="grow"><b>{{ x.full_name }}</b><span>{{ [x.phone ? formatPhone(x.phone) : '', x.manager ?? t('crm.unassigned'), lostLabel(x)].filter(Boolean).join(' · ') }}</span></div>
           <UiChip small>{{ x.stage }}</UiChip>
         </RouterLink>
       </template>
+    </template>
+  </UiModal>
+  <UiModal v-model:open="convModal" :title="`${t('nv.dd.conv')} · ${spanLabel}`">
+    <template v-if="rep?.conversion">
+      <UiSegmented v-model="convTab" :options="[{ value: 'qualified', label: `${t('nv.dd.qual')} · ${rep.conversion.qualified.count}` }, { value: 'unqualified', label: `${t('nv.dd.unqual')} · ${rep.conversion.unqualified.count}` }]" :label="t('nv.dd.conv')" size="sm" style="margin-bottom: 10px" />
+      <p v-if="!convRows.length" class="muted m0">{{ rep.conversion[convTab].count ? t('nv.dd.hidden') : t('nv.dd.none') }}</p>
+      <RouterLink v-for="x in convRows" :key="x.id" :to="{ path: '/crm', query: { lead: x.id } }" class="list-row">
+        <span class="srcico" :class="SRC[x.source]?.cls ?? 'call'"><svg><use :href="`#i-${SRC[x.source]?.icon ?? 'user'}`" /></svg></span>
+        <div class="grow"><b>{{ x.full_name }}</b><span>{{ [x.manager ?? t('crm.unassigned'), lostLabel(x)].filter(Boolean).join(' · ') }}</span></div>
+        <UiChip small :tone="x.lost_kind ? 'red' : undefined">{{ x.stage }}</UiChip>
+      </RouterLink>
     </template>
   </UiModal>
 

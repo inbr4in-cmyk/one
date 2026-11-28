@@ -613,3 +613,39 @@ async def test_refusal_needs_a_reason_of_the_list_and_a_description(client, db, 
     assert (await client.get(f"/api/crm/analytics?{span}&source=no_such", headers=owner_h)).json()["total"]["new"] == 0
     card = (await client.get(f"/api/crm/leads/{lid}", headers=owner_h)).json()
     assert any("Причина отказа: Живёт в нашем городе, но далеко от нас. Живёт в Сайраме" in (e["text"] or "") for e in card["events"])
+
+
+async def test_dashboard_crm_funnel_and_conversion_without_unqualified(client, db, owner_h):
+    """Owner, 28.11.2026: dashboard CRM row with refusals, stuck leads and a conversion that ignores unqualified refusals."""
+    from datetime import timedelta
+
+    from app.models import Lead
+    from app.services import crm as crm_svc
+    from app.services.clock import now, today
+    from tests.conftest import branch_id
+
+    bid = await branch_id(db, "Север")
+    day = f"/api/dashboard/day?day={today()}"
+    before = (await client.get(day, headers=owner_h)).json()
+    ids = []
+    for i in range(3):
+        r = await client.post("/api/crm/leads", headers=owner_h, json={"full_name": f"Лид Конверсия {i}", "phone": f"+7707555880{i}",
+                                                                   "source": "walk_in", "branch_id": bid})
+        ids.append(r.json()["id"])
+    lost = await crm_svc.stage_by_code(db, "main", "lost")
+    for lid, kind in ((ids[0], "far"), (ids[1], "other")):
+        r = await client.post(f"/api/crm/leads/{lid}/stage", headers=owner_h, json={"stage_id": lost.id, "lost_kind": kind, "lost_reason": "Причина"})
+        assert r.status_code == 200
+    stuck = await db.get(Lead, ids[2])
+    stuck.created_at = now() - timedelta(hours=30)
+    await db.commit()
+    after = (await client.get(day, headers=owner_h)).json()
+    assert after["leads"]["lost"]["count"] == before["leads"]["lost"]["count"] + 2
+    assert after["leads"]["stale"]["count"] == before["leads"]["stale"]["count"] + 1
+    assert "trial_done" in after["leads"]
+    c0, c1 = before["conversion"], after["conversion"]
+    assert c1["unqualified"]["count"] == c0["unqualified"]["count"] + 1
+    assert c1["base"] == c0["base"] + 1  # «Другое» stays in the base, «далеко» leaves it, the stuck one is yesterday's
+    far = next(x for x in c1["unqualified"]["items"] if x["id"] == ids[0])
+    assert far["lost_kind"] == "far" and any(x["id"] == ids[1] and x["lost_kind"] == "other" for x in c1["qualified"]["items"])
+    assert c1["percent"] == round(100 * c1["paid"] / c1["base"], 1)
