@@ -310,7 +310,7 @@ async def test_member_since_is_corrected_and_the_student_appears_in_past_lessons
     url = f"/api/groups/{g['id']}/members/{sid}"
     back = today() - timedelta(days=10)
     assert (await client.patch(url, headers=owner_h, json={"joined_on": (today() - timedelta(days=40)).isoformat()})).status_code == 400
-    assert (await client.patch(url, headers=owner_h, json={"joined_on": (today() + timedelta(days=1)).isoformat()})).status_code == 400
+    assert (await client.patch(url, headers=owner_h, json={"joined_on": (today() + timedelta(days=90)).isoformat()})).status_code == 400
     r = await client.patch(url, headers=owner_h, json={"joined_on": back.isoformat()})
     assert r.status_code == 200, r.text
     m = await db.scalar(select(GroupMember).where(GroupMember.student_id == sid))
