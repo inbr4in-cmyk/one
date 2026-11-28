@@ -228,3 +228,42 @@ async def ig_send_text(recipient_id: str, text: str, human_agent: bool = False, 
         payload |= {"messaging_type": "MESSAGE_TAG", "tag": "HUMAN_AGENT"}
     sender = s.ig_page_id if s.ig_page_id and not token.startswith("IG") else "me"
     return await _post(f"{_ig_graph(token)}/{sender}/messages", token, payload)
+
+
+# ---- Ads statistics (Marketing API, read only) ----
+RESULT_ACTIONS = ("lead", "onsite_conversion.messaging_conversation_started_7d")
+
+
+def ads_ready() -> bool:
+    s = get_settings()
+    return bool(s.ads_access_token and s.ads_account_id)
+
+
+async def ads_insights(since, until) -> list[dict]:
+    """Statistics of every campaign of the ad account by day. Raises RuntimeError with Meta's own words on a refusal
+    (never with the token)."""
+    import json
+
+    s = get_settings()
+    act = s.ads_account_id if s.ads_account_id.startswith("act_") else f"act_{s.ads_account_id}"
+    url: str | None = f"{_graph()}/{act}/insights"
+    params: dict | None = {
+        "level": "campaign", "time_increment": 1, "limit": 500,
+        "time_range": json.dumps({"since": since.isoformat(), "until": until.isoformat()}),
+        "fields": "campaign_id,campaign_name,account_currency,spend,impressions,reach,clicks,inline_link_clicks,actions"}
+    out: list[dict] = []
+    async with httpx.AsyncClient(timeout=30) as client:
+        for _ in range(40):  # pages
+            if not url or not url.startswith("https://graph.facebook.com/"):
+                break
+            try:
+                r = await client.get(url, params=params, headers={"Authorization": f"Bearer {s.ads_access_token}"})
+                data = r.json()
+            except (httpx.HTTPError, ValueError) as e:
+                raise RuntimeError(f"Meta не ответила: {type(e).__name__}") from None
+            if r.status_code >= 400 or not isinstance(data, dict) or "error" in data:
+                msg = (data.get("error") or {}).get("message") if isinstance(data, dict) else None
+                raise RuntimeError(str(msg or f"HTTP {r.status_code}")[:300])
+            out += [x for x in data.get("data") or [] if isinstance(x, dict)]
+            url, params = (data.get("paging") or {}).get("next"), None
+    return out

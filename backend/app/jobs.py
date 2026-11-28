@@ -507,6 +507,17 @@ async def auto_coins(db: AsyncSession) -> int:
     return n
 
 
+async def ads_sync(db: AsyncSession) -> dict:
+    """Facebook / Instagram ads statistics of the last week. A refusal of Meta never stops the other night jobs."""
+    from app.services import ads
+
+    try:
+        return await ads.sync(db)
+    except RuntimeError as e:
+        log.warning("ads sync refused: %s", e)
+        return {"ok": False, "reason": str(e)[:200]}
+
+
 async def nightly(db: AsyncSession) -> dict:
     out = {"lessons": await extend_all(db), "tasks": await spawn_recurring_tasks(db)}
     await db.commit()
@@ -520,6 +531,8 @@ async def nightly(db: AsyncSession) -> dict:
     from app.services import meta
     out["instagram_token"] = await meta.ig_refresh()
     out["instagram_names"] = await instagram_names(db)
+    await db.commit()
+    out["ads"] = await ads_sync(db)
     await db.commit()
     return out
 
@@ -557,7 +570,7 @@ if __name__ == "__main__":
     else:
         print(asyncio.run(_run({"minutely": minutely, "nightly": nightly, "leave-followups": leave_followups,
                                  "close-left-members": close_left_members,
-                                 "instagram-names": instagram_names, "birthdays": birthdays,
+                                 "instagram-names": instagram_names, "ads-sync": ads_sync, "birthdays": birthdays,
                                  "test-bpt2": lambda db: __import__("app.services.test_data", fromlist=["seed_bpt2"]).seed_bpt2(db),
                                  "plan-seed": lambda db: __import__("app.services.plan", fromlist=["seed"]).seed(db),
                                  "lesson-duplicates-preview-old": lambda db: _dupes(db, "old", False),

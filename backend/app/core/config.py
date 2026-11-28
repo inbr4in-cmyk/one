@@ -46,6 +46,9 @@ class Settings(BaseSettings):
     # Who sends: the Facebook Page linked to the school's Instagram, or with a «Unified login» token the Instagram
     # account id itself. Replies go to /{id}/messages. Instagram-login tokens (IG...) use /me/messages.
     ig_page_id: str = ""
+    # Facebook / Instagram ads statistics (read only, permission ads_read): the token and the ad account id «act_…».
+    ads_access_token: str = ""
+    ads_account_id: str = ""
     # Approved WhatsApp Authentication template for login codes (Meta name). Empty = plain text (24 h window only).
     wa_otp_template: str = ""
     # TESTING ONLY: while WhatsApp is not connected, students and parents sign in with this fixed 6-digit code

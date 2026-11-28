@@ -1,8 +1,10 @@
-from sqlalchemy import Boolean, Index, Integer, String, UniqueConstraint, text
+from decimal import Decimal
+
+from sqlalchemy import Boolean, Index, Integer, Numeric, String, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import ArchiveMixin, Base, IdMixin, TimestampMixin
-from app.models._types import DT, DTN, Int, IntN, Json, StrN, TextN, fk
+from app.models._types import DT, DTN, D, Int, IntN, Json, StrN, TextN, fk
 
 
 class LeadSource:
@@ -153,3 +155,23 @@ class ExternalMessage(IdMixin, Base):
     status: Mapped[str] = mapped_column(String(16), default="received")
     error: Mapped[StrN]
     sender_id: Mapped[IntN]
+
+
+class AdInsight(IdMixin, Base):
+    """Facebook / Instagram ads statistics of one campaign for one day, read from Meta (owner, 28.11.2026).
+    Money is in the ad account's currency, with cents: it is Meta's number, not our tenge ledger."""
+
+    __tablename__ = "ad_insights"
+    __table_args__ = (UniqueConstraint("day", "campaign_id"),)
+
+    day: Mapped[D]
+    campaign_id: Mapped[str] = mapped_column(String(64))
+    campaign_name: Mapped[str] = mapped_column(String(255), default="")
+    currency: Mapped[str] = mapped_column(String(8), default="")
+    spend: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=0)
+    impressions: Mapped[Int]
+    reach: Mapped[Int]
+    clicks: Mapped[Int]
+    link_clicks: Mapped[Int]
+    results: Mapped[Int]  # leads and conversations started, as Meta counts them
+    synced_at: Mapped[DT]

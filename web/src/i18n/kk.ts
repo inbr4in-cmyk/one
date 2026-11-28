@@ -57,6 +57,7 @@ const kk: Messages = {
   nav: {
     sec: { student: 'Студент', money: 'Қаржы' },
     reports: 'Есептер',
+    ads: 'Жарнама',
     materials: 'Материалдар',
     menu: 'Мәзір',
     settings: 'Баптаулар',

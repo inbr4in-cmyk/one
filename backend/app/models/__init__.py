@@ -14,7 +14,7 @@ from app.models.compliance import (
     UserDocAccept,
 )
 from app.models.crm import (
-    Conversation, ExternalContact, ExternalMessage, Lead, LeadEvent, LeadStage, LeadStageAccess, Pipeline,
+    AdInsight, Conversation, ExternalContact, ExternalMessage, Lead, LeadEvent, LeadStage, LeadStageAccess, Pipeline,
 )
 from app.models.finance import Expense, ExpenseCategory, Payment, Refund, SubscriptionPackage
 from app.models.imports import ImportRef

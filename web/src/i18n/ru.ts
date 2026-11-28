@@ -56,6 +56,7 @@ const ru = {
   nav: {
     sec: { student: 'Студент', money: 'Финансы' },
     reports: 'Отчёты',
+    ads: 'Реклама',
     materials: 'Материалы',
     menu: 'Меню',
     settings: 'Настройки',

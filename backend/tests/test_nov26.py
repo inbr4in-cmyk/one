@@ -700,3 +700,46 @@ async def test_first_absence_is_the_teachers_task_and_done_needs_a_result(db, cl
     client_json = {k: (await client.get(f"/api/tasks?box=all&kind={k}&limit=200", headers=owner_h)).json() for k in ("absence", "other", "leave")}
     assert tid in ids("absence") and other["id"] not in ids("absence")
     assert other["id"] in ids("other") and tid not in ids("other") and tid not in ids("leave")
+
+
+async def test_ads_statistics_are_read_from_meta_and_joined_with_crm(client, db, owner_h, monkeypatch):
+    """Owner, 28.11.2026: Facebook ads numbers (spend, clicks) next to the CRM leads; read only, by day and campaign."""
+    from app.models import AdInsight
+    from app.services import meta
+    from app.services.clock import today
+    from tests.conftest import branch_id
+
+    r = (await client.get("/api/ads/report", headers=owner_h)).json()
+    assert r["configured"] is False and r["total"]["spend"] == 0 and r["campaigns"] == []
+    assert (await client.post("/api/ads/sync", headers=owner_h)).status_code == 400
+    calls = []
+
+    async def fake(since, until):
+        calls.append((since, until))
+        return [{"date_start": today().isoformat(), "campaign_id": "111", "campaign_name": "Kids", "account_currency": "USD",
+                 "spend": "12.50", "impressions": "1000", "reach": "800", "clicks": "50", "inline_link_clicks": "40",
+                 "actions": [{"action_type": "lead", "value": "3"}, {"action_type": "onsite_conversion.messaging_conversation_started_7d", "value": "2"},
+                             {"action_type": "link_click", "value": "40"}]},
+                {"date_start": today().isoformat(), "campaign_id": "222", "campaign_name": "IELTS", "spend": "7.5", "impressions": "500", "clicks": "10"},
+                {"date_start": "bad", "campaign_id": "333"}]
+
+    monkeypatch.setattr(meta, "ads_ready", lambda: True)
+    monkeypatch.setattr(meta, "ads_insights", fake)
+    for _ in range(2):  # a second reading updates the same rows
+        r = await client.post("/api/ads/sync", headers=owner_h)
+        assert r.status_code == 200 and r.json()["rows"] == 2, r.text
+    assert len(list(await db.scalars(select(AdInsight)))) == 2
+    await client.post("/api/crm/leads", headers=owner_h, json={"full_name": "Лид Реклама", "phone": "+77075557701", "source": "instagram",
+                                                              "branch_id": await branch_id(db, "Север")})
+    r = (await client.get(f"/api/ads/report?date_from={today()}&date_to={today()}", headers=owner_h)).json()
+    assert r["configured"] and r["currency"] == "USD"
+    assert r["total"] == {"spend": 20.0, "impressions": 1500, "reach": 800, "clicks": 60, "link_clicks": 40, "results": 5, "ctr": 4.0, "cpc": 0.33}
+    assert [c["name"] for c in r["campaigns"]] == ["Kids", "IELTS"] and len(r["days"]) == 1
+    assert r["crm"]["leads"] >= 1 and r["crm"]["cost_per_lead"] == round(20.0 / r["crm"]["leads"], 2)
+
+    async def refused(since, until):
+        raise RuntimeError("(#200) Ad account owner has NOT grant ads_read permission")
+
+    monkeypatch.setattr(meta, "ads_insights", refused)
+    r = await client.post("/api/ads/sync", headers=owner_h)
+    assert r.status_code == 400 and "ads_read" in r.json()["detail"]
