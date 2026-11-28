@@ -162,6 +162,9 @@ export interface SessionRow {
   status: 'none' | 'in_progress' | 'void' | 'done' | 'needs_review'
   answered: number
   score: number | null
+  /** checked and below the threshold of the test's kind */
+  low?: boolean
+  percent?: number | null
   duration_sec: number | null
   voided_at: string | null
   restores: number
@@ -172,6 +175,10 @@ export interface SessionRow {
 export interface SessionBoard extends TestSession {
   max_score: number
   questions: number
+  /** progress 67, final 60 (of 100); none for other tests */
+  threshold?: number | null
+  low?: number
+  checked?: number
   now: string
   can_run: boolean
   rows: SessionRow[]

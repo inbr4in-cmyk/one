@@ -88,6 +88,7 @@ class TestSession(IdMixin, TimestampMixin, Base):
     ends_at: Mapped[DTN]
     finished_at: Mapped[DTN]
     created_by: Mapped[IntN]
+    summary_at: Mapped[DTN]  # the summary of the results went to the methodist
 
 
 class Course(IdMixin, TimestampMixin, ArchiveMixin, Base):

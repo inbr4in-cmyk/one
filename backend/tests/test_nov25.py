@@ -156,6 +156,16 @@ async def test_group_test_is_planned_taken_online_annulled_restored_and_ranked(c
     board = (await client.post(f"/api/test-sessions/{sid}/finish", headers=owner_h)).json()
     assert board["status"] == "finished"
     assert {x["student_id"]: x["place"] for x in board["rows"]} == {sids[1]: 1, sids[0]: 2}
+    # Owner, 28.11.2026: a progress test below 67 of 100 is the red zone; the methodist gets one summary
+    assert board["threshold"] == 67 and board["low"] == 1 and board["checked"] == 2
+    assert {x["student_id"]: x["low"] for x in board["rows"]} == {sids[0]: True, sids[1]: False}
+    from app.models import Notification, TestSession
+    db.expire_all()
+    assert (await db.get(TestSession, sid)).summary_at is not None
+    notes = list(await db.scalars(select(Notification).where(Notification.link == f"/tests/sessions/{sid}")))
+    assert sum("Ниже порога 67: 1 из 2" in (x.body or "") for x in notes) == 1
+    await client.get(f"/api/test-sessions/{sid}", headers=owner_h)
+    assert len(list(await db.scalars(select(Notification).where(Notification.link == f"/tests/sessions/{sid}")))) == len(notes)
     hist = (await client.get(f"/api/students/{sids[1]}/tests", headers=owner_h)).json()
     assert hist[0]["score"] == 3 and hist[0]["duration_sec"] is not None and hist[0]["test_title"] == "Progress Test 1"
     orders = [a.q_order for a in await db.scalars(select(Attempt).where(Attempt.session_id == sid))]

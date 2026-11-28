@@ -42,6 +42,40 @@ async def _expire(db: DB, ts: TestSession) -> None:
     await _finish(db, ts, ts.ends_at)
 
 
+# Owner, 28.11.2026: a result below this share of the test's points (a test is 100 points) is the red zone.
+THRESHOLDS = {"progress": 67, "final": 60}
+
+
+def _percent(score: int, max_score: int) -> float:
+    return round(100 * score / max_score, 1) if max_score else 0.0
+
+
+async def _summary(db: DB, ts: TestSession) -> None:
+    """Once, when the test is over and every answer is checked: the methodist gets how many students are below the
+    threshold, with the link to the results."""
+    t = await db.get(Test, ts.test_id)
+    if ts.status != "finished" or ts.summary_at is not None or t.kind not in THRESHOLDS:
+        return
+    await db.flush()
+    attempts = list(await db.scalars(select(Attempt).where(Attempt.session_id == ts.id)))
+    if any(a.status == "needs_review" for a in attempts):
+        return
+    from app.services import retention
+
+    ts.summary_at = now()
+    done = [a for a in attempts if a.status == "done"]
+    if not done:
+        return
+    limit, top = THRESHOLDS[t.kind], sum(q.points for q in await _questions(db, t.id))
+    low = [a for a in done if _percent(a.score, top) < limit]
+    names = list(await db.scalars(select(Student.full_name).where(Student.id.in_([a.student_id for a in low])).order_by(Student.full_name)))
+    g = await db.get(Group, ts.group_id)
+    avg = round(sum(_percent(a.score, top) for a in done) / len(done))
+    body = f"Ниже порога {limit}: {len(low)} из {len(done)}. Средний результат: {avg}." + (f" {', '.join(names)[:300]}" if names else "")
+    for uid in await retention.methodists(db, ts.branch_id):
+        await crm.alert(db, uid, "test", f"Результаты теста: {t.title}, группа {g.name}", body=body, link=f"/tests/sessions/{ts.id}")
+
+
 async def _finish(db: DB, ts: TestSession, at: datetime) -> None:
     t = await db.get(Test, ts.test_id)
     qs = await _questions(db, t.id)
@@ -49,6 +83,7 @@ async def _finish(db: DB, ts: TestSession, at: datetime) -> None:
         await _close(db, a, t, qs, at)
     ts.status, ts.finished_at = "finished", at
     await db.flush()
+    await _summary(db, ts)
 
 
 def _visible(actor: Actor):
@@ -174,15 +209,18 @@ async def session(session_id: int, db: DB, actor: Actor = require("tests", "view
     if extra:
         students += list(await db.scalars(select(Student).where(Student.id.in_(extra))))
     rows = []
+    t = await db.get(Test, ts.test_id)
+    top, limit = sum(q.points for q in await _questions(db, t.id)), THRESHOLDS.get(t.kind)
     for s in students:
         a = attempts.get(s.id)
-        rows.append({"student_id": s.id, "full_name": s.full_name, "has_login": s.user_id is not None, "attempt_id": a.id if a else None,
+        low = bool(a and a.status == "done" and limit is not None and _percent(a.score, top) < limit)
+        rows.append({"low": low, "percent": _percent(a.score, top) if a and a.finished_at else None, "student_id": s.id, "full_name": s.full_name, "has_login": s.user_id is not None, "attempt_id": a.id if a else None,
                      "status": a.status if a else "none", "answered": len(a.answers or {}) if a else 0,
                      "score": a.score if a and a.finished_at else None, "duration_sec": a.duration_sec if a else None,
                      "voided_at": a.voided_at if a else None, "restores": a.restores if a else 0, "place": None})
     rank(rows)
-    t = await db.get(Test, ts.test_id)
-    return {**(await _brief(db, [ts]))[0], "max_score": sum(q.points for q in await _questions(db, t.id)), "questions": total,
+    return {**(await _brief(db, [ts]))[0], "max_score": top, "questions": total, "threshold": limit,
+            "low": sum(1 for r in rows if r["low"]), "checked": sum(1 for r in rows if r["status"] == "done"),
             "now": now(), "can_run": actor.can("tests", "review"), "rows": rows,
             "suggested_min": engine.total_minutes(t) + 5 if t.parts else None}
 
@@ -570,6 +608,9 @@ async def set_marks(attempt_id: int, body: MarksIn, db: DB, actor: Actor = requi
             await finalize_final(db, a, t, actor.id)
         else:
             a.status = "done"
+        ts = await db.get(TestSession, a.session_id) if a.session_id else None
+        if ts is not None:
+            await _summary(db, ts)
     await write_audit(db, actor_id=actor.id, action="test.marks", entity="attempt", entity_id=a.id, branch_id=a.branch_id, ip=actor.ip,
                       after={"manual_score": a.manual_score})
     await db.commit()

@@ -119,6 +119,7 @@ async function copy() {
       </div>
     </UiCard>
 
+    <p v-if="b.threshold && b.checked" class="gs-sum" :class="b.low ? 'low' : 'ok'" data-testid="gs-sum">{{ t('nv.gt.below', { limit: b.threshold, n: b.low ?? 0, m: b.checked }) }}</p>
     <UiCard flush>
       <div class="gs-table-wrap">
         <table class="tbl gs-table">
@@ -129,7 +130,7 @@ async function copy() {
               <td><RouterLink :to="`/students/${r.student_id}`">{{ r.full_name }}</RouterLink><small v-if="!r.has_login" class="gs-nologin">{{ t('nv.gt.noLogin') }}</small></td>
               <td><UiChip small :tone="tone(r)">{{ t(`nv.gt.rs.${r.status}`) }}</UiChip></td>
               <td class="num">{{ r.answered }} / {{ b.questions }}</td>
-              <td class="num">{{ r.score == null ? '—' : `${r.score} / ${b.max_score}` }}</td>
+              <td class="num"><b v-if="r.score != null && r.status === 'done' && b.threshold" class="gs-zone" :class="r.low ? 'low' : 'ok'">{{ r.score }} / {{ b.max_score }}</b><template v-else>{{ r.score == null ? '—' : `${r.score} / ${b.max_score}` }}</template></td>
               <td class="num">{{ dur(r) }}</td>
               <td><UiButton v-if="r.attempt_id && b.can_run && (r.status === 'needs_review' || r.status === 'done')" size="sm" :variant="r.status === 'needs_review' ? 'primary' : 'ghost'" :to="`/tests/attempts/${r.attempt_id}`">{{ t('nv.gt.check') }}</UiButton>
                 <UiButton v-if="r.status === 'void' && b.status === 'running' && b.can_run" size="sm" variant="primary" :disabled="busy" @click="restore(r)">{{ t('nv.gt.restore') }}</UiButton></td>
@@ -142,6 +143,10 @@ async function copy() {
 </template>
 
 <style scoped>
+.gs-zone { display: inline-block; padding: 2px 10px; border-radius: 999px }
+.gs-zone.ok, .gs-sum.ok { background: var(--ok-bg); color: var(--ok) }
+.gs-zone.low, .gs-sum.low { background: var(--red-100); color: var(--red-ink) }
+.gs-sum { margin: 0 0 12px; padding: 10px 14px; border-radius: 12px; font-weight: 600 }
 .gs-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap }
 .gs-ico { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; background: var(--navy-50); color: var(--accent-ink); flex: none }
 .gs-title { font-size: 20px; margin: 0 }
