@@ -1,0 +1,1 @@
+var e={pen:`pencil`,mug:`cup`,hoodie:`shirt`,tshirt:`shirt`};function t(t,n){var r;let i=t?(r=e[t])==null?t:r:null;return!i||typeof document>`u`?n:document.getElementById(`i-${i}`)?i:n}export{t};

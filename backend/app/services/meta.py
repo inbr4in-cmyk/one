@@ -1,0 +1,269 @@
+"""Meta Graph API: WhatsApp Cloud API and Instagram Messaging. Network calls only when configured."""
+
+import hashlib
+import hmac
+import logging
+import os
+import time
+from pathlib import Path
+
+import httpx
+
+from app.core.config import get_settings
+
+log = logging.getLogger("meta")
+
+
+def _graph() -> str:
+    return f"https://graph.facebook.com/{get_settings().meta_graph_version}"
+
+
+def _ig_graph(token: str) -> str:
+    """Instagram-login tokens (IGAA...) go to graph.instagram.com; Page tokens (Facebook login) to graph.facebook.com."""
+    host = "graph.instagram.com" if token.startswith("IG") else "graph.facebook.com"
+    return f"https://{host}/{get_settings().meta_graph_version}"
+
+
+def verify_signature(body: bytes, header: str | None) -> bool:
+    """X-Hub-Signature-256: sha256=<hmac of the raw body with the app secret>. Instagram-login webhooks are signed
+    with the Instagram app secret, the rest with the Meta app secret: either one is accepted."""
+    if not header or not header.startswith("sha256="):
+        return False
+    got, s = header.removeprefix("sha256="), get_settings()
+    for secret in (s.meta_app_secret, s.ig_app_secret):
+        if secret and hmac.compare_digest(hmac.new(secret.encode(), body, hashlib.sha256).hexdigest(), got):
+            return True
+    return False
+
+
+# An Instagram-login token lives 60 days and is renewed by the nightly job. The renewed token is kept in a file
+# readable only by the service user (the env file belongs to root); a token typed in again by the owner replaces it.
+def _ig_token_file() -> Path:
+    return Path(get_settings().storage_dir) / ".ig_token"
+
+
+def ig_token() -> str:
+    env = get_settings().ig_access_token
+    try:
+        saved = _ig_token_file().read_text().strip().split("\n")
+    except OSError:
+        return env
+    # line 1: fingerprint of the env token it was renewed from, line 2: the renewed token
+    if len(saved) == 2 and saved[0] == hashlib.sha256(env.encode()).hexdigest() and saved[1]:
+        return saved[1]
+    return env
+
+
+async def ig_refresh(min_age_days: int = 7) -> str:
+    """Renews the Instagram-login token. Returns what happened, never the token."""
+    token = ig_token()
+    if not token.startswith("IG"):
+        return "not an Instagram-login token"
+    f = _ig_token_file()
+    if f.exists() and time.time() - f.stat().st_mtime < min_age_days * 86400:
+        return "fresh"
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.get("https://graph.instagram.com/refresh_access_token",
+                                 params={"grant_type": "ig_refresh_token", "access_token": token})
+        data = r.json()
+    except (httpx.HTTPError, ValueError) as e:
+        log.warning("Instagram token renewal failed: %s", str(e)[:200])
+        return "failed"
+    new = data.get("access_token") if isinstance(data, dict) else None
+    if r.status_code >= 400 or not isinstance(new, str) or not new:
+        log.warning("Instagram token renewal refused: %s", str((data.get("error") or {}).get("message", r.status_code))[:200])
+        return "refused"
+    f.parent.mkdir(parents=True, exist_ok=True)
+    tmp = f.with_suffix(".tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as out:
+        out.write(hashlib.sha256(get_settings().ig_access_token.encode()).hexdigest() + "\n" + new + "\n")
+    os.replace(tmp, f)
+    return "renewed"
+
+
+class SendResult:
+    def __init__(self, ok: bool, external_id: str | None = None, error: str | None = None) -> None:
+        self.ok, self.external_id, self.error = ok, external_id, error
+
+
+D360 = "https://waba-v2.360dialog.io"
+
+
+async def _post(url: str, token: str, payload: dict) -> SendResult:
+    # 360dialog takes the same message body as Meta, with its own key header
+    headers = {"D360-API-KEY": token} if url.startswith(D360) else {"Authorization": f"Bearer {token}"}
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.post(url, json=payload, headers=headers)
+        data = r.json()
+        if r.status_code >= 400:
+            err = data.get("error") if isinstance(data, dict) else None
+            return SendResult(False, error=str(err.get("message", r.status_code) if isinstance(err, dict) else err or r.status_code)[:250])
+        mid = (data.get("messages") or [{}])[0].get("id") or data.get("message_id")
+        return SendResult(True, external_id=mid)
+    except (httpx.HTTPError, ValueError) as e:  # network or bad JSON
+        return SendResult(False, error=str(e)[:250])
+
+
+def wa_configured() -> bool:
+    s = get_settings()
+    return bool(s.wa_d360_api_key or (s.wa_phone_number_id and s.wa_access_token))
+
+
+def _wa_target(phone_id: str | None = None) -> tuple[str, str]:
+    """Where WhatsApp messages go and with which key: 360dialog when its key is set, otherwise Meta directly.
+    phone_id: the branch's own number of the same WhatsApp account; without it the first (main) number sends."""
+    s = get_settings()
+    if s.wa_d360_api_key:
+        return f"{D360}/messages", s.wa_d360_api_key
+    return f"{_graph()}/{phone_id or s.wa_phone_number_id}/messages", s.wa_access_token
+
+
+def verify_d360(header: str | None) -> bool:
+    """360dialog calls our webhook with the secret header we gave it when the webhook was set."""
+    secret = get_settings().wa_d360_webhook_secret
+    return bool(secret and len(secret) >= 24 and header and hmac.compare_digest(secret.encode(), header.encode()))
+
+
+def _not_configured(what: str, to: str) -> SendResult:
+    """Without keys nothing is sent. The text is never logged: it may hold a one-time code.
+    In production this is a failure (visible in the delivery log), in dev a no-op success."""
+    if get_settings().is_prod:
+        return SendResult(False, error="WhatsApp не подключён")
+    log.info("%s (dev, not sent) -> %s", what, to[-4:])
+    return SendResult(True)
+
+
+async def wa_send_text(to_phone: str, text: str, phone_id: str | None = None) -> SendResult:
+    s = get_settings()
+    if not wa_configured():
+        return _not_configured("WA text", to_phone)
+    return await _post(
+        *_wa_target(phone_id),
+        {"messaging_product": "whatsapp", "recipient_type": "individual", "to": to_phone.lstrip("+"), "type": "text",
+         "text": {"body": text}},
+    )
+
+
+async def wa_send_template(to_phone: str, name: str, locale: str, params: list[str], phone_id: str | None = None) -> SendResult:
+    s = get_settings()
+    if not wa_configured():
+        return _not_configured(f"WA template {name}", to_phone)
+    lang = {"ru": "ru", "kk": "kk"}.get(locale, "ru")
+    return await _post(
+        *_wa_target(phone_id),
+        {
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": to_phone.lstrip("+"),
+            "type": "template",
+            "template": {
+                "name": name,
+                "language": {"code": lang},
+                "components": [{"type": "body", "parameters": [{"type": "text", "text": p} for p in params]}],
+            },
+        },
+    )
+
+
+async def wa_send_auth_code(to_phone: str, name: str, locale: str, code: str) -> SendResult:
+    """One-time code through an approved Authentication template (body {{1}} = code, copy-code button = code).
+    Meta lets a business write first only with a template, so codes reach people who haven't written in 24 h."""
+    s = get_settings()
+    if not wa_configured():
+        return _not_configured(f"WA auth {name}", to_phone)
+    return await _post(
+        *_wa_target(),
+        {
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": to_phone.lstrip("+"),
+            "type": "template",
+            "template": {
+                "name": name,
+                "language": {"code": {"kk": "kk"}.get(locale, "ru")},
+                "components": [
+                    {"type": "body", "parameters": [{"type": "text", "text": code}]},
+                    {"type": "button", "sub_type": "url", "index": "0", "parameters": [{"type": "text", "text": code}]},
+                ],
+            },
+        },
+    )
+
+
+async def ig_profile(user_id: str) -> tuple[str | None, str | None]:
+    """Name and @username of a person who wrote to the school's Instagram. Never raises: no key, no access or a
+    slow answer just means the contact stays without a name until the next message."""
+    token = ig_token()
+    if not token:
+        return None, None
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            r = await client.get(f"{_ig_graph(token)}/{user_id}", params={"fields": "name,username"},
+                                 headers={"Authorization": f"Bearer {token}"})
+        data = r.json() if r.status_code < 400 else {}
+    except (httpx.HTTPError, ValueError):
+        return None, None
+    if not isinstance(data, dict):
+        return None, None
+    name, username = data.get("name"), data.get("username")
+    return (str(name).strip()[:120] or None if isinstance(name, str) else None,
+            str(username).strip()[:64] or None if isinstance(username, str) else None)
+
+
+async def ig_send_text(recipient_id: str, text: str, human_agent: bool = False, comment_id: str | None = None) -> SendResult:
+    """human_agent: Instagram allows a person (not a bot) to answer up to 7 days after the client's message.
+    comment_id: a private reply to a comment (one per comment, within 7 days); it opens a Direct chat with its author."""
+    s = get_settings()
+    token = ig_token()
+    if not token:
+        if s.is_prod:
+            return SendResult(False, error="Instagram не подключён")
+        log.info("IG (dev, not sent) -> %s", recipient_id[-4:])
+        return SendResult(True)
+    payload: dict = {"recipient": {"comment_id": comment_id} if comment_id else {"id": recipient_id}, "message": {"text": text}}
+    if human_agent and not comment_id:
+        payload |= {"messaging_type": "MESSAGE_TAG", "tag": "HUMAN_AGENT"}
+    sender = s.ig_page_id if s.ig_page_id and not token.startswith("IG") else "me"
+    return await _post(f"{_ig_graph(token)}/{sender}/messages", token, payload)
+
+
+# ---- Ads statistics (Marketing API, read only) ----
+RESULT_ACTIONS = ("lead", "onsite_conversion.messaging_conversation_started_7d")
+
+
+def ads_ready() -> bool:
+    s = get_settings()
+    return bool(s.ads_access_token and s.ads_account_id)
+
+
+async def ads_insights(since, until) -> list[dict]:
+    """Statistics of every campaign of the ad account by day. Raises RuntimeError with Meta's own words on a refusal
+    (never with the token)."""
+    import json
+
+    s = get_settings()
+    act = s.ads_account_id if s.ads_account_id.startswith("act_") else f"act_{s.ads_account_id}"
+    url: str | None = f"{_graph()}/{act}/insights"
+    params: dict | None = {
+        "level": "campaign", "time_increment": 1, "limit": 500,
+        "time_range": json.dumps({"since": since.isoformat(), "until": until.isoformat()}),
+        "fields": "campaign_id,campaign_name,account_currency,spend,impressions,reach,clicks,inline_link_clicks,actions"}
+    out: list[dict] = []
+    async with httpx.AsyncClient(timeout=30) as client:
+        for _ in range(40):  # pages
+            if not url or not url.startswith("https://graph.facebook.com/"):
+                break
+            try:
+                r = await client.get(url, params=params, headers={"Authorization": f"Bearer {s.ads_access_token}"})
+                data = r.json()
+            except (httpx.HTTPError, ValueError) as e:
+                raise RuntimeError(f"Meta не ответила: {type(e).__name__}") from None
+            if r.status_code >= 400 or not isinstance(data, dict) or "error" in data:
+                msg = (data.get("error") or {}).get("message") if isinstance(data, dict) else None
+                raise RuntimeError(str(msg or f"HTTP {r.status_code}")[:300])
+            out += [x for x in data.get("data") or [] if isinstance(x, dict)]
+            url, params = (data.get("paging") or {}).get("next"), None
+    return out

@@ -1,0 +1,1 @@
+var e={new:`Новая заявка`,contacted:`Связались`,trial_booked:`Записан на пробный`,trial_done:`Пришёл на пробный`,paid:`Оплатил`,lost:`Отказ`,left:`Ушёл`,agreed:`Договорились`},t=(t,n)=>!!t&&!!n&&e[t]!==void 0&&e[t]!==n;export{t};

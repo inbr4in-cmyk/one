@@ -1,0 +1,13 @@
+{
+  "name": "one-english-wa",
+  "private": true,
+  "type": "module",
+  "version": "1.0.0",
+  "description": "WhatsApp link by QR for the One English inbox (local service, talks only to the API on localhost)",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "baileys": "7.0.0-rc14"
+  }
+}

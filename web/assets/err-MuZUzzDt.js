@@ -1,0 +1,1 @@
+import{t as e}from"./http-BODox--o.js";function t(t){return t instanceof e&&t.detail?t.detail:null}export{t};

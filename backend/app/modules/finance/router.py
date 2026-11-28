@@ -1,0 +1,675 @@
+"""Expenses, P&L, owner dashboard and Excel exports (ТЗ 13)."""
+
+import io
+from datetime import date, time, timedelta
+
+from fastapi import APIRouter, Query
+from fastapi.responses import StreamingResponse
+from pydantic import Field
+from sqlalchemy import func, select
+
+from app.core.audit import write_audit
+from app.core.deps import DB, Actor, require
+from app.core.errors import bad_request, not_found
+from app.core.query import paginate
+from app.core.schemas import In, ORM, Page
+from app.models import (
+    Accrual, Attendance, Branch, Expense, ExpenseCategory, Lead, LeadStage, Lesson, Payment, Refund, Student, User,
+)
+from app.models.learning import AttendanceStatus, LessonStatus, StudentStatus
+from app.services.clock import at_local, local, now, period_of, today
+
+router = APIRouter(tags=["finance"])
+
+
+def month_bounds(period: str):
+    try:
+        y, m = (int(x) for x in period.split("-"))
+        start = date(y, m, 1)
+    except ValueError as e:
+        raise bad_request("Период в формате ГГГГ-ММ") from e
+    end = date(y + (m == 12), m % 12 + 1, 1)
+    return start, end, at_local(start, time(0)), at_local(end, time(0))
+
+
+def _branches(actor: Actor, module: str, action: str, branch_id: int | None) -> set[int] | None:
+    """Branches the report covers: the requested one (if allowed) or everything the actor may see."""
+    allowed = actor.branches_for(module, action)
+    if branch_id is not None:
+        actor.ensure_branch(module, action, branch_id)
+        return {branch_id}
+    return allowed
+
+
+# ---------- expenses ----------
+class CategoryOut(ORM):
+    id: int
+    code: str
+    name: str
+
+
+class CategoryIn(In):
+    name: str = Field(min_length=2, max_length=120)
+    # Optional: generated when the category is added from the dictionaries page.
+    code: str | None = Field(default=None, pattern=r"^[a-z0-9_]{2,32}$")
+
+
+@router.get("/expense-categories", response_model=list[CategoryOut])
+async def categories(db: DB, actor: Actor = require("finance", "view")) -> list:
+    return list(await db.scalars(select(ExpenseCategory).where(ExpenseCategory.archived_at.is_(None)).order_by(ExpenseCategory.id)))
+
+
+@router.post("/expense-categories", response_model=CategoryOut, status_code=201)
+async def create_category(body: CategoryIn, db: DB, actor: Actor = require("finance", "edit")):
+    if body.code and await db.scalar(select(ExpenseCategory).where(ExpenseCategory.code == body.code)):
+        raise bad_request("Такой код уже есть")
+    if await db.scalar(select(ExpenseCategory.id).where(func.lower(ExpenseCategory.name) == body.name.strip().lower(),
+                                                        ExpenseCategory.archived_at.is_(None))):
+        raise bad_request("Такая статья расхода уже есть")
+    code = body.code or f"c{(await db.scalar(select(func.coalesce(func.max(ExpenseCategory.id), 0)))) + 1}"
+    while await db.scalar(select(ExpenseCategory.id).where(ExpenseCategory.code == code)):
+        code += "_"
+    c = ExpenseCategory(name=body.name.strip(), code=code)
+    db.add(c)
+    await db.flush()
+    await write_audit(db, actor_id=actor.id, action="expense_category.create", entity="expense_category", entity_id=c.id,
+                      ip=actor.ip, after={"name": c.name})
+    await db.commit()
+    return c
+
+
+class CategoryPatch(In):
+    name: str = Field(min_length=2, max_length=120)
+
+
+@router.patch("/expense-categories/{category_id}", response_model=CategoryOut)
+async def rename_category(category_id: int, body: CategoryPatch, db: DB, actor: Actor = require("finance", "edit")):
+    c = await db.get(ExpenseCategory, category_id)
+    if c is None or c.archived_at is not None:
+        raise not_found("Статья расхода")
+    before = c.name
+    c.name = body.name.strip()
+    await write_audit(db, actor_id=actor.id, action="expense_category.update", entity="expense_category", entity_id=c.id,
+                      ip=actor.ip, before={"name": before}, after={"name": c.name})
+    await db.commit()
+    return c
+
+
+@router.post("/expense-categories/{category_id}/archive", status_code=204)
+async def archive_category(category_id: int, db: DB, actor: Actor = require("finance", "edit")) -> None:
+    """Archived, never deleted: past expenses keep their category in reports."""
+    c = await db.get(ExpenseCategory, category_id)
+    if c is None or c.archived_at is not None:
+        raise not_found("Статья расхода")
+    c.archived_at = now()
+    await write_audit(db, actor_id=actor.id, action="expense_category.archive", entity="expense_category", entity_id=c.id,
+                      ip=actor.ip, before={"name": c.name})
+    await db.commit()
+
+
+class ExpenseIn(In):
+    branch_id: int | None = None  # None = shared network expense
+    category_id: int
+    amount: int = Field(gt=0, le=1_000_000_000)
+    spent_on: date
+    note: str | None = Field(default=None, max_length=255)
+    receipt_url: str | None = Field(default=None, max_length=255)
+    recurring: bool = False
+    recurring_day: int | None = Field(default=None, ge=1, le=28)
+
+
+class ExpenseOut(ORM):
+    id: int
+    branch_id: int | None
+    category_id: int
+    amount: int
+    spent_on: date
+    note: str | None
+    receipt_url: str | None
+    recurring: bool
+    recurring_day: int | None
+    source_ref: str | None
+    created_by: int | None
+
+
+def _check_expense_branch(actor: Actor, branch_id: int | None) -> None:
+    if branch_id is None:
+        if actor.branches_for("finance", "edit") is not None:
+            raise bad_request("Общие расходы сети вносит только владелец")
+    else:
+        actor.ensure_branch("finance", "edit", branch_id)
+
+
+@router.get("/expenses", response_model=Page[ExpenseOut])
+async def list_expenses(db: DB, actor: Actor = require("finance", "view"), period: str | None = None,
+                        branch_id: int | None = None, category_id: int | None = None,
+                        date_from: date | None = None, date_to: date | None = None,
+                        limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0)) -> Page:
+    q = select(Expense).where(Expense.archived_at.is_(None))
+    branches = _branches(actor, "finance", "view", branch_id)
+    if branches is not None:
+        q = q.where(Expense.branch_id.in_(branches) if branch_id else
+                    (Expense.branch_id.in_(branches) | Expense.branch_id.is_(None)))
+    if date_from or date_to:
+        if date_from:
+            q = q.where(Expense.spent_on >= date_from)
+        if date_to:
+            q = q.where(Expense.spent_on <= date_to)
+    elif period:
+        s, e, _, _ = month_bounds(period)
+        q = q.where(Expense.spent_on >= s, Expense.spent_on < e)
+    if category_id:
+        q = q.where(Expense.category_id == category_id)
+    rows, total = await paginate(db, q.order_by(Expense.spent_on.desc(), Expense.id.desc()), limit, offset)
+    return Page(items=rows, total=total, limit=limit, offset=offset)
+
+
+@router.post("/expenses", response_model=ExpenseOut, status_code=201)
+async def create_expense(body: ExpenseIn, db: DB, actor: Actor = require("finance", "edit")):
+    _check_expense_branch(actor, body.branch_id)
+    if not await db.get(ExpenseCategory, body.category_id):
+        raise not_found("Категория")
+    e = Expense(**body.model_dump(), created_by=actor.id)
+    db.add(e)
+    await db.flush()
+    await write_audit(db, actor_id=actor.id, action="expense.create", entity="expense", entity_id=e.id,
+                      branch_id=e.branch_id, ip=actor.ip, after=body.model_dump(mode="json"))
+    await db.commit()
+    return e
+
+
+@router.patch("/expenses/{expense_id}", response_model=ExpenseOut)
+async def update_expense(expense_id: int, body: ExpenseIn, db: DB, actor: Actor = require("finance", "edit")):
+    e = await db.get(Expense, expense_id)
+    if e is None or e.archived_at:
+        raise not_found("Расход")
+    _check_expense_branch(actor, e.branch_id)
+    _check_expense_branch(actor, body.branch_id)
+    if e.source_ref:
+        raise bad_request("Автоматический расход меняется в своём разделе")
+    before = ExpenseOut.model_validate(e).model_dump(mode="json")
+    for k, v in body.model_dump().items():
+        setattr(e, k, v)
+    await write_audit(db, actor_id=actor.id, action="expense.update", entity="expense", entity_id=e.id,
+                      branch_id=e.branch_id, ip=actor.ip, before=before, after=body.model_dump(mode="json"))
+    await db.commit()
+    return e
+
+
+@router.post("/expenses/{expense_id}/archive", status_code=204)
+async def archive_expense(expense_id: int, db: DB, actor: Actor = require("finance", "edit")) -> None:
+    e = await db.get(Expense, expense_id)
+    if e is None or e.archived_at:
+        raise not_found("Расход")
+    _check_expense_branch(actor, e.branch_id)
+    if (e.source_ref or "").startswith("payout:"):
+        raise bad_request("Это выплата сотруднику: отмените её в разделе «Зарплата»")
+    e.archived_at = now()
+    await write_audit(db, actor_id=actor.id, action="expense.archive", entity="expense", entity_id=e.id,
+                      branch_id=e.branch_id, ip=actor.ip)
+    await db.commit()
+
+
+# ---------- P&L ----------
+async def _payroll_between(db: DB, s: date, e: date) -> dict:
+    """Payroll for any [s, e) range of days, by branch: lessons by the day they were held, the monthly salary by
+    the share of its month inside the range, everything else by the day it was written."""
+    s_dt, e_dt = at_local(s, time(0)), at_local(e, time(0))
+    out: dict = {}
+
+    def add(b, v):
+        out[b] = out.get(b, 0) + int(v)
+
+    for b, v in (await db.execute(
+            select(Accrual.branch_id, func.sum(Accrual.amount)).join(Lesson, Lesson.id == Accrual.ref_id)
+            .where(Accrual.ref_type == "lesson", Lesson.starts_at >= s_dt, Lesson.starts_at < e_dt).group_by(Accrual.branch_id))).all():
+        add(b, v)
+    for b, v in (await db.execute(
+            select(Accrual.branch_id, func.sum(Accrual.amount))
+            .where(func.coalesce(Accrual.ref_type, "") != "lesson", Accrual.kind != "salary",
+                   Accrual.created_at >= s_dt, Accrual.created_at < e_dt).group_by(Accrual.branch_id))).all():
+        add(b, v)
+    for b, per, v in (await db.execute(
+            select(Accrual.branch_id, Accrual.period, func.sum(Accrual.amount)).where(Accrual.kind == "salary")
+            .group_by(Accrual.branch_id, Accrual.period))).all():
+        ms, me, _, _ = month_bounds(per)
+        days = (min(me, e) - max(ms, s)).days
+        if days > 0:
+            add(b, round(int(v) * days / (me - ms).days))
+    return out
+
+
+async def pnl(db: DB, period: str, branches: set[int] | None, date_from: date | None = None,
+              date_to: date | None = None) -> dict:
+    """Revenue − refunds − expenses (own + share of network ones by revenue) − payroll accruals.
+    A whole month by `period`, or any range of days with date_from / date_to (both inclusive)."""
+    s, e, s_dt, e_dt = month_bounds(period)
+    ranged = bool(date_from or date_to)
+    if ranged:
+        s, e = date_from or date(2000, 1, 1), (date_to or today()) + timedelta(days=1)
+        if e <= s:
+            raise bad_request("Дата «по» раньше даты «с»")
+        s_dt, e_dt = at_local(s, time(0)), at_local(e, time(0))
+    all_ids = list(await db.scalars(select(Branch.id).where(Branch.archived_at.is_(None)).order_by(Branch.id)))
+    ids = [b for b in all_ids if branches is None or b in branches]
+    names = {b.id: b.name for b in await db.scalars(select(Branch).where(Branch.id.in_(all_ids)))}
+
+    rev = {(b, c): int(v) for b, c, v in (await db.execute(
+        select(Payment.branch_id, Payment.category, func.sum(Payment.amount))
+        .where(Payment.paid_at >= s_dt, Payment.paid_at < e_dt).group_by(Payment.branch_id, Payment.category))).all()}
+    ref_cat = {(b, c): int(v) for b, c, v in (await db.execute(
+        select(Payment.branch_id, Payment.category, func.sum(Refund.amount)).join(Payment, Payment.id == Refund.payment_id)
+        .where(Refund.created_at >= s_dt, Refund.created_at < e_dt).group_by(Payment.branch_id, Payment.category))).all()}
+    refunds: dict = {}
+    for (b, _), v in ref_cat.items():
+        refunds[b] = refunds.get(b, 0) + v
+    cats = {c.id: c.name for c in await db.scalars(select(ExpenseCategory))}
+    exp = (await db.execute(
+        select(Expense.branch_id, Expense.category_id, func.sum(Expense.amount))
+        .where(Expense.archived_at.is_(None), Expense.spent_on >= s, Expense.spent_on < e)
+        .group_by(Expense.branch_id, Expense.category_id))).all()
+    # Owner's rule (21.11.2026): only money really spent is an expense. Pay that is earned but not paid out yet is
+    # not counted; a payout («Рассчитаться») is an expense of the day it was paid, like any expense typed in by hand.
+    payroll: dict = {}
+
+    revenue_by_branch = {b: sum(v for (bb, _), v in rev.items() if bb == b) for b in all_ids}
+    total_rev = sum(revenue_by_branch.values())
+
+    def share(b: int) -> float:
+        return revenue_by_branch[b] / total_rev if total_rev else 1 / max(len(all_ids), 1)
+
+    rows = []
+    for b in ids:
+        expenses: dict[str, int] = {}
+        for bb, cid, v in exp:
+            amt = int(v) if bb == b else round(int(v) * share(b)) if bb is None else 0
+            if amt:
+                expenses[cats.get(cid, "?")] = expenses.get(cats.get(cid, "?"), 0) + amt
+        pay = payroll.get(b, 0) + (round(payroll.get(None, 0) * share(b)) if None in payroll else 0)
+        revenue = {c: v for (bb, c), v in rev.items() if bb == b}
+        gross = sum(revenue.values()) - refunds.get(b, 0)
+        total_exp = sum(expenses.values()) + pay
+        rows.append({"branch_id": b, "branch": names[b], "revenue": revenue, "refunds": refunds.get(b, 0),
+                     "receipts": sum(revenue.values()),
+                     "net_by_category": {c: v - ref_cat.get((b, c), 0) for c, v in revenue.items()},
+                     "net_revenue": gross, "expenses": expenses, "payroll": pay, "total_expenses": total_exp,
+                     "profit": gross - total_exp, "margin": round((gross - total_exp) / gross * 100, 1) if gross else None})
+    tot = {k: sum(r[k] for r in rows) for k in ("receipts", "refunds", "net_revenue", "payroll", "total_expenses", "profit")}
+    tot["margin"] = round(tot["profit"] / tot["net_revenue"] * 100, 1) if tot["net_revenue"] else None
+    return {"period": period, "date_from": s.isoformat() if ranged else None,
+            "date_to": (e - timedelta(days=1)).isoformat() if ranged else None, "branches": rows, "total": tot}
+
+
+@router.get("/finance/pnl")
+async def get_pnl(db: DB, actor: Actor = require("finance", "view"), period: str | None = None,
+                  branch_id: int | None = None, date_from: date | None = None, date_to: date | None = None) -> dict:
+    return await pnl(db, period or period_of(today()), _branches(actor, "finance", "view", branch_id), date_from, date_to)
+
+
+# ---------- dashboard ----------
+@router.get("/dashboard")
+async def dashboard(db: DB, actor: Actor = require("dashboard", "view"), branch_id: int | None = None,
+                    period: str | None = None) -> dict:
+    branches = _branches(actor, "dashboard", "view", branch_id)
+
+    def br(col):
+        return col.in_(branches) if branches is not None else True
+
+    d = today()
+    if period and period != period_of(d):
+        _, end, _, _ = month_bounds(period)
+        d = end - timedelta(days=1)  # a past month: its last day stands in for "today"
+    period = period_of(d)
+    _, _, m_start, m_end = month_bounds(period)
+    day_start = at_local(d, time(0))
+    show_money = actor.can("finance", "view") or actor.can("payments", "view")
+    out: dict = {"period": period}
+    if show_money:
+        out["revenue_today"] = int(await db.scalar(select(func.coalesce(func.sum(Payment.amount), 0)).where(
+            br(Payment.branch_id), Payment.paid_at >= day_start)))
+        out["revenue_month"] = int(await db.scalar(select(func.coalesce(func.sum(Payment.amount), 0)).where(
+            br(Payment.branch_id), Payment.paid_at >= m_start, Payment.paid_at < m_end)))
+        trend = []
+        y, m = d.year, d.month
+        for _ in range(6):
+            p = f"{y:04d}-{m:02d}"
+            _, _, a, b = month_bounds(p)
+            trend.append({"period": p, "revenue": int(await db.scalar(select(func.coalesce(func.sum(Payment.amount), 0)).where(
+                br(Payment.branch_id), Payment.paid_at >= a, Payment.paid_at < b)))})
+            y, m = (y - 1, 12) if m == 1 else (y, m - 1)
+        out["revenue_trend"] = list(reversed(trend))
+        out["sales_month"] = await db.scalar(select(func.count()).select_from(Payment).where(
+            br(Payment.branch_id), Payment.is_first.is_(True), Payment.paid_at >= m_start, Payment.paid_at < m_end))
+    active = select(func.count()).select_from(Student).where(br(Student.branch_id), Student.archived_at.is_(None),
+                                                             Student.status == StudentStatus.ACTIVE)
+    out["students_active"] = await db.scalar(active)
+    out["debtors"] = await db.scalar(active.where(Student.lessons_left <= 0))
+    out["low_balance"] = await db.scalar(active.where(Student.lessons_left > 0, Student.lessons_left <= 2))
+    # Left and paused students: totals now, and how many left during the month (the tile opens the list).
+    base = select(func.count()).select_from(Student).where(br(Student.branch_id), Student.archived_at.is_(None))
+    out["students_left"] = await db.scalar(base.where(Student.status == StudentStatus.LEFT))
+    out["students_frozen"] = await db.scalar(base.where(Student.status == StudentStatus.FROZEN))
+    out["students_waiting"] = await db.scalar(base.where(Student.status == StudentStatus.WAITING))
+    out["left_month"] = await db.scalar(base.where(Student.status == StudentStatus.LEFT, Student.left_at >= m_start,
+                                                   Student.left_at < m_end))
+    out["lessons_today"] = await db.scalar(select(func.count()).select_from(Lesson).where(
+        br(Lesson.branch_id), Lesson.starts_at >= day_start, Lesson.starts_at < day_start + timedelta(days=1),
+        Lesson.status != LessonStatus.CANCELLED))
+    att = (await db.execute(select(
+        func.count(), func.count().filter(Attendance.status.in_((AttendanceStatus.PRESENT, AttendanceStatus.LATE))))
+        .select_from(Attendance).join(Lesson, Lesson.id == Attendance.lesson_id)
+        .where(br(Lesson.branch_id), Lesson.starts_at >= m_start, Lesson.starts_at < m_end, Attendance.student_id.is_not(None))
+    )).one()
+    out["attendance_rate"] = round(att[1] / att[0] * 100, 1) if att[0] else None
+    if actor.can("crm", "view"):
+        # Archived leads stay in the database but are not counted on the dashboard
+        leads = select(func.count()).select_from(Lead).where(br(Lead.branch_id), Lead.created_at >= m_start,
+                                                             Lead.created_at < m_end, Lead.archived_at.is_(None))
+        new = await db.scalar(leads)
+        won = await db.scalar(leads.join(LeadStage, LeadStage.id == Lead.stage_id).where(LeadStage.is_won.is_(True)))
+        by_source = (await db.execute(select(Lead.source, func.count()).where(
+            br(Lead.branch_id), Lead.created_at >= m_start, Lead.created_at < m_end,
+            Lead.archived_at.is_(None)).group_by(Lead.source))).all()
+        out["leads_month"], out["conversion"] = new, round(won / new * 100, 1) if new else None
+        out["leads_by_source"] = {s: c for s, c in by_source}
+    return out
+
+
+def _gone_filter(status: str, start, end):
+    """Who left / was on pause in the period (owner, 26.11.2026). «Ждут группу» has no date of its own: it is always
+    the picture as of now."""
+    from app.models import Freeze
+
+    if status == "left":
+        return [Student.status == StudentStatus.LEFT, Student.left_at >= start, Student.left_at < end]
+    if status == "frozen":
+        first, last = local(start).date(), local(end - timedelta(seconds=1)).date()
+        return [Student.id.in_(select(Freeze.student_id).where(
+            Freeze.starts_on <= last, func.coalesce(Freeze.ended_early_on, Freeze.ends_on) >= first))]
+    return [Student.status == StudentStatus.WAITING]
+
+
+def _span(day: date | None, month: str | None):
+    if month:
+        y, m = int(month[:4]), int(month[5:])
+        return at_local(date(y, m, 1), time(0)), at_local(date(y + (m == 12), m % 12 + 1, 1), time(0))
+    start = at_local(day or today(), time(0))
+    return start, start + timedelta(days=1)
+
+
+@router.get("/dashboard/students")
+async def dashboard_students(db: DB, actor: Actor = require("dashboard", "view"), branch_id: int | None = None,
+                             status: str = Query("left", pattern="^(left|frozen|waiting)$"), day: date | None = None,
+                             month: str | None = Query(None, pattern=r"^\d{4}-(0[1-9]|1[0-2])$")) -> list[dict]:
+    """Who stands behind the «Ушли и на паузе» tile: when the student came and left, how long and with whom he studied, why he left.
+    «Came» is the earliest real date we know (contract or first group); imported students without one show nothing."""
+    from app.models import Freeze, Group, GroupMember, User
+
+    branches = _branches(actor, "dashboard", "view", branch_id)
+    q = select(Student).where(Student.archived_at.is_(None), Student.status == status)
+    if day or month:  # opened from the dashboard: the same day or month as there
+        q = select(Student).where(Student.archived_at.is_(None), *_gone_filter(status, *_span(day, month)))
+    if branches is not None:
+        q = q.where(Student.branch_id.in_(branches))
+    order = Student.left_at.desc().nulls_last() if status == "left" else Student.full_name
+    rows = list(await db.scalars(q.order_by(order, Student.id).limit(1000)))
+    ids = [x.id for x in rows]
+    first: dict[int, date] = {}
+    teachers: dict[int, list[str]] = {}
+    for sid, joined, name in (await db.execute(
+            select(GroupMember.student_id, GroupMember.joined_on, User.full_name).join(Group, Group.id == GroupMember.group_id)
+            .join(User, User.id == Group.teacher_id).where(GroupMember.student_id.in_(ids)).order_by(GroupMember.joined_on))).all():
+        first.setdefault(sid, joined)
+        if name not in teachers.setdefault(sid, []):
+            teachers[sid].append(name)
+    until = dict((await db.execute(select(Freeze.student_id, func.max(Freeze.ends_on)).where(
+        Freeze.student_id.in_(ids), *([] if day or month else [Freeze.ended_early_on.is_(None)])).group_by(Freeze.student_id))).all()) if status == "frozen" else {}
+    why: dict[int, dict] = {}  # the latest pause of each student: its dates and the reason typed in when it was set
+    if status == "frozen":
+        for fz in await db.scalars(select(Freeze).where(Freeze.student_id.in_(ids)).order_by(Freeze.starts_on.desc(), Freeze.id.desc())):
+            why.setdefault(fz.student_id, {"reason": fz.reason, "since": fz.starts_on})
+    out = []
+    for x in rows:
+        came = min([d for d in (x.contract_date, first.get(x.id)) if d], default=None)
+        gone = local(x.left_at).date() if x.left_at else None
+        end = gone or today()
+        months = max(0, (end.year - came.year) * 12 + end.month - came.month + (1 if end.day >= came.day else 0)) if came else None
+        out.append({"id": x.id, "full_name": x.full_name, "branch_id": x.branch_id, "came": came, "left": gone, "months": months,
+                    "teachers": teachers.get(x.id, []), "reason": x.leave_reason if status == "left" else why.get(x.id, {}).get("reason"),
+                    "since": why.get(x.id, {}).get("since"), "until": until.get(x.id)})
+    return out
+
+
+@router.get("/dashboard/day")
+async def dashboard_day(db: DB, actor: Actor = require("dashboard", "view"), branch_id: int | None = None,
+                        day: date | None = None, month: str | None = Query(None, pattern=r"^\d{4}-(0[1-9]|1[0-2])$")) -> dict:
+    """The daily report (owner, 25.11.2026): what happened on the day, with the people behind every number.
+    Leads are counted by the event of that day (a note or call, a trial booking, a payment), so a past day's
+    numbers do not change later. Debtors are the picture as of now."""
+    from sqlalchemy import or_
+
+    from app.models import LeadEvent, LeadStageAccess
+
+    branches = _branches(actor, "dashboard", "view", branch_id)
+    d = day or today()
+    if d > today() or d < today() - timedelta(days=366):
+        raise bad_request("День — не позже сегодня и не раньше года назад")
+    start = at_local(d, time(0))
+    end = start + timedelta(days=1)
+    out: dict = {"day": d}
+    if month:  # the same report for a whole month
+        y, m = int(month[:4]), int(month[5:])
+        first = date(y, m, 1)
+        if first > today() or first < today() - timedelta(days=400):
+            raise bad_request("Месяц — не позже текущего и не раньше года назад")
+        start, end = at_local(first, time(0)), at_local(date(y + (m == 12), m % 12 + 1, 1), time(0))
+        out = {"day": first, "month": month}
+
+    if actor.can("crm", "view"):
+        from app.services import crm as crm_svc
+
+        scope = [Lead.archived_at.is_(None), crm_svc.not_return()]
+        if branches is not None:
+            scope.append(or_(Lead.branch_id.in_(branches), Lead.branch_id.is_(None)))
+        # who is narrowed on some funnel stage sees the numbers, not other managers' leads
+        narrowed = await db.scalar(select(LeadStageAccess.id).where(LeadStageAccess.user_id == actor.id).limit(1)) is not None
+        stages = {s.id: s for s in await db.scalars(select(LeadStage))}
+        booked_ids = [i for i, s in stages.items() if s.code == "trial_booked"]
+        won_ids = [i for i, s in stages.items() if s.is_won]
+        contacted_ids = [i for i, s in stages.items() if s.code == "contacted"]
+        done_ids = [i for i, s in stages.items() if s.code == "trial_done"]
+        lost_ids = [i for i, s in stages.items() if s.is_lost]
+        fresh_ids = [i for i, s in stages.items() if s.code == "new"]
+        ev = select(LeadEvent.lead_id).where(LeadEvent.at >= start, LeadEvent.at < end)
+        to = LeadEvent.meta["to"].as_integer()
+        answered = LeadEvent.meta["result"].as_string().is_distinct_from("no_answer")  # «недозвон» is not a contact
+        sets = {
+            "new": select(Lead.id).where(Lead.created_at >= start, Lead.created_at < end),
+            "contacted": ev.where(or_(
+                LeadEvent.kind.in_(("call", "meeting")) & answered,
+                (LeadEvent.kind == "note") & LeadEvent.meta.has_key("result") & answered & LeadEvent.actor_id.is_not(None),
+                (LeadEvent.kind == "message") & (LeadEvent.meta["out"].as_boolean().is_(True)),
+                (LeadEvent.kind == "stage") & to.in_(contacted_ids or [-1]))),
+            "trial": ev.where(LeadEvent.kind == "stage", to.in_(booked_ids or [-1])),
+            "trial_done": ev.where(LeadEvent.kind == "stage", to.in_(done_ids or [-1])),
+            "paid": ev.where(or_(LeadEvent.kind == "sale", (LeadEvent.kind == "stage") & to.in_(won_ids or [-1]))),
+            # a refusal of the period that still stands (a lead booked again is back in work)
+            "lost": select(Lead.id).where(Lead.stage_id.in_(lost_ids or [-1]),
+                                          Lead.id.in_(ev.where(LeadEvent.kind == "stage", to.in_(lost_ids or [-1])))),
+            # the picture as of now: still on «Новая заявка» a day after it came in
+            "stale": select(Lead.id).where(Lead.stage_id.in_(fresh_ids or [-1]), Lead.created_at < now() - timedelta(hours=24)),
+        }
+        users = dict((await db.execute(select(User.id, User.full_name))).all())
+        leads: dict = {}
+        for key, ids in sets.items():
+            rows = list(await db.scalars(select(Lead).where(Lead.id.in_(ids), *scope).order_by(Lead.id.desc()).limit(500)))
+            item = lambda x: {"id": x.id, "full_name": x.full_name, "phone": x.phone, "source": x.source,  # noqa: E731
+                              "stage": stages[x.stage_id].name if x.stage_id in stages else None,
+                              "manager": users.get(x.assignee_id or x.owner_id), "branch_id": x.branch_id,
+                              "lost_kind": x.lost_kind if x.stage_id in lost_ids else None,
+                              "lost_reason": x.lost_reason if x.stage_id in lost_ids else None}
+            leads[key] = {"count": len(rows), "items": [] if narrowed else [item(x) for x in rows]}
+            if key == "new":
+                # Owner, 28.11.2026: conversion of the period's leads. A refusal «хочет онлайн / другой город / далеко» is
+                # not our client (unqualified) and leaves the base; a refusal «Другое» stays in it.
+                off = [x for x in rows if x.stage_id in lost_ids and x.lost_kind in crm_svc.UNQUALIFIED]
+                base = [x for x in rows if x not in off]
+                paid = sum(1 for x in base if x.stage_id in won_ids)
+                out["conversion"] = {"percent": round(100 * paid / len(base), 1) if base else 0.0, "paid": paid, "base": len(base),
+                                     "unqualified": {"count": len(off), "items": [] if narrowed else [item(x) for x in off]},
+                                     "qualified": {"count": len(base), "items": [] if narrowed else [item(x) for x in base]}}
+        out["leads"] = leads
+        by_source = (await db.execute(select(Lead.source, func.count()).where(
+            Lead.created_at >= start, Lead.created_at < end, *scope).group_by(Lead.source))).all()
+        out["sources"] = {src: n for src, n in by_source}
+
+    def br(col):
+        return col.in_(branches) if branches is not None else True
+
+    gone = select(func.count()).select_from(Student).where(br(Student.branch_id), Student.archived_at.is_(None))
+    out["gone"] = {k: await db.scalar(gone.where(*_gone_filter(k, start, end))) for k in ("left", "frozen", "waiting")}
+
+    # The students row (owner, 27.11.2026): who studies now, and whose card was opened in the period. Cards brought
+    # from the old CRM or a table are not «new»: those students studied before the site.
+    fresh = list(await db.scalars(select(Student).where(
+        br(Student.branch_id), Student.archived_at.is_(None), Student.created_at >= start, Student.created_at < end,
+        Student.source.is_distinct_from("import"), Student.status.not_in((StudentStatus.LEAD, StudentStatus.TRIAL)))
+        .order_by(Student.created_at.desc()).limit(1000)))
+    out["students"] = {
+        "active": await db.scalar(gone.where(Student.status == StudentStatus.ACTIVE)),
+        "new": {"count": len(fresh), "items": [{"id": x.id, "full_name": x.full_name, "branch_id": x.branch_id,
+                                                 "created_on": local(x.created_at).date()} for x in fresh]}}
+
+    debt = list(await db.scalars(select(Student).where(br(Student.branch_id), Student.archived_at.is_(None),
+                                                       Student.status == StudentStatus.ACTIVE, Student.lessons_left <= 0)
+                                 .order_by(Student.lessons_left, Student.full_name).limit(1000)))
+    out["debtors"] = {"count": len(debt), "items": [{"id": x.id, "full_name": x.full_name, "lessons_left": x.lessons_left,
+                                                     "branch_id": x.branch_id} for x in debt]}
+    if actor.can("payments", "view") or actor.can("finance", "view"):
+        pay = (await db.execute(select(Payment, Student.full_name, Student.lessons_left).join(Student, Student.id == Payment.student_id)
+                                .where(br(Payment.branch_id), Payment.paid_at >= start, Payment.paid_at < end,
+                                       Payment.source.is_distinct_from("import")).order_by(Payment.paid_at))).all()
+        by: dict[int, dict] = {}
+        for p, name, left in pay:
+            r = by.setdefault(p.student_id, {"id": p.student_id, "full_name": name, "amount": 0, "course": 0, "book": 0, "other": 0,
+                                             "lessons_left": left, "branch_id": p.branch_id})
+            net = int(p.amount) - int(p.refunded or 0)
+            r["amount"] += net
+            r[p.category if p.category in ("course", "book") else "other"] += net
+        items = sorted(by.values(), key=lambda r: -r["amount"])
+        out["payers"] = {"count": len(items), "total": sum(r["amount"] for r in items), "items": items}
+    out["unmarked"] = await _unmarked(db, branches, start, end)
+    out["overdue"] = await _overdue(db, branches)
+    return out
+
+
+async def _unmarked(db, branches, start, end) -> dict:
+    """Teachers who did not mark attendance (owner, 27.11.2026): lessons of the period that are over and still unmarked.
+    The one who led the lesson answers for it: the substitute when there was one."""
+    from sqlalchemy import or_
+
+    from app.models import Group, User
+
+    q = (select(Lesson, Group.name).outerjoin(Group, Group.id == Lesson.group_id).where(
+        Lesson.starts_at >= start, Lesson.starts_at < end, Lesson.ends_at <= now(), Lesson.status == LessonStatus.PLANNED,
+        Lesson.attendance_marked_at.is_(None), Lesson.is_trial.is_(False),
+        or_(Lesson.group_id.is_(None), Group.archived_at.is_(None))).order_by(Lesson.starts_at))
+    if branches is not None:
+        q = q.where(Lesson.branch_id.in_(branches))
+    rows = (await db.execute(q.limit(2000))).all()
+    names = dict((await db.execute(select(User.id, User.full_name).where(
+        User.id.in_({ls.actual_teacher_id or ls.teacher_id for ls, _ in rows})))).all()) if rows else {}
+    by: dict[int, dict] = {}
+    for ls, group in rows:
+        tid = ls.actual_teacher_id or ls.teacher_id
+        r = by.setdefault(tid, {"id": tid, "full_name": names.get(tid, "—"), "lessons": []})
+        r["lessons"].append({"id": ls.id, "group": group, "starts_at": ls.starts_at, "branch_id": ls.branch_id})
+    items = sorted(by.values(), key=lambda r: (-len(r["lessons"]), r["full_name"]))
+    return {"count": len(rows), "items": items}
+
+
+async def _overdue(db, branches) -> dict:
+    """Open tasks whose term has passed, by the person who has to do them (owner, 27.11.2026). Always the picture as of now."""
+    from sqlalchemy import or_
+
+    from app.models import Task, TaskAssignee, User
+    from app.models.work import TaskStatus
+
+    q = (select(Task, User.id, User.full_name).join(TaskAssignee, TaskAssignee.task_id == Task.id).join(User, User.id == TaskAssignee.user_id)
+         .where(Task.archived_at.is_(None), Task.status.not_in((TaskStatus.DONE, TaskStatus.CANCELLED)), Task.due_at < now(),
+                User.archived_at.is_(None)).order_by(Task.due_at))
+    if branches is not None:
+        q = q.where(or_(Task.branch_id.in_(branches), Task.branch_id.is_(None)))
+    by: dict[int, dict] = {}
+    seen: set[int] = set()
+    for t, uid, name in (await db.execute(q.limit(3000))).all():
+        seen.add(t.id)
+        r = by.setdefault(uid, {"id": uid, "full_name": name, "tasks": []})
+        r["tasks"].append({"id": t.id, "title": t.title, "due_at": t.due_at, "lead_id": t.link_id if t.link_type == "lead" else None})
+    items = sorted(by.values(), key=lambda r: (-len(r["tasks"]), r["full_name"]))
+    return {"count": len(seen), "items": items}
+
+
+# ---------- export ----------
+def _xlsx(title: str, header: list[str], rows: list[list], filename: str) -> StreamingResponse:
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = title[:31]
+    ws.append(header)
+    for c in ws[1]:
+        c.font = Font(bold=True, color="FFFFFF")
+        c.fill = PatternFill("solid", fgColor="012169")
+    for r in rows:
+        ws.append(r)
+        # Values come from user input: a text starting with "=" must stay text, never become a formula.
+        for c in ws[ws.max_row]:
+            if isinstance(c.value, str) and c.value.startswith("="):
+                c.data_type = "s"
+    for col in ws.columns:
+        ws.column_dimensions[col[0].column_letter].width = min(40, max(10, *(len(str(c.value or "")) + 2 for c in col)))
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return StreamingResponse(buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                             headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+@router.get("/finance/export/payments.xlsx")
+async def export_payments(db: DB, actor: Actor = require("finance", "export"), period: str = Query(...),
+                          branch_id: int | None = None):
+    branches = _branches(actor, "finance", "export", branch_id)
+    _, _, a, b = month_bounds(period)
+    q = (select(Payment, Student.full_name, User.full_name, Branch.name)
+         .join(Student, Student.id == Payment.student_id).join(User, User.id == Payment.received_by)
+         .join(Branch, Branch.id == Payment.branch_id)
+         .where(Payment.paid_at >= a, Payment.paid_at < b).order_by(Payment.paid_at))
+    if branches is not None:
+        q = q.where(Payment.branch_id.in_(branches))
+    rows = [[local(p.paid_at).strftime("%d.%m.%Y %H:%M"), br, st, p.category, p.lessons, p.lesson_price, p.discount, p.amount,
+             p.refunded, p.method, by, "да" if p.is_first else ""] for p, st, by, br in (await db.execute(q)).all()]
+    await write_audit(db, actor_id=actor.id, action="finance.export", entity="payments", ip=actor.ip,
+                      note=f"{period} {sorted(branches) if branches else 'сеть'}")
+    await db.commit()
+    return _xlsx("Оплаты", ["Дата", "Филиал", "Ученик", "Категория", "Уроков", "Цена урока", "Скидка", "Сумма", "Возврат",
+                            "Способ", "Принял", "Первая оплата"], rows, f"payments-{period}.xlsx")
+
+
+@router.get("/finance/export/pnl.xlsx")
+async def export_pnl(db: DB, actor: Actor = require("finance", "export"), period: str = Query(...),
+                     branch_id: int | None = None):
+    rep = await pnl(db, period, _branches(actor, "finance", "export", branch_id))
+    rows: list[list] = []
+    for r in rep["branches"]:
+        rows.append([r["branch"], "Выручка", ""])
+        rows += [["", c, v] for c, v in r["revenue"].items()]
+        rows.append(["", "Возвраты", -r["refunds"]])
+        rows += [["", f"Расход: {c}", -v] for c, v in r["expenses"].items()]
+        rows.append(["", "Прибыль", r["profit"]])
+    rows.append(["Итого по сети", "Прибыль", rep["total"]["profit"]])
+    await write_audit(db, actor_id=actor.id, action="finance.export", entity="pnl", ip=actor.ip, note=period)
+    await db.commit()
+    return _xlsx(f"P&L {period}", ["Филиал", "Статья", "Сумма, тг"], rows, f"pnl-{period}.xlsx")
+

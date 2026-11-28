@@ -1,0 +1,1 @@
+function e(e){return e&&(/^https?:\/\//i.test(e)||e.startsWith(`/`)&&!e.startsWith(`//`))?e:null}export{e as t};

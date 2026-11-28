@@ -1,0 +1,1 @@
+import{nt as e,st as t}from"./UiIcon-B3rzJnxN.js";var n=new Map;function r(t,r){return n.has(t)||n.set(t,e(r())),n.get(t)}function i(e,n){return t(r(e,()=>({v:n()})),`v`)}function a(){n.clear()}export{i as n,a as r,r as t};

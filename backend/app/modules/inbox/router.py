@@ -1,0 +1,428 @@
+import json
+import logging
+import re
+from datetime import timedelta
+
+from fastapi import APIRouter, HTTPException, Query, Request, Response
+from pydantic import BaseModel, Field
+from sqlalchemy import or_, select, true
+
+from app.core.query import icontains
+from app.core.audit import write_audit
+from app.core.config import get_settings
+from app.core.deps import DB, Actor, require
+from app.core.errors import bad_request, conflict, not_found
+from app.core.permissions import NETWORK, OWN
+from app.core.ratelimit import client_ip, hit
+from app.core.schemas import In, ORM
+from app.core.security import mask_phone
+from app.models import Branch, Conversation, ExternalContact, ExternalMessage, Lead, LeadEvent, LeadStage, MessageTemplate, Student, User
+from app.modules.crm.service import merge_into_student, set_branch
+from app.modules.students.scope import get_student_scoped
+from app.modules.inbox.service import comment_to_answer, handle_bridge_events, handle_meta_payload, in_window, line_branch, wa_phone_ids
+from app.services import meta, wa_bridge
+from app.services.clock import now
+from app.services.messaging import get_template, render
+
+log = logging.getLogger("inbox")
+router = APIRouter(tags=["inbox"])
+
+
+# ---------- Meta webhooks ----------
+@router.get("/webhooks/meta")
+async def verify(mode: str = Query(alias="hub.mode", default=""), token: str = Query(alias="hub.verify_token", default=""),
+                 challenge: str = Query(alias="hub.challenge", default="")) -> Response:
+    if mode == "subscribe" and token == get_settings().meta_verify_token:
+        return Response(challenge, media_type="text/plain")
+    raise HTTPException(403, "Неверный токен")
+
+
+@router.post("/webhooks/meta")
+async def webhook(request: Request, db: DB) -> dict:
+    await hit(f"webhook:{client_ip(request)}", 600, 60)
+    body = await request.body()
+    if len(body) > 1_000_000:
+        raise HTTPException(413, "Слишком большой запрос")
+    if not meta.verify_signature(body, request.headers.get("x-hub-signature-256")):
+        log.warning("Meta webhook with a bad signature from %s", client_ip(request))
+        raise HTTPException(401, "Неверная подпись")
+    try:
+        payload = json.loads(body)
+    except ValueError:
+        log.warning("Meta webhook: body is not JSON")
+        return {"ok": True, "stored": 0}  # signed by Meta, so retrying won't fix it: acknowledge (QA C-9)
+    n = await handle_meta_payload(db, payload)
+    await db.commit()
+    return {"ok": True, "stored": n}
+
+
+@router.post("/webhooks/360dialog")
+async def webhook_360dialog(request: Request, db: DB) -> dict:
+    """WhatsApp through 360dialog: the same payload as Meta's, authenticated by our secret header."""
+    await hit(f"webhook:{client_ip(request)}", 600, 60)
+    body = await request.body()
+    if len(body) > 1_000_000:
+        raise HTTPException(413, "Слишком большой запрос")
+    if not meta.verify_d360(request.headers.get("x-oe-webhook-secret")):
+        log.warning("360dialog webhook without the secret from %s", client_ip(request))
+        raise HTTPException(401, "Неверная подпись")
+    try:
+        payload = json.loads(body)
+    except ValueError:
+        return {"ok": True, "stored": 0}
+    if not isinstance(payload, dict) or payload.get("object") != "whatsapp_business_account":
+        return {"ok": True, "stored": 0}  # this address takes WhatsApp only
+    n = await handle_meta_payload(db, payload)
+    await db.commit()
+    return {"ok": True, "stored": n}
+
+
+@router.post("/webhooks/wa-bridge")
+async def webhook_wa_bridge(request: Request, db: DB) -> dict:
+    """New messages from the WhatsApp linked by QR. Only the link service on this server calls it: with the shared
+    secret and not through nginx (nginx always adds X-Real-IP)."""
+    if request.headers.get("x-real-ip") or request.headers.get("x-forwarded-for"):
+        raise HTTPException(404, "Not Found")
+    await hit(f"webhook:{client_ip(request)}", 600, 60)
+    body = await request.body()
+    if len(body) > 1_000_000:
+        raise HTTPException(413, "Слишком большой запрос")
+    if not wa_bridge.verify(request.headers.get("x-bridge-secret")):
+        log.warning("WhatsApp link webhook without the secret")
+        raise HTTPException(401, "Неверная подпись")
+    try:
+        payload = json.loads(body)
+    except ValueError:
+        return {"ok": True, "stored": 0}
+    n = await handle_bridge_events(db, payload.get("events") if isinstance(payload, dict) else [])
+    await db.commit()
+    return {"ok": True, "stored": n}
+
+
+# ---------- WhatsApp linked by QR (settings) ----------
+def _link_out(st: dict, actor: Actor, line: int = 0, branch: str | None = None) -> dict:
+    me = st.get("me") if isinstance(st.get("me"), dict) else None
+    return {"line": line, "branch": branch, "state": st.get("state"), "qr": st.get("qr") if actor.is_owner else None,
+            "phone": ("+" + str(me["phone"])) if me and me.get("phone") else None, "name": me.get("name") if me else None,
+            "linked_at": st.get("linked_at"), "pending": st.get("pending") or 0, "last_close": st.get("last_close"),
+            "can_manage": actor.is_owner}
+
+
+@router.get("/settings/whatsapp-link")
+async def wa_link_status(db: DB, actor: Actor = require("settings", "view")) -> list[dict]:
+    """A number for every branch. The number linked before branches had their own (line 0) is shown while it is
+    linked, or when the school has no branch to give a number to."""
+    all_ = await wa_bridge.statuses()
+    down = {**wa_bridge.OFF, "state": "unavailable" if wa_bridge.enabled() else "disabled"}
+    one = (lambda line: down) if all_ is None else (lambda line: all_.get(line, wa_bridge.OFF))
+    branches = list(await db.scalars(select(Branch).where(Branch.archived_at.is_(None)).order_by(Branch.id)))
+    out = [_link_out(one(b.id), actor, b.id, b.name) for b in branches]
+    if not branches or one(0).get("state") in ("open", "connecting", "qr", "banned"):
+        out.insert(0, _link_out(one(0), actor))
+    return out
+
+
+class LineIn(In):
+    line: int = Field(0, ge=0, le=1_000_000)
+
+
+async def _line(db: DB, actor: Actor, line: int) -> str | None:
+    if not actor.is_owner:  # the school's own WhatsApp: only the owner links and unlinks it
+        raise HTTPException(403, "Только администратор школы может подключать WhatsApp")
+    if not line:
+        return None
+    if await line_branch(db, line) is None:
+        raise not_found("Филиал")
+    return (await db.get(Branch, line)).name
+
+
+@router.post("/settings/whatsapp-link/connect")
+async def wa_link_connect(db: DB, body: LineIn | None = None, actor: Actor = require("settings", "edit")) -> dict:
+    line = body.line if body else 0
+    name = await _line(db, actor, line)
+    if not wa_bridge.enabled():
+        raise conflict("Служба WhatsApp на сервере не установлена")
+    try:
+        st = await wa_bridge.start(line)
+    except Exception:  # noqa: BLE001 — the service is down or answered oddly
+        raise conflict("Служба WhatsApp на сервере не отвечает") from None
+    wa_bridge.forget()
+    await write_audit(db, actor_id=actor.id, action="whatsapp.link_start", entity="settings", entity_id=None, ip=actor.ip,
+                      branch_id=line or None)
+    await db.commit()
+    return _link_out(st, actor, line, name)
+
+
+@router.post("/settings/whatsapp-link/disconnect")
+async def wa_link_disconnect(db: DB, body: LineIn | None = None, actor: Actor = require("settings", "edit")) -> dict:
+    line = body.line if body else 0
+    if not actor.is_owner:
+        raise HTTPException(403, "Только администратор школы может подключать WhatsApp")
+    b = await db.get(Branch, line) if line else None  # an archived branch's number can still be unlinked
+    try:
+        st = await wa_bridge.logout(line)
+    except Exception:  # noqa: BLE001
+        raise conflict("Служба WhatsApp на сервере не отвечает") from None
+    wa_bridge.forget()
+    await write_audit(db, actor_id=actor.id, action="whatsapp.unlink", entity="settings", entity_id=None, ip=actor.ip,
+                      branch_id=b.id if b else None)
+    await db.commit()
+    return _link_out(st, actor, line, b.name if b else None)
+
+
+# ---------- conversations ----------
+class ConversationOut(BaseModel):
+    id: int
+    channel: str
+    branch_id: int | None
+    assignee_id: int | None
+    unread: int
+    status: str
+    last_message_at: str | None
+    last_preview: str | None
+    in_window: bool
+    free_reply: bool = False  # WhatsApp linked by QR: no 24 h rule
+    wa_line: int | None = None  # the branch whose WhatsApp number the client wrote to
+    contact: dict
+    lead: dict | None
+    student: dict | None = None
+
+
+class MessageOut(ORM):
+    id: int
+    at: object
+    direction: str
+    kind: str
+    text: str | None
+    media_url: str | None
+    status: str
+    sender_id: int | None
+    sender_name: str | None = None  # the manager who wrote this answer
+
+
+def conv_filter(actor: Actor, action: str = "view"):
+    scope = actor.scope("inbox", action)
+    if scope == NETWORK:
+        return true()
+    if scope == OWN:
+        return Conversation.assignee_id == actor.id
+    return or_(Conversation.branch_id.in_(actor.branch_ids or {-1}), Conversation.branch_id.is_(None))
+
+
+async def _out(db: DB, actor: Actor, conv: Conversation) -> ConversationOut:
+    c = await db.get(ExternalContact, conv.contact_id)
+    lead = await db.get(Lead, c.lead_id) if c.lead_id else None
+    stage = await db.get(LeadStage, lead.stage_id) if lead else None
+    show = actor.can("students", "view_contacts")
+    student = await db.get(Student, c.student_id) if c.student_id else None
+    free = conv.channel == "whatsapp" and await wa_bridge.linked(conv.wa_line or 0)
+    return ConversationOut(
+        student={"id": student.id, "full_name": student.full_name} if student else None,
+        id=conv.id, channel=conv.channel, branch_id=conv.branch_id, assignee_id=conv.assignee_id, unread=conv.unread,
+        status=conv.status, last_message_at=conv.last_message_at.isoformat() if conv.last_message_at else None,
+        last_preview=conv.last_preview, in_window=in_window(conv) or free, free_reply=free, wa_line=conv.wa_line,
+        contact={"id": c.id, "name": c.display_name, "username": c.username,
+                 "phone": c.phone if show else mask_phone(c.phone), "student_id": c.student_id},
+        lead={"id": lead.id, "full_name": lead.full_name, "stage": stage.name if stage else None,
+              "stage_code": stage.code if stage else None, "source": lead.source} if lead else None,
+    )
+
+
+async def _get(db: DB, actor: Actor, conv_id: int, action: str = "view") -> Conversation:
+    conv = await db.scalar(select(Conversation).where(Conversation.id == conv_id, conv_filter(actor, action)))
+    if conv is None:
+        raise not_found("Диалог")
+    return conv
+
+
+@router.get("/inbox/conversations", response_model=list[ConversationOut])
+async def conversations(db: DB, actor: Actor = require("inbox", "view"), channel: str | None = None,
+                        status: str | None = "open", unread: bool = False, mine: bool = False, q: str | None = None,
+                        limit: int = Query(100, ge=1, le=300)) -> list[ConversationOut]:
+    stmt = select(Conversation).where(conv_filter(actor))
+    if channel:
+        stmt = stmt.where(Conversation.channel == channel)
+    if status:
+        stmt = stmt.where(Conversation.status == status)
+    if unread:
+        stmt = stmt.where(Conversation.unread > 0)
+    if mine:
+        stmt = stmt.where(Conversation.assignee_id == actor.id)
+    if q:
+        stmt = stmt.join(ExternalContact, ExternalContact.id == Conversation.contact_id).where(
+            or_(icontains(ExternalContact.display_name, q), icontains(ExternalContact.username, q)))
+    rows = await db.scalars(stmt.order_by(Conversation.last_message_at.desc().nulls_last()).limit(min(limit, 200)))
+    return [await _out(db, actor, c) for c in rows]
+
+
+@router.get("/inbox/conversations/{conv_id}", response_model=ConversationOut)
+async def conversation(conv_id: int, db: DB, actor: Actor = require("inbox", "view")) -> ConversationOut:
+    return await _out(db, actor, await _get(db, actor, conv_id))
+
+
+@router.get("/inbox/conversations/{conv_id}/messages", response_model=list[MessageOut])
+async def messages(conv_id: int, db: DB, actor: Actor = require("inbox", "view"), before_id: int | None = None,
+                   limit: int = Query(50, ge=1, le=200)) -> list[MessageOut]:
+    conv = await _get(db, actor, conv_id)
+    q = select(ExternalMessage).where(ExternalMessage.conversation_id == conv.id)
+    if before_id:
+        q = q.where(ExternalMessage.id < before_id)
+    rows = list(await db.scalars(q.order_by(ExternalMessage.id.desc()).limit(min(limit, 200))))
+    if conv.unread and not before_id:
+        conv.unread = 0
+        await db.commit()
+    names = dict((await db.execute(select(User.id, User.full_name).where(
+        User.id.in_({m.sender_id for m in rows if m.sender_id})))).all()) if rows else {}
+    out = []
+    for m in reversed(rows):
+        o = MessageOut.model_validate(m)
+        o.sender_name = names.get(m.sender_id)
+        out.append(o)
+    return out
+
+
+class SendIn(In):
+    text: str = Field(min_length=1, max_length=4096)
+
+
+async def _send(db: DB, actor: Actor, conv: Conversation, text: str, kind: str = "text") -> ExternalMessage:
+    contact = await db.get(ExternalContact, conv.contact_id)
+    if conv.channel == "whatsapp":
+        # Linked by QR: the answer leaves from the school's own WhatsApp. «lid:…» chats exist only there.
+        # The answer leaves from the number the client wrote to: each branch may have its own.
+        line = conv.wa_line or 0
+        if contact.external_id.startswith("lid:") or await wa_bridge.linked(line):
+            res = await wa_bridge.send_text(contact.external_id, text, line)
+        else:
+            res = await meta.wa_send_text(contact.external_id, text, (await wa_phone_ids(db)).get(line))
+    else:
+        late = conv.last_inbound_at is not None and now() - conv.last_inbound_at > timedelta(hours=24)
+        res = await meta.ig_send_text(contact.external_id, text, human_agent=late,
+                                      comment_id=await comment_to_answer(db, conv))
+    msg = ExternalMessage(conversation_id=conv.id, at=now(), direction="out", external_message_id=res.external_id, kind=kind,
+                          text=text, status="sent" if res.ok else "failed", error=res.error, sender_id=actor.id)
+    db.add(msg)
+    conv.last_message_at, conv.last_preview, conv.unread = msg.at, text[:255], 0
+    # Owner's rule 21.11.2026: who answers the client leads this chat, the client's next messages come to him.
+    conv.assignee_id = actor.id
+    if contact.lead_id:
+        lead = await db.get(Lead, contact.lead_id)
+        if lead:
+            lead.last_activity_at = now()
+            db.add(LeadEvent(lead_id=lead.id, at=now(), kind="message", actor_id=actor.id, meta={"channel": conv.channel, "out": True},
+                             text=("Ответ в WhatsApp: " if conv.channel == "whatsapp" else "Ответ в Instagram: ") + text[:200]))
+            if lead.owner_id is None:
+                lead.owner_id = actor.id  # first responder brought the lead in (KPI basis)
+            if lead.assignee_id is None:
+                lead.assignee_id = actor.id
+            from app.services.crm import got_in_touch
+
+            await got_in_touch(db, lead, actor.id, "Ответили в " + ("WhatsApp" if conv.channel == "whatsapp" else "Instagram"))
+            from app.services.crm import worked
+
+            await worked(db, lead, actor.id)
+    await db.flush()
+    return msg
+
+
+@router.post("/inbox/conversations/{conv_id}/messages", response_model=MessageOut, status_code=201)
+async def reply(conv_id: int, body: SendIn, db: DB, actor: Actor = require("inbox", "reply")) -> MessageOut:
+    conv = await _get(db, actor, conv_id, "reply")
+    if not in_window(conv) and not (conv.channel == "whatsapp" and await wa_bridge.linked(conv.wa_line or 0)):
+        # Meta only allows free-form replies within 24h (Instagram: 7 days for a person) of the client's last message.
+        if conv.channel == "instagram":
+            raise conflict("Прошло больше 7 дней с последнего сообщения клиента — Instagram не даёт ответить первым")
+        raise conflict("Прошло больше 24 часов с последнего сообщения клиента — отправьте шаблон")
+    msg = await _send(db, actor, conv, body.text)
+    await write_audit(db, actor_id=actor.id, action="inbox.reply", entity="conversation", entity_id=conv.id,
+                      branch_id=conv.branch_id, ip=actor.ip)
+    await db.commit()
+    return MessageOut.model_validate(msg)
+
+
+@router.get("/message-templates")
+async def templates(db: DB, actor: Actor = require("inbox", "reply")) -> list[dict]:
+    """WhatsApp templates the inbox may send outside the 24 h window, with the variables each one needs."""
+    rows = await db.scalars(select(MessageTemplate).where(MessageTemplate.enabled.is_(True)).order_by(MessageTemplate.code,
+                                                                                                      MessageTemplate.locale))
+    return [{"code": t.code, "locale": t.locale, "body": t.body, "variables": sorted(set(re.findall(r"\{(\w+)\}", t.body)))}
+            for t in rows]
+
+
+class TemplateIn(In):
+    code: str = Field(max_length=255)
+    variables: dict = {}
+    locale: str = Field(default="ru", pattern="^(ru|kk)$")
+
+
+@router.post("/inbox/conversations/{conv_id}/template", response_model=MessageOut, status_code=201)
+async def send_template(conv_id: int, body: TemplateIn, db: DB, actor: Actor = require("inbox", "reply")) -> MessageOut:
+    conv = await _get(db, actor, conv_id, "reply")
+    if conv.channel != "whatsapp":
+        raise bad_request("Шаблоны есть только в WhatsApp")
+    tpl = await get_template(db, body.code, body.locale)
+    if tpl is None:
+        raise not_found("Шаблон")
+    text = render(tpl.body, body.variables)
+    contact = await db.get(ExternalContact, conv.contact_id)
+    res = await meta.wa_send_template(contact.external_id, tpl.wa_template_name or tpl.code, tpl.locale, list(map(str, body.variables.values())),
+                                      (await wa_phone_ids(db)).get(conv.wa_line or 0))
+    msg = ExternalMessage(conversation_id=conv.id, at=now(), direction="out", external_message_id=res.external_id, kind="template",
+                          text=text, status="sent" if res.ok else "failed", error=res.error, sender_id=actor.id)
+    db.add(msg)
+    conv.last_message_at, conv.last_preview = msg.at, text[:255]
+    await db.commit()
+    return MessageOut.model_validate(msg)
+
+
+class ConvPatch(In):
+    assignee_id: int | None = None
+    status: str | None = Field(default=None, pattern="^(open|closed)$")
+    branch_id: int | None = None
+
+
+class LinkStudentIn(In):
+    student_id: int
+
+
+@router.post("/inbox/conversations/{conv_id}/link-student", response_model=ConversationOut)
+async def link_student(conv_id: int, body: LinkStudentIn, db: DB, actor: Actor = require("inbox", "reply")) -> ConversationOut:
+    """The person in the chat is an existing student: the chat goes to the student's card, the auto-made lead to the archive."""
+    conv = await _get(db, actor, conv_id, "reply")
+    contact = await db.get(ExternalContact, conv.contact_id)
+    s = await get_student_scoped(db, actor, body.student_id)
+    lead = await db.get(Lead, contact.lead_id) if contact.lead_id else None
+    if lead and lead.student_id:
+        raise conflict("По этому лиду уже создана карточка ученика")
+    if lead:
+        await merge_into_student(db, lead, s, actor.id)
+    else:
+        contact.student_id, conv.branch_id = s.id, s.branch_id
+    await write_audit(db, actor_id=actor.id, action="inbox.link_student", entity="conversation", entity_id=conv.id,
+                      branch_id=conv.branch_id, ip=actor.ip, after={"student_id": s.id})
+    await db.commit()
+    return await _out(db, actor, conv)
+
+
+@router.patch("/inbox/conversations/{conv_id}", response_model=ConversationOut)
+async def patch_conv(conv_id: int, body: ConvPatch, db: DB, actor: Actor = require("inbox", "reply")) -> ConversationOut:
+    conv = await _get(db, actor, conv_id, "reply")
+    data = body.model_dump(exclude_unset=True)
+    if "branch_id" in data and data["branch_id"]:
+        actor.ensure_branch("inbox", "reply", data["branch_id"])
+    for k, v in data.items():
+        setattr(conv, k, v)
+    if "branch_id" in data:
+        contact = await db.get(ExternalContact, conv.contact_id)
+        if contact.lead_id:
+            lead = await db.get(Lead, contact.lead_id)
+            if data["branch_id"]:
+                await set_branch(db, lead, data["branch_id"], actor.id)
+    if "assignee_id" in data:
+        contact = await db.get(ExternalContact, conv.contact_id)
+        if contact.lead_id:
+            (await db.get(Lead, contact.lead_id)).assignee_id = data["assignee_id"]
+    await write_audit(db, actor_id=actor.id, action="inbox.update", entity="conversation", entity_id=conv.id,
+                      branch_id=conv.branch_id, ip=actor.ip, after=data)
+    await db.commit()
+    return await _out(db, actor, conv)
